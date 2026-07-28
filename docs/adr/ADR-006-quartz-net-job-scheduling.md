@@ -1,6 +1,6 @@
 # ADR-006: Quartz.NET for Job Scheduling
 
-> Status: ACCEPTED
+> Status: SUPERSEDED BY ADR-009
 > Date: 2026-07-28
 > Architecture: docs/architecture.md (v1)
 

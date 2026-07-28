@@ -1,6 +1,6 @@
 # ADR-005: Blazor Server for the Web Dashboard
 
-> Status: ACCEPTED
+> Status: SUPERSEDED BY ADR-008
 > Date: 2026-07-28
 > Architecture: docs/architecture.md (v1)
 

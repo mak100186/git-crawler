@@ -1,7 +1,7 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v3
+> Version: v10
 > Last updated: 2026-07-28
 > PRD: docs/prd.md (built against v4)
 
@@ -25,15 +25,22 @@ concept in v1 (per PRD Non-Goals).
 
 ## 2. High-Level Architecture
 
-The platform is a modular .NET monolith — one deployable process hosting the Web API and Blazor
-Server dashboard (ADR-005), plus background components for crawling, scoring, summarization, and
-trend aggregation — all orchestrated by an in-process job scheduler (ADR-006). It is packaged as a
-set of Docker Compose services: the app container, PostgreSQL (ADR-003), and the local LLM runtime
-container (ADR-001). This is a modular monolith rather than microservices deliberately: a solo
-operator (per PRD constraints) benefits from one deployable unit and one codebase far more than
-from independently-scalable services, and nothing in the PRD's volume targets (1K-5K/day, scaling
-to 100k+) requires service-level horizontal scaling yet (see ADR-002 consequences for the revisit
-trigger).
+The platform is a modular .NET 10 monolith (ADR-010) — one deployable process hosting the Web API
+and serving the Angular dashboard's static build (ADR-008), plus background components for
+crawling, scoring, summarization, and trend aggregation — all orchestrated by an in-process job
+scheduler (ADR-009). It is packaged as a set of Docker Compose services: the app container,
+PostgreSQL (ADR-003), and the local LLM runtime container (ADR-001). This is a modular monolith
+rather than microservices deliberately: a solo operator (per PRD constraints) benefits from one
+deployable unit and one codebase far more than from independently-scalable services, and nothing
+in the PRD's volume targets (1K-5K/day, scaling to 100k+) requires service-level horizontal
+scaling yet (see ADR-002 consequences for the revisit trigger). The dashboard is a separate
+Angular codebase from the .NET backend (ADR-008) but is still built into and served from the same
+deployable process, so this split doesn't add a second runtime container.
+
+Internally, every backend component — the Web API and each of the five background pipeline stages
+— is organized as Vertical Slice Architecture, with a Wolverine command/query and its handler as
+the unit of a slice, instead of a shared service/repository layer (ADR-015). Hangfire (ADR-009)
+invokes a Wolverine command per pipeline stage rather than calling a service method directly.
 
 Each pipeline stage (crawl → score → summarize → aggregate trends → send digest) is a distinct
 component with a narrow responsibility, triggered on its own schedule but sharing the same
@@ -48,7 +55,8 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Inputs:** Scheduler trigger; GitHub API responses.
 - **Outputs:** Raw repository metadata records written to the Data Store.
 - **Dependencies:** GitHub API (GraphQL-first, REST fallback — ADR-004); GitHub API token.
-- **Technology:** .NET background service, GitHub GraphQL/REST clients.
+- **Technology:** .NET background service, GitHub GraphQL/REST clients; implemented as a Wolverine
+  command/handler slice (ADR-015).
 
 ### Scoring Engine
 - **Responsibility:** Compute the "hidden gem" score per repository from independently-weighted
@@ -58,7 +66,8 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Outputs:** Computed score + per-signal breakdown, written to the Data Store.
 - **Dependencies:** Data Store.
 - **Technology:** .NET library, pure computation (no external calls) — keeps scoring
-  deterministic and independently unit-testable.
+  deterministic and independently unit-testable; implemented as a Wolverine command/handler slice
+  (ADR-015).
 
 ### Summarizer
 - **Responsibility:** Generate a concise, structured AI summary for repositories that clear the
@@ -66,7 +75,9 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Inputs:** Repository content (README, manifest files) for top-scored repos without a summary.
 - **Outputs:** Structured summary written to the Data Store.
 - **Dependencies:** Local LLM Runtime, via the `IRepositorySummarizer` abstraction (ADR-001).
-- **Technology:** .NET service calling LM Studio's local (OpenAI-compatible) API (ADR-007).
+- **Technology:** .NET service calling LM Studio's local (OpenAI-compatible) API (ADR-007),
+  running the Gemma 4 E4B model (ADR-013); implemented as a Wolverine command/handler slice
+  (ADR-015).
 
 ### Trend Aggregator
 - **Responsibility:** Roll up scored/summarized repositories into technology/framework/ecosystem
@@ -74,47 +85,57 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Inputs:** Scored + summarized repositories from the Data Store.
 - **Outputs:** Trend aggregate records written to the Data Store.
 - **Dependencies:** Data Store.
-- **Technology:** .NET background service, scheduled batch job.
+- **Technology:** .NET background service, scheduled batch job; implemented as a Wolverine
+  command/handler slice (ADR-015).
 
 ### Digest Service
 - **Responsibility:** Compose and send the daily email digest of top hidden gems and trends.
 - **Inputs:** Top-scored repos + trend aggregates from the Data Store.
 - **Outputs:** Outbound digest email.
 - **Dependencies:** Data Store; Email Provider (SMTP).
-- **Technology:** .NET background service, SMTP client.
+- **Technology:** .NET background service, SMTP client; implemented as a Wolverine
+  command/handler slice (ADR-015).
 
 ### Web API
 - **Responsibility:** Serve the Dashboard's queries (feed, hidden gems, trending, categories,
-  filter/sort) and handle bookmark writes.
+  filter/sort) and handle bookmark writes, as a self-contained JSON API with no server-rendered
+  view dependencies.
 - **Inputs:** HTTP requests from the Dashboard.
 - **Outputs:** JSON responses; bookmark writes to the Data Store.
 - **Dependencies:** Data Store.
-- **Technology:** ASP.NET Core minimal API, same process as the Dashboard (ADR-005).
+- **Technology:** ASP.NET Core minimal API; also serves the Angular build's static assets from the
+  same process (ADR-008); endpoints organized as Wolverine command/query slices, one per operation
+  (ADR-015).
 
 ### Web Dashboard
 - **Responsibility:** Present the Discovery Feed, Hidden Gems, Trending, and Categories views;
   filter/sort by language, star range, topic, license; bookmark management.
-- **Inputs:** User interaction; data from the Web API.
-- **Outputs:** Rendered UI; bookmark/filter requests.
-- **Dependencies:** Web API (same process).
-- **Technology:** Blazor Server (ADR-005).
+- **Inputs:** User interaction; JSON data from the Web API.
+- **Outputs:** Rendered UI; bookmark/filter HTTP requests to the Web API.
+- **Dependencies:** Web API (same-origin HTTP, static files served from the same process).
+- **Technology:** Angular 22 SPA (ADR-008, ADR-012), standalone components, UI built with Angular
+  Material (ADR-011).
 
 ### Job Scheduler
 - **Responsibility:** Trigger each pipeline stage on its schedule, in dependency order (crawl
   before score, score before summarize, summarize before trend rollup, trend rollup before
-  digest), and recover in-flight/misfired jobs after a restart.
-- **Inputs:** Configured cron schedules and job dependency graph.
-- **Outputs:** Triggers to Crawler, Scoring Engine, Summarizer, Trend Aggregator, Digest Service.
-- **Dependencies:** Data Store (persistent job store).
-- **Technology:** Quartz.NET with a PostgreSQL-backed persistent job store (ADR-006).
+  digest), recover in-flight/misfired jobs after a restart, and expose run history/failures for
+  operator monitoring.
+- **Inputs:** Configured recurring schedules and stage-continuation chain.
+- **Outputs:** Triggers to Crawler, Scoring Engine, Summarizer, Trend Aggregator, Digest Service;
+  dashboard view of job state.
+- **Dependencies:** Data Store (persistent job storage).
+- **Technology:** Hangfire (`RecurringJob` + `ContinueJobWith`) with PostgreSQL-backed storage and
+  its built-in monitoring dashboard (ADR-009); each trigger invokes a Wolverine command on the
+  target stage (ADR-015).
 
 ### Data Store
 - **Responsibility:** Durable storage for repository metadata, scores, summaries, trend
-  aggregates, bookmarks, and Quartz.NET job state.
+  aggregates, bookmarks, and Hangfire job state.
 - **Inputs:** Writes from every other component.
 - **Outputs:** Reads for every other component.
 - **Dependencies:** None (leaf component).
-- **Technology:** PostgreSQL, accessed via EF Core (ADR-003).
+- **Technology:** PostgreSQL 18.4, accessed via EF Core (ADR-003, ADR-014).
 
 ## 4. Data Flow
 
@@ -143,9 +164,9 @@ the dashboard and receiving the digest.
 |----|----------|-------------|-------|
 | NFR-001 | Performance | Summary generation completes on the order of seconds per repository; dashboard interactions feel interactive (target p95 page response < 2s) | Formalizes PRD's "Responsiveness assumption"; local LLM throughput (ADR-001) is the primary risk to this — see A2 |
 | NFR-002 | Security | GitHub API token stored via environment/secrets configuration, never committed or logged; no AI provider credential exists in v1 since summarization is local (ADR-001) | Formalizes PRD's Security assumption |
-| NFR-003 | Reliability | Every pipeline stage is idempotent and resumable after a container restart mid-run; GitHub API failures retry with backoff rather than aborting the run | Enabled by Quartz.NET's persistent job store (ADR-006) |
+| NFR-003 | Reliability | Every pipeline stage is idempotent and resumable after a container restart mid-run; GitHub API failures retry with backoff rather than aborting the run | Enabled by Hangfire's persistent job storage (ADR-009) |
 | NFR-004 | Scalability | Schema and indexing support 100k+ repositories and 1M+ analysis records without a redesign | Formalizes PRD's processing volume assumption; partitioning/archiving strategy is an open risk — see A5 |
-| NFR-005 | Observability | Each pipeline stage emits structured logs and stage-level metrics (records processed, duration, failures) so a solo operator can diagnose a stuck or rate-limited run without attaching a debugger | Not sourced from an explicit PRD line item, but required in practice for a multi-stage async pipeline with no dedicated ops team |
+| NFR-005 | Observability | Each pipeline stage emits structured logs and stage-level metrics (records processed, duration, failures) so a solo operator can diagnose a stuck or rate-limited run without attaching a debugger | Not sourced from an explicit PRD line item; job-level piece (history, retries, failures) now covered by the Hangfire dashboard (ADR-009) — F-014 still needed for stage-level detail (e.g. per-signal scoring breakdowns) the dashboard doesn't capture |
 
 ## 7. Technology Decisions
 
@@ -153,11 +174,17 @@ the dashboard and receiving the digest.
 |---------|--------|-----|-----------|
 | AI summarization backend | Local/self-hosted LLM via `IRepositorySummarizer` | ADR-001 | Avoids per-call cost at target volume; keeps repository content on self-hosted infra |
 | Local LLM runtime engine | LM Studio | ADR-007 | Operator preference; OpenAI-compatible local API keeps the `IRepositorySummarizer` integration small |
+| Summarization model | Gemma 4 E4B (loaded in LM Studio) | ADR-013 | Operator preference; exact model identifier/availability to be confirmed during the F-002 throughput spike |
 | Deployment / hosting | Docker Compose, self-hosted/on-prem | ADR-002 | Matches solo, no-fixed-deadline project profile; simplifies co-locating the local LLM runtime |
 | Primary data store | PostgreSQL via EF Core | ADR-003 | Relational access pattern fits filter/sort/join-heavy queries; no license cost |
+| Data store version | PostgreSQL 18.4 (pinned image tag) | ADR-014 | Operator preference; pinned tag avoids silent upgrade drift |
 | GitHub API access strategy | GraphQL-first, REST fallback | ADR-004 | Minimizes rate-limit consumption per repository at 1K-5K/day scaling to 100k+ |
-| Web dashboard framework | Blazor Server | ADR-005 | Single C# stack for a solo maintainer; keeps data access server-side |
-| Job scheduling / orchestration | Quartz.NET, persistent job store | ADR-006 | Survives restarts mid-pipeline; expresses stage dependency ordering explicitly |
+| Web dashboard framework | Angular SPA, served as static assets from the Web API process | ADR-008 | Matches operator's standing frontend preference; keeps single-deployable-process footprint (ADR-002) |
+| Frontend framework version | Angular 22, standalone components | ADR-012 | Operator preference; pinned explicitly rather than resolved at scaffolding |
+| Dashboard UI component library | Angular Material (`@angular/material` + `@angular/cdk`) | ADR-011 | Free, MIT-licensed, maintained by the Angular team; no built-vs-buy tradeoff for a solo developer |
+| Job scheduling / orchestration | Hangfire, persistent job storage + built-in dashboard | ADR-009 | Survives restarts mid-pipeline; built-in dashboard directly serves NFR-005 for a solo operator |
+| Runtime / SDK version | .NET 10 | ADR-010 | Operator preference; single version across all backend components |
+| Internal code organization | Vertical Slice Architecture + CQRS via Wolverine, applied to the Web API and all five background pipeline stages | ADR-015 | Operator preference; explicitly not MediatR (which is moving toward commercial licensing) — Wolverine stays fully open-source |
 
 ## 8. Open Questions & Risks
 
@@ -175,3 +202,10 @@ the dashboard and receiving the digest.
 | v1 | 2026-07-28 | Initial draft | — |
 | v2 | 2026-07-28 | Local LLM runtime engine pinned to LM Studio (was illustrative "e.g. Ollama" in ADR-001); added ADR-007 and a Technology Decisions row for the runtime engine | Triage edit |
 | v3 | 2026-07-28 | Status → APPROVED | Gate approval |
+| v4 | 2026-07-28 | Web dashboard framework changed from Blazor Server to Angular SPA (ADR-008 supersedes ADR-005); dashboard now a separate codebase built to static assets and served from the same process | Triage edit |
+| v5 | 2026-07-28 | Job scheduling changed from Quartz.NET to Hangfire (ADR-009 supersedes ADR-006) for its built-in monitoring dashboard against NFR-005; Job Scheduler component, NFR-003/NFR-005 notes, and Technology Decisions table updated | Triage edit |
+| v6 | 2026-07-28 | Pinned runtime/SDK version to .NET 10 (ADR-010, new — nothing previously specified a version); also fixed a stale ADR-006 citation in §2 that should have read ADR-009 after the v5 edit | Triage edit |
+| v7 | 2026-07-28 | Added Angular Material as the dashboard UI component library (ADR-011, new, free/MIT); noted Angular's own version is latest-stable-pinned-at-scaffolding rather than a fixed number, pending operator confirmation | Triage edit |
+| v8 | 2026-07-28 | Pinned frontend framework version to Angular 22 (ADR-012, new) — replaces the "latest stable, resolved at scaffolding" placeholder from v7 | Triage edit |
+| v9 | 2026-07-28 | Pinned summarization model to Gemma 4 E4B (ADR-013, new) and data store version to PostgreSQL 18.4 (ADR-014, new); neither had a version pinned previously | Triage edit |
+| v10 | 2026-07-28 | Adopted Vertical Slice Architecture + CQRS via Wolverine (ADR-015, new), applied to the Web API and all five background pipeline stages, not MediatR; §2, all §3 component Technology lines, and Technology Decisions table updated | Triage edit |

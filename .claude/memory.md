@@ -10,8 +10,10 @@
 ## Identity
 
 - Name: git-crawler
-- Owner: <TODO>
-- Type: <TODO — no source code or stack committed yet as of the initial scaffold>
+- Owner: mak100186
+- Type: self-hosted .NET 10 / Angular 22 platform (PRD and Architecture APPROVED; PMBook drafted,
+  pending final handoff gate; no source code committed yet). See `docs/architecture.md` for the
+  full stack.
 
 ---
 
