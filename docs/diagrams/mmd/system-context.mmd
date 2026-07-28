@@ -1,0 +1,36 @@
+graph TB
+    User((Software Engineer / Eng Leader))
+
+    subgraph Platform["git-crawler Platform (self-hosted, Docker)"]
+        WebAPI["Web API / Backend"]
+        Dashboard["Web Dashboard"]
+        Crawler["Crawler / Ingestion"]
+        Scoring["Scoring Engine"]
+        Summarizer["Summarizer\n(IRepositorySummarizer)"]
+        TrendAgg["Trend Aggregator"]
+        Digest["Digest Service"]
+        Scheduler["Job Scheduler"]
+        DataStore[("Data Store")]
+    end
+
+    GitHubAPI["GitHub API\n(REST + GraphQL)"]
+    LocalLLM["Local LLM Runtime\n(self-hosted model)"]
+    SMTP["Email Provider (SMTP)"]
+
+    User -->|browses feed, filters, bookmarks| Dashboard
+    Dashboard -->|HTTP| WebAPI
+    WebAPI --> DataStore
+    Scheduler --> Crawler
+    Scheduler --> Scoring
+    Scheduler --> Summarizer
+    Scheduler --> TrendAgg
+    Scheduler --> Digest
+    Crawler -->|discover repos, fetch metadata| GitHubAPI
+    Crawler --> DataStore
+    Scoring --> DataStore
+    Summarizer -->|generate summary| LocalLLM
+    Summarizer --> DataStore
+    TrendAgg --> DataStore
+    Digest --> DataStore
+    Digest -->|daily digest email| SMTP
+    SMTP -->|delivers to| User

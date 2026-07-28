@@ -1,0 +1,48 @@
+sequenceDiagram
+    participant Sched as Scheduler
+    participant Crawl as Crawler
+    participant GH as GitHub API
+    participant DB as Data Store
+    participant Score as Scoring Engine
+    participant Sum as Summarizer
+    participant LLM as Local LLM Runtime
+    participant Trend as Trend Aggregator
+    participant Dig as Digest Service
+    participant SMTP as Email Provider
+    participant API as Web API
+    participant UI as Dashboard
+    participant User as User
+
+    Sched->>Crawl: trigger discovery run
+    Crawl->>GH: query new/updated repos (GraphQL)
+    GH-->>Crawl: repo metadata
+    Crawl->>DB: upsert raw repo metadata
+
+    Sched->>Score: trigger scoring pass
+    Score->>DB: read unscored/updated repos
+    Score->>DB: write computed scores (license, commits/wk, contributors, forks, stars)
+
+    Sched->>Sum: trigger summarization pass
+    Sum->>DB: read top-scored repos without summary
+    Sum->>LLM: generate structured summary (README/manifest)
+    LLM-->>Sum: summary text
+    Sum->>DB: write summary
+
+    Sched->>Trend: trigger trend rollup
+    Trend->>DB: read scored + summarized repos
+    Trend->>DB: write trend aggregates
+
+    Sched->>Dig: trigger daily digest
+    Dig->>DB: read top hidden gems + trends
+    Dig->>SMTP: send digest email
+    SMTP-->>User: deliver email
+
+    User->>UI: browse Discovery Feed / Hidden Gems / Trending / Categories
+    UI->>API: query repos, scores, summaries, trends
+    API->>DB: read
+    DB-->>API: results
+    API-->>UI: JSON response
+
+    User->>UI: bookmark repo
+    UI->>API: POST bookmark
+    API->>DB: write bookmark
