@@ -1,7 +1,7 @@
 # PRD: GitHub Hidden Gems Discovery Platform
 
-> Status: DRAFT
-> Version: v1
+> Status: APPROVED
+> Version: v4
 > Last updated: 2026-07-28
 
 ## Problem Statement
@@ -18,32 +18,38 @@ Developers need a way to discover high-potential projects early, quickly underst
 
 ## Goals
 
-- **Discover hidden gems** — surface repositories that are relatively new, show evidence of quality, demonstrate early community interest, and solve interesting problems, ranked by a computed score rather than raw popularity.
+- **Discover hidden gems** — surface repositories that are relatively new, show evidence of quality, demonstrate early community interest, and solve interesting problems, ranked by a computed score rather than raw popularity. Scoring must weigh concrete signals including license presence/type, activity level (commits per week), and community health (contributor count, fork count) — not stars alone.
 - **Eliminate evaluation time** — generate concise, structured AI summaries so users don't need to read full READMEs, browse repository structure, or inspect manifests manually to judge relevance.
 - **Detect trends** — aggregate discoveries into technology/framework/language/ecosystem trend summaries (e.g. growth in MCP-related repos, AI coding assistants, new .NET libraries, emerging Angular tooling).
 - **Optimize for signal over popularity** — the core design principle: if GitHub Trending shows what's already successful, this platform should identify what is *about to become* successful.
 
 ## Non-Goals
 
-Explicitly out of scope for this version (v1 / MVP):
+Explicitly out of scope for this version (v1 / MVP) — grouped by *why* they're excluded, not just what they are:
 
-- Social features (comments, following other users, shared workspaces).
-- Team workspaces / multi-user collaboration.
-- Repository cloning at scale (Phase 1 relies primarily on GitHub APIs; cloning is optional and limited, not a bulk operation).
-- Personalized discovery via user-defined interest profiles (Goal 4 in the seed concept — explicitly deferred to a future version).
-- Advanced personalization / recommendation engine ("because you liked X...").
-- GitHub account integration (using a user's stars/follows to personalize discovery).
-- Trend forecasting (predicting future high-growth repositories).
-- Semantic/intent-based search.
-- Repository-to-repository comparison.
-- Browser extensions.
-- Delivery via Teams, Slack, Discord, or RSS (v1 delivery is email + web dashboard only).
+**Deferred future enhancements — on the roadmap, just not v1:**
+- Personalized discovery via user-defined interest profiles (Goal 4 in the seed concept) — v1 ships discovery/scoring with fixed, global criteria; per-user interest weighting needs the base engine proven first. See Open Question Q3.
+- Advanced personalization / recommendation engine ("because you liked X, you may like Y") — needs enough user interaction history (bookmarks, clicks) to be worth building against, which only exists after v1 has been running.
+- GitHub account integration (using a user's own stars/follows to personalize discovery) — requires GitHub OAuth and per-user data handling; that auth/privacy surface isn't justified until personalization itself is in scope.
+- Trend forecasting (predicting future high-growth repositories, vs. v1's Goal 3 which only reports trends already observed) — a genuinely separate, harder modeling problem than descriptive trend detection.
+- Semantic/intent-based search (e.g. "show me .NET libraries for agent orchestration") — v1 ships structural filter/sort (language, stars, topic, license); intent-based search needs its own retrieval approach layered on later.
+- Repository-to-repository comparison — depends on the AI summarization pipeline being stable and trustworthy first; comparing unreliable summaries side-by-side would just double the unreliability.
+
+**Excluded by product identity — no near-term plan to add:**
+- Social features (comments, following other users, shared workspaces) — this is a discovery tool for an individual engineer's evaluation workflow, not a community platform; adding social surfaces would change what the product fundamentally is.
+- Team workspaces / multi-user collaboration — v1 has no concept of an organization or shared account; saved/bookmarked state is per-user only.
+- Browser extensions — a distinct distribution surface and codebase from the web dashboard; not worth maintaining two clients for v1.
+- Delivery via Teams, Slack, Discord, or RSS — v1 digest delivery is email + web dashboard only; each additional channel is its own integration with its own auth and rate-limit model, not a variant of an existing one.
+
+**Scoped down, not eliminated:**
+- Repository cloning at scale — Phase 1 relies primarily on the GitHub API for discovery and metadata (see Constraints & Assumptions). Cloning an individual repository may still happen selectively (e.g. to read a manifest file the API doesn't expose directly), but routine/bulk cloning of every discovered repo is out of scope for v1 on cost and complexity grounds.
 
 ## User Stories
 
 - As a software engineer, I want to discover newly-created repositories with strong quality and activity signals so that I find promising projects before they become mainstream.
 - As a software engineer, I want AI-generated summaries of each discovered repository so that I don't have to read the full README or browse the codebase to decide if it's relevant to me.
 - As a software engineer, I want to filter and sort discovered repositories by language, star range, topic, and license so that I can focus on the technologies I care about.
+- As a software engineer, I want repository scores to account for license type, weekly commit activity, and community health (contributors, forks) so that I can trust a high score reflects a genuinely healthy, usable project — not just visibility.
 - As a software engineer, I want a daily digest of top hidden gems and emerging trends so that I stay current without actively searching GitHub myself.
 - As a software engineer, I want to save/bookmark repositories I'm interested in so that I can revisit them later.
 - As an engineering leader or developer advocate, I want aggregated trend summaries (e.g. "MCP-related repos are growing") so that I can track where the ecosystem is heading without reading every individual repo.
@@ -65,6 +71,7 @@ Concrete numeric targets for each metric are intentionally left as `[TBD]` — t
 - **Processing volume assumption (from seed concept):** the platform should be designed to handle on the order of 1,000–5,000 repositories discovered/processed per day, scaling toward 100k+ repositories and 1M+ analysis records over time without a redesign. These are directional assumptions carried from the original concept, not committed NFR targets — Architecture phase should validate and formalize them.
 - **Responsiveness assumption:** summary generation on the order of seconds-per-repository (not minutes), and a dashboard that feels interactive rather than batch-oriented. Exact thresholds to be formalized as NFRs in Architecture.
 - **Security assumption:** the platform holds a GitHub API token and (eventually) an AI provider credential; both need secure storage and handling of GitHub API rate limits. Formal security NFRs to be defined in Architecture.
+- **Scoring signal set (product-level commitment):** the "hidden gem" score must account for, at minimum: license presence/type, activity level measured specifically as commits per week (not a vaguer "recent activity" bucket), and community health via contributor count and fork count, alongside the previously captured popularity/quality signals. This granularity is a product decision, not an implementation detail — Architecture should design the scoring engine to expose these as identifiable, independently-weighted inputs.
 
 ## Open Questions
 
@@ -78,3 +85,6 @@ Concrete numeric targets for each metric are intentionally left as `[TBD]` — t
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
 | v1 | 2026-07-28 | Initial draft | — |
+| v2 | 2026-07-28 | Made license, weekly-commit activity, and community health (contributors/forks) explicit scoring signals in Goals, User Stories, and Constraints & Assumptions | Triage edit |
+| v3 | 2026-07-28 | Elaborated Non-Goals with rationale per item, grouped into deferred-future, excluded-by-identity, and scoped-down categories | Triage edit |
+| v4 | 2026-07-28 | Status → APPROVED | Gate approval |
