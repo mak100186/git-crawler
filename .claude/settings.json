@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Bash(*ls*)",
+      "Bash(*cat*)",
+      "Bash(*cd*)",
+      "Bash(*mkdir*)",
+      "Bash(*mv*)",
+      "Bash(*cp*)",
+      "Bash(*echo*)",
+      "Bash(*curl * http://127.0.0.1*)",
+      "Bash(*curl * http://localhost*)",
+      "Bash(*git log*)",
+      "Bash(*git status*)",
+      "Bash(*git diff*)",
+      "Bash(*git add*)",
+      "Bash(*git commit*)",
+      "Bash(*git checkout*)",
+      "Bash(*git branch*)"
+    ],
+    "deny": [
+      "Bash(*git push --force*)",
+      "Bash(*git push -f *)",
+      "Bash(*git reset --hard *)",
+      "Bash(*rm -rf *)"
+    ],
+    "defaultMode": "auto",
+    "additionalDirectories": []
+  },
+  "hooks": {
+    "PreToolUse": [],
+    "PostToolUse": [],
+    "Stop": [],
+    "Notification": []
+  },
+  "effortLevel": "high"
+}
