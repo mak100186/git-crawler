@@ -11,9 +11,9 @@
 
 - Name: git-crawler
 - Owner: mak100186
-- Type: self-hosted .NET 10 / Angular 22 platform (PRD and Architecture APPROVED; PMBook drafted,
-  pending final handoff gate; no source code committed yet). See `docs/architecture.md` for the
-  full stack.
+- Type: self-hosted .NET 10 / Angular 22 platform (PRD, Architecture, and PMBook all
+  approved/active — idea triage complete; no source code committed yet). See
+  `docs/architecture.md` for the full stack and `docs/project-management.md` for the backlog.
 
 ---
 

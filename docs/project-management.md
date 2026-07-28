@@ -1,7 +1,7 @@
 # Project Management: GitHub Hidden Gems Discovery Platform
 
-> Status: DRAFT
-> Version: v9
+> Status: ACTIVE
+> Version: v10
 > Last updated: 2026-07-28
 > PRD: docs/prd.md (built against v4)
 > Architecture: docs/architecture.md (built against v10)
@@ -101,3 +101,4 @@
 | v7 | 2026-07-28 | Added F-018 (Dashboard UX design brief & Claude Designer handoff, Phase 2, Must); F-011 now depends on F-018 in addition to F-010 | Triage edit |
 | v8 | 2026-07-28 | F-002, F-003, F-004, and F-008 updated to pin Gemma 4 E4B (ADR-013) and PostgreSQL 18.4 (ADR-014) | Ripple from Architecture v9 |
 | v9 | 2026-07-28 | F-003, F-005 through F-010, F-013, and F-014 updated for Vertical Slice + CQRS via Wolverine (ADR-015), not MediatR | Ripple from Architecture v10 |
+| v10 | 2026-07-28 | Status → ACTIVE | Gate approval |
