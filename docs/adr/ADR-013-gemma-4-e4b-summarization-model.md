@@ -1,6 +1,6 @@
 # ADR-013: Gemma 4 E4B as the Summarization Model
 
-> Status: ACCEPTED
+> Status: SUPERSEDED BY ADR-017
 > Date: 2026-07-28
 > Architecture: docs/architecture.md (v9)
 
@@ -40,8 +40,19 @@ before benchmarking proceeds.
 - Model choice is isolated behind `IRepositorySummarizer` (ADR-001), so swapping models later
   remains a contained change.
 
+**Superseded 2026-08-01 (ADR-017):** F-002's live benchmark confirmed this model passes NFR-001's
+throughput target, but also found it spends 65-86% of its output budget on an internal
+`reasoning_content` field before the visible summary, truncating output well short of the
+requested length — a real problem this ADR's original verification caveat couldn't have
+anticipated (it's a behavioral property of the model, not an availability/identifier question).
+ADR-017 replaces this pin with Llama 3.2 3B Instruct, chosen from a live comparison against four
+already-downloaded alternatives. See ADR-017 for the full decision record.
+
 ## Related
 
 - Architecture section: 3. Components → Summarizer; 7. Technology Decisions
 - Builds on: ADR-001, ADR-007
+- Superseded by: ADR-017 (Llama 3.2 3B Instruct — same reasoning-truncation problem this ADR's own
+  Consequences section anticipated as a possible trigger for a superseding ADR, though the actual
+  trigger was a behavioral finding, not an availability one)
 - Supersedes: none

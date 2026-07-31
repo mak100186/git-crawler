@@ -1,0 +1,14 @@
+# Keep host-generated build artifacts out of the Docker build context. Without this, `COPY
+# src/backend/ .` / `COPY src/frontend/ .` in src/backend/Dockerfile would ship the host's own
+# bin/obj (which can embed host-specific, e.g. Windows, NuGet paths into project.assets.json) or
+# node_modules into the image, breaking the container's own restore/install - discovered while
+# validating this Dockerfile (F-003).
+
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.angular/
+.git/
+.env
+*.md

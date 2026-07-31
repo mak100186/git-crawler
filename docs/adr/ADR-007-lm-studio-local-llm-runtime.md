@@ -14,8 +14,11 @@ engine to run against.
 
 ## Decision
 
-The local LLM runtime engine is LM Studio, run as its own container/process in the self-hosted
-deployment and called by the Summarizer through `IRepositorySummarizer`.
+The local LLM runtime engine is LM Studio, run in the self-hosted deployment and called by the
+Summarizer through `IRepositorySummarizer`. (Deployment topology — containerized vs. host-installed
+— was originally framed as "container/process" here; ADR-016 pins this down to host-installed,
+reached over the network, not containerized. That amendment doesn't change the engine choice made
+below.)
 
 ## Alternatives Considered
 
@@ -39,4 +42,5 @@ deployment and called by the Summarizer through `IRepositorySummarizer`.
 
 - Architecture section: 3. Components → Summarizer; 7. Technology Decisions
 - Builds on: ADR-001 (local/self-hosted summarization decision — unchanged, not superseded)
+- Amended by: ADR-016 (deployment topology — host-installed, not containerized; engine choice here unchanged)
 - Supersedes: none

@@ -1,8 +1,8 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v10
-> Last updated: 2026-07-28
+> Version: v13
+> Last updated: 2026-08-01
 > PRD: docs/prd.md (built against v4)
 
 ## 1. System Context
@@ -12,9 +12,9 @@ external dependencies:
 
 - **GitHub API** (GraphQL primary, REST fallback) — the sole source of repository discovery and
   metadata; no bulk repository cloning in v1.
-- **Local LLM runtime** (LM Studio) — runs alongside the platform's own containers and serves
-  AI-generated repository summaries; no external AI vendor credential exists in v1 (ADR-001,
-  ADR-007).
+- **Local LLM runtime** (LM Studio) — runs host-installed on the same machine (not containerized,
+  ADR-016) and serves AI-generated repository summaries; no external AI vendor credential exists
+  in v1 (ADR-001, ADR-007, ADR-016).
 - **Email provider (SMTP)** — outbound channel for the daily digest; no inbound integration.
 
 A single user type interacts with the system directly: the software engineer / engineering leader
@@ -28,8 +28,9 @@ concept in v1 (per PRD Non-Goals).
 The platform is a modular .NET 10 monolith (ADR-010) — one deployable process hosting the Web API
 and serving the Angular dashboard's static build (ADR-008), plus background components for
 crawling, scoring, summarization, and trend aggregation — all orchestrated by an in-process job
-scheduler (ADR-009). It is packaged as a set of Docker Compose services: the app container,
-PostgreSQL (ADR-003), and the local LLM runtime container (ADR-001). This is a modular monolith
+scheduler (ADR-009). It is packaged as two Docker Compose services — the app container and
+PostgreSQL (ADR-003) — plus a host-installed local LLM runtime (ADR-001) that Compose does not
+manage; a `Makefile` orchestrates bringing both up together (ADR-016). This is a modular monolith
 rather than microservices deliberately: a solo operator (per PRD constraints) benefits from one
 deployable unit and one codebase far more than from independently-scalable services, and nothing
 in the PRD's volume targets (1K-5K/day, scaling to 100k+) requires service-level horizontal
@@ -76,8 +77,8 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Outputs:** Structured summary written to the Data Store.
 - **Dependencies:** Local LLM Runtime, via the `IRepositorySummarizer` abstraction (ADR-001).
 - **Technology:** .NET service calling LM Studio's local (OpenAI-compatible) API (ADR-007),
-  running the Gemma 4 E4B model (ADR-013); implemented as a Wolverine command/handler slice
-  (ADR-015).
+  running the Llama 3.2 3B Instruct model (ADR-017, supersedes ADR-013); implemented as a
+  Wolverine command/handler slice (ADR-015).
 
 ### Trend Aggregator
 - **Responsibility:** Roll up scored/summarized repositories into technology/framework/ecosystem
@@ -174,8 +175,9 @@ the dashboard and receiving the digest.
 |---------|--------|-----|-----------|
 | AI summarization backend | Local/self-hosted LLM via `IRepositorySummarizer` | ADR-001 | Avoids per-call cost at target volume; keeps repository content on self-hosted infra |
 | Local LLM runtime engine | LM Studio | ADR-007 | Operator preference; OpenAI-compatible local API keeps the `IRepositorySummarizer` integration small |
-| Summarization model | Gemma 4 E4B (loaded in LM Studio) | ADR-013 | Operator preference; exact model identifier/availability to be confirmed during the F-002 throughput spike |
-| Deployment / hosting | Docker Compose, self-hosted/on-prem | ADR-002 | Matches solo, no-fixed-deadline project profile; simplifies co-locating the local LLM runtime |
+| Local LLM runtime deployment | Host-installed, not containerized; reached via `host.docker.internal` | ADR-016 | Operator already runs LM Studio natively; a container would duplicate it, lose GPU/Metal acceleration, and depend on an unstable preview image |
+| Summarization model | Llama 3.2 3B Instruct (loaded in LM Studio) | ADR-017 (supersedes ADR-013) | F-002's live benchmark found the original pin (Gemma 4 E4B) truncated output on reasoning-token overhead despite passing throughput; this model was chosen from a live comparison against 4 alternatives — fastest, zero reasoning waste, complete output |
+| Deployment / hosting | Docker Compose (app + PostgreSQL), self-hosted/on-prem; `Makefile` bridges to the host-installed LLM runtime | ADR-002, ADR-016 | Matches solo, no-fixed-deadline project profile; single-entrypoint `make up` keeps the "everything comes up together" operator experience despite the split topology |
 | Primary data store | PostgreSQL via EF Core | ADR-003 | Relational access pattern fits filter/sort/join-heavy queries; no license cost |
 | Data store version | PostgreSQL 18.4 (pinned image tag) | ADR-014 | Operator preference; pinned tag avoids silent upgrade drift |
 | GitHub API access strategy | GraphQL-first, REST fallback | ADR-004 | Minimizes rate-limit consumption per repository at 1K-5K/day scaling to 100k+ |
@@ -191,7 +193,7 @@ the dashboard and receiving the digest.
 | ID | Question / Risk | Impact | Owner | Resolved? |
 |----|----------------|--------|-------|-----------|
 | A1 | GitHub GraphQL rate-limit budget (point-cost model) has not been validated against the 1K-5K/day discovery volume, or the 100k+ scale-out target | High | Maxx | No |
-| A2 | Local LLM inference throughput/model choice is unproven against the seconds-per-repo target in NFR-001 — needs a benchmarking spike before committing to a specific model | High | Maxx | No |
+| A2 | ~~Local LLM inference throughput/model choice is unproven against the seconds-per-repo target in NFR-001~~ — **Resolved 2026-08-01**: `google/gemma-4-e4b` measured at 2.57-2.82s p95 per repo (Pass), but found to truncate output on reasoning-token overhead; superseded by `llama-3.2-3b-instruct` (ADR-017), measured at 0.78-1.05s mean per repo with complete output. See `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9-§10 | High | Maxx | **Yes** |
 | A3 | (Carried from PRD Q2) Numeric success-metric targets remain `[TBD]` pending an initial usage baseline post-launch | Low | Maxx | No |
 | A4 | (Carried from PRD Q3) Whether personalized discovery lands in an early post-MVP phase is still undecided — affects PMBook phase sequencing, not v1 architecture | Medium | Maxx | No |
 | A5 | Docker Compose (ADR-002) caps horizontal scaling; no defined trigger yet for when 100k+ repos / 1M+ records would force revisiting single-node deployment | Medium | Maxx | No |
@@ -209,3 +211,6 @@ the dashboard and receiving the digest.
 | v8 | 2026-07-28 | Pinned frontend framework version to Angular 22 (ADR-012, new) — replaces the "latest stable, resolved at scaffolding" placeholder from v7 | Triage edit |
 | v9 | 2026-07-28 | Pinned summarization model to Gemma 4 E4B (ADR-013, new) and data store version to PostgreSQL 18.4 (ADR-014, new); neither had a version pinned previously | Triage edit |
 | v10 | 2026-07-28 | Adopted Vertical Slice Architecture + CQRS via Wolverine (ADR-015, new), applied to the Web API and all five background pipeline stages, not MediatR; §2, all §3 component Technology lines, and Technology Decisions table updated | Triage edit |
+| v11 | 2026-08-01 | LM Studio changed from a Docker Compose container to a host-installed native app, reached via `host.docker.internal` and orchestrated alongside Compose by a new `Makefile` (ADR-016, new — amends ADR-002 and ADR-007's deployment-topology framing, doesn't change the engine choice); §1, §2, and Technology Decisions table updated | Operator correction post-F-003 (LM Studio already installed on the target machine) |
+| v12 | 2026-08-01 | Risk A2 marked Resolved (§8) — live benchmark run against `google/gemma-4-e4b`, 2.57-2.82s p95 per repo vs. NFR-001's target, see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9 | F-002 spike executed live |
+| v13 | 2026-08-01 | Summarization model changed from Gemma 4 E4B to Llama 3.2 3B Instruct (ADR-017, new, supersedes ADR-013) — the original pin passed throughput but truncated output on reasoning-token overhead; §3 Summarizer, §7 Technology Decisions, and §8 risk A2 updated | Live model comparison, operator decision: "use llama-3.2-3b-instruct" |

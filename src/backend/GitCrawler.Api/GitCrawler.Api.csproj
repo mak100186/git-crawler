@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- TargetFramework, Nullable, ImplicitUsings, LangVersion: see Directory.Build.props -->
+
+  <ItemGroup>
+    <PackageReference Include="DotNetEnv" Version="3.2.0" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.24" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.24" />
+    <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <!-- Direct override to pull in the patched Microsoft.OpenApi (GHSA-v5pm-xwqc-g5wc, fixed >=2.7.5)
+         ahead of the 2.0.0 version Microsoft.AspNetCore.OpenApi 10.0.9 references transitively. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
+    <PackageReference Include="WolverineFx" Version="6.24.2" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.24.2" />
+  </ItemGroup>
+
+  <!--
+    Angular build wiring (F-003 AC4 / TC-003-03): the Angular workspace at src/frontend is a
+    separate npm-managed project, not an MSBuild-referenced one. On `dotnet publish` only (not
+    plain `dotnet build`, so a Node-less machine can still build the backend alone) this runs the
+    Angular production build and copies its output into the publish output's wwwroot, which is
+    the ASP.NET Core host's static file root (see Program.cs's UseStaticFiles/MapFallbackToFile).
+    The Docker image build (src/backend/Dockerfile) does the equivalent copy across build stages
+    instead of invoking npm from inside this target, since the container's Node and .NET SDK
+    stages are already separate.
+  -->
+  <PropertyGroup>
+    <FrontendDir>$(MSBuildProjectDirectory)/../../frontend</FrontendDir>
+    <FrontendDistDir>$(FrontendDir)/dist/dashboard/browser</FrontendDistDir>
+  </PropertyGroup>
+
+  <Target Name="BuildAngularApp" BeforeTargets="Publish" Condition="Exists('$(FrontendDir)/package.json')">
+    <Exec Command="npm ci" WorkingDirectory="$(FrontendDir)" Condition="!Exists('$(FrontendDir)/node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(FrontendDir)" />
+  </Target>
+
+  <Target Name="CopyAngularApp" AfterTargets="BuildAngularApp" BeforeTargets="Publish" Condition="Exists('$(FrontendDistDir)')">
+    <ItemGroup>
+      <AngularAssets Include="$(FrontendDistDir)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AngularAssets)" DestinationFolder="$(PublishDir)wwwroot/%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

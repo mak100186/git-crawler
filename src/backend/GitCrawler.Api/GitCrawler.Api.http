@@ -1,0 +1,11 @@
+@GitCrawler.Api_HostAddress = http://localhost:5073
+
+GET {{GitCrawler.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{GitCrawler.Api_HostAddress}}/api/ping
+Accept: application/json
+
+###

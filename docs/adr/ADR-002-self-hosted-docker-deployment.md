@@ -30,10 +30,14 @@ self-hosted/on-prem infrastructure, rather than a managed cloud platform.
 - Docker Compose caps how far this scales horizontally; if the 100k+ repos / 1M+ analysis records
   growth path eventually requires multi-node scaling, this decision should be revisited (a new ADR
   superseding this one, not an edit to it).
-- All components (API, crawler, scoring, summarizer, LLM runtime, DB) must be containerized from
-  the start, which keeps local dev and self-hosted prod environments identical.
+- All components (API, crawler, scoring, summarizer, DB) must be containerized from the start,
+  which keeps local dev and self-hosted prod environments identical. (Amended by ADR-016: the LLM
+  runtime specifically is host-installed, not containerized, since the operator already runs LM
+  Studio natively — a `Makefile` orchestrates bringing both the containerized and host-installed
+  pieces up together instead.)
 
 ## Related
 
 - Architecture section: 2. High-Level Architecture; 7. Technology Decisions
+- Amended by: ADR-016 (LLM runtime is host-installed, not containerized; all other components remain containerized as decided here)
 - Supersedes: none

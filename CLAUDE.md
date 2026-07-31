@@ -4,9 +4,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository currently contains no source code — only a README (`# git-crawler`), a LICENSE, and a `.gitignore` targeting .NET projects (build output, NuGet artifacts, test results, etc.). The `.gitignore` suggests the intended stack is .NET, but no project/solution file has been created yet.
+GitHub Hidden Gems Discovery Platform — a self-hosted .NET 10 / Angular 22 modular monolith. Phase
+0 (scaffolding) is complete; Phase 1 (data pipeline) has not started. See `docs/handoff.md` for the
+current build state and what's next, and `docs/project-management.md` for the full feature backlog.
 
-There are no build, lint, or test commands to document because no project exists. When source code is added to this repository, update this file with:
+## Starting the stack — always use `make`, not `docker compose` directly
 
-- The actual build/run/test commands (e.g. `dotnet build`, `dotnet test`, or equivalents for the stack actually chosen)
-- The high-level architecture once there is more than one file to reason about
+```bash
+make up       # starting point for both the operator and Claude Code sessions in this repo
+make status   # check what's currently running (Docker, Compose services, LM Studio)
+make down     # stop docker compose (app + postgres); LM Studio on the host is left running
+make logs     # tail the app container's logs
+make help     # full target list
+```
+
+`make up` is the single entrypoint — never run `docker compose up` on its own. It checks Docker is
+running (starting Docker Desktop if needed), brings up Compose (`app` + `postgres`), checks LM
+Studio's host-installed local server is responding (starting it via `lms server start` if needed),
+and loads the configured model via `lms load` before the stack is actually ready to serve
+summaries. See `docs/setup.md` for one-time prerequisites (Docker Desktop, LM Studio + its `lms`
+CLI, a `.env` file with `POSTGRES_PASSWORD`/`GITHUB_TOKEN`/`LMSTUDIO_MODEL`) and ADR-016 for why LM
+Studio specifically is host-installed rather than containerized.
+
+Requires a `make` binary and, on Windows, Git for Windows installed at its default location — the
+`Makefile` forces its recipe shell to Git for Windows' bundled `bash.exe` there, so `make up` works
+the same from PowerShell, `cmd.exe`, or Git Bash.
+
+## Build / test commands
+
+Backend (`src/backend/`):
+```bash
+dotnet build          # build
+dotnet test           # run tests
+dotnet format         # format
+```
+
+Frontend (`src/frontend/`):
+```bash
+npm run build          # production build
+npm run test -- --watch=false   # run tests (Vitest)
+npm run lint            # lint (ESLint via Angular CLI)
+```
+
+## Architecture
+
+Modular .NET 10 monolith (one deployable process: API + served Angular dashboard), Vertical Slice
+Architecture + CQRS via Wolverine (not MediatR) for every component. Full component breakdown,
+technology decisions, and rationale (15 ADRs) live in `docs/architecture.md` and `docs/adr/` — read
+those before making a structural or technology-choice change, and add/amend an ADR when you do
+(see ADR-016 for a recent example of an amendment vs. a full supersession).
+
+Governed docs (`docs/prd.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/adr/`,
+`docs/handoff.md`) are specs the code must satisfy, not side artifacts — keep them in sync with any
+structural change in the same session, not as a follow-up.

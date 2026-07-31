@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    Shared MSBuild properties for every project under src/backend, so later features (F-004
+    onward) inherit these conventions instead of re-declaring them per project.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>

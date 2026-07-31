@@ -55,3 +55,15 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Node / Angular (src/frontend)
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+
+# Angular production build copied into the host's static file root at publish/Docker-build time
+# (see src/backend/GitCrawler.Api/GitCrawler.Api.csproj's CopyAngularApp target and
+# src/backend/Dockerfile) - generated, not committed.
+src/backend/**/wwwroot/*
+!src/backend/**/wwwroot/.gitkeep

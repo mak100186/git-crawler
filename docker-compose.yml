@@ -1,0 +1,76 @@
+# Self-hosted deployment (ADR-002): app + PostgreSQL via Compose; LM Studio runs host-installed,
+# not as a container (ADR-016) - the operator already runs it natively, and containerizing a
+# second copy would lose GPU/Metal acceleration and depend on an unstable preview image for no
+# benefit. Run `make up` (see repo-root Makefile) instead of `docker compose up` directly - it
+# checks Docker is running, brings this file up, then checks/starts LM Studio and loads the
+# configured model on the host before the stack is actually ready to serve summaries.
+#
+# The app container is the single deployable process (API + served Angular dashboard, ADR-002 /
+# ADR-008) - there is deliberately no separate dashboard container.
+#
+# Required environment: every ${VAR:?...} guard below (see .env.example, docs/setup.md). Compose
+# reads a `.env` file in this directory automatically. `.env.example` is the single source of truth
+# for every default (POSTGRES_DB/USER/PORT, LMSTUDIO_PORT/IDENTIFIER) - copying it to `.env` already
+# fills all of them in, so in practice only POSTGRES_PASSWORD and GITHUB_TOKEN need real values
+# typed in by hand. Nothing here re-hardcodes its own fallback for a value .env.example already
+# defaults, precisely so there's only one place to update if a default ever needs to change.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Host is "postgres" - the Compose service's internal DNS name - not env-driven, since it's
+      # container-network topology, not user config. Port is always the container's own 5432, not
+      # the host-published POSTGRES_PORT below (that's for host-side clients only).
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB:?Set POSTGRES_DB in .env - see .env.example};Username=${POSTGRES_USER:?Set POSTGRES_USER in .env - see .env.example};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      GitHub__Token: "${GITHUB_TOKEN:?Set GITHUB_TOKEN in .env}"
+      # host.docker.internal is Docker Desktop's built-in alias for the host machine (Windows/macOS).
+      # On Linux, Docker Desktop isn't in play the same way - the extra_hosts entry below maps the
+      # same alias to the host gateway so this works identically across platforms without an
+      # OS-specific override here.
+      LmStudio__BaseUrl: "http://host.docker.internal:${LMSTUDIO_PORT:?Set LMSTUDIO_PORT in .env - see .env.example}"
+      # Must match the identifier `make up`/`lms load --identifier` assigns the loaded model (see
+      # Makefile's LMSTUDIO_IDENTIFIER) - this is the fixed alias, not the catalog model name.
+      LmStudio__Model: "${LMSTUDIO_IDENTIFIER:?Set LMSTUDIO_IDENTIFIER in .env - see .env.example}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  postgres:
+    image: postgres:18.4
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:?Set POSTGRES_DB in .env - see .env.example}"
+      POSTGRES_USER: "${POSTGRES_USER:?Set POSTGRES_USER in .env - see .env.example}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    # Published so a local DB client (or the app running bare via `dotnet run`, see Program.cs) can
+    # reach Postgres from the host - the app container itself never uses this, it talks over the
+    # internal Compose network via the "postgres" hostname/5432 above.
+    ports:
+      - "${POSTGRES_PORT:?Set POSTGRES_PORT in .env - see .env.example}:5432"
+    # PostgreSQL 18+ images store data in a major-version-specific subdirectory under
+    # /var/lib/postgresql (not directly at /var/lib/postgresql/data as in older images) - mounting
+    # the volume at /var/lib/postgresql/data breaks startup. Verified live against postgres:18.4.
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?Set POSTGRES_USER in .env - see .env.example} -d ${POSTGRES_DB:?Set POSTGRES_DB in .env - see .env.example}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:

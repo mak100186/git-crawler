@@ -1,16 +1,16 @@
 # Project Management: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v10
-> Last updated: 2026-07-28
+> Version: v14
+> Last updated: 2026-08-01
 > PRD: docs/prd.md (built against v4)
-> Architecture: docs/architecture.md (built against v10)
+> Architecture: docs/architecture.md (built against v13)
 
 ## Phases & Milestones
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| Phase 0 | De-risk the two open feasibility questions (A1, A2) and stand up the deployable skeleton | Planned |
+| Phase 0 | De-risk the two open feasibility questions (A1, A2) and stand up the deployable skeleton | Done |
 | Phase 1 | Core data pipeline: ingest and score repositories | Planned |
 | Phase 2 | AI summarization and trend detection; dashboard UX design brief runs in parallel | Planned |
 | Phase 3 | Dashboard, API, and bookmarking | Planned |
@@ -21,14 +21,14 @@
 
 | ID | Feature | Phase | Priority | Status | Acceptance Criteria |
 |----|---------|-------|----------|--------|---------------------|
-| F-001 | Spike: GitHub GraphQL rate-limit budget validation | 0 | Must | Planned | Point-cost model measured against a simulated 1K-5K repos/day discovery query; documented budget and back-off strategy; risk A1 marked resolved or a mitigation adopted. |
-| F-002 | Spike: LM Studio inference throughput benchmark | 0 | Must | Planned | Gemma 4 E4B's exact model identifier/quantization confirmed available in LM Studio's catalog; benchmarked for summary generation time per repo; result compared against NFR-001's seconds-per-repo target; risk A2 marked resolved, or ADR-013/NFR-001 revisited if the model is unavailable or underperforms. |
-| F-003 | Project scaffolding & Docker Compose skeleton | 0 | Must | Planned | .NET 10 solution (all projects targeting net10.0), with Wolverine added and a vertical-slice folder convention established, and Angular 22 CLI project (standalone components; Angular Material + CDK added, verified compatible with Angular 22, and themed) both build; key .NET package dependencies (EF Core, Hangfire, Wolverine, GitHub API client, Npgsql) confirmed compatible with .NET 10 and PostgreSQL 18; Angular build output is copied into the ASP.NET Core host's static file root as part of the build/Docker image; Docker Compose brings up the app container (API + served dashboard), `postgres:18.4` (pinned tag, not `latest`), and LM Studio together; health check confirms all three are reachable. |
+| F-001 | Spike: GitHub GraphQL rate-limit budget validation | 0 | Must | Done | Point-cost model measured against a simulated 1K-5K repos/day discovery query; documented budget and back-off strategy; risk A1 marked resolved or a mitigation adopted. |
+| F-002 | Spike: LM Studio inference throughput benchmark | 0 | Must | Done | Model identifier confirmed available in LM Studio's catalog — **confirmed 2026-08-01: `google/gemma-4-e4b` (spike §2 addendum)**; benchmark methodology executed live 2026-08-01 (spike §9.2), Pass vs. NFR-001 with ~10x headroom (spike §9.6); risk A2 resolved (spike §7/§9.5, Architecture §8). **Live run also found `gemma-4-e4b` truncates output on reasoning-token overhead (spike §9.4) — this led to a live comparison against 4 alternatives (spike §10) and a final model swap to `llama-3.2-3b-instruct` (ADR-017, supersedes ADR-013), which passes both throughput (0.78-1.05s mean, spike §10.2) and completeness (zero reasoning waste) checks.** |
+| F-003 | Project scaffolding & Docker Compose skeleton | 0 | Must | Done | .NET 10 solution (all projects targeting net10.0), with Wolverine added and a vertical-slice folder convention established, and Angular 22 CLI project (standalone components; Angular Material + CDK added, verified compatible with Angular 22, and themed) both build; key .NET package dependencies (EF Core, Hangfire, Wolverine, GitHub API client, Npgsql) confirmed compatible with .NET 10 and PostgreSQL 18; Angular build output is copied into the ASP.NET Core host's static file root as part of the build/Docker image; Docker Compose brings up the app container (API + served dashboard) and `postgres:18.4` (pinned tag, not `latest`) together, health-checked; **LM Studio runs host-installed, not containerized (ADR-016 — amended 2026-08-01, operator already runs it natively) — a `Makefile` (`make up`) checks Docker, brings up Compose, checks/starts the host LM Studio server, and loads the configured model; `make status` confirms all three (app, postgres, LM Studio) are reachable.** |
 | F-004 | Data Store schema (EF Core) | 1 | Must | Planned | Migrations exist for repositories, scores, summaries, trend aggregates, bookmarks, and Hangfire job storage tables; applies cleanly to a fresh PostgreSQL 18.4 instance. |
 | F-005 | GitHub Crawler | 1 | Must | Planned | Implemented as a Wolverine command/handler slice (ADR-015); discovers new/updated repos via GraphQL (REST fallback for unsupported fields); writes raw metadata to the Data Store; respects the rate-limit budget from F-001 (FR-001). |
 | F-006 | Job Scheduler (Hangfire) | 1 | Must | Planned | Pipeline stages trigger on schedule via `RecurringJob` + `ContinueJobWith` chaining, each invoking the target stage's Wolverine command (ADR-015); a mid-run container restart resumes without duplicating or dropping work; dashboard reachable and access-controlled (NFR-003). |
 | F-007 | Scoring Engine | 1 | Must | Planned | Implemented as a Wolverine command/handler slice (ADR-015); computes a hidden-gem score from license presence/type, commits-per-week, contributor count, and fork count as independently identifiable, weighted inputs; scores persisted per repo (FR-002, FR-005). |
-| F-008 | Summarizer (LM Studio + Gemma 4 E4B) | 2 | Must | Planned | Implemented as a Wolverine command/handler slice (ADR-015) calling `IRepositorySummarizer`, which calls LM Studio's local API running Gemma 4 E4B; generates a structured summary for top-scored repos without one; meets the throughput bar validated in F-002 (FR-003). |
+| F-008 | Summarizer (LM Studio + Llama 3.2 3B Instruct) | 2 | Must | Planned | Implemented as a Wolverine command/handler slice (ADR-015) calling `IRepositorySummarizer`, which calls LM Studio's local API running Llama 3.2 3B Instruct (ADR-017, supersedes ADR-013); generates a structured summary for top-scored repos without one; meets the throughput bar validated in F-002 (FR-003). |
 | F-009 | Trend Aggregator | 2 | Must | Planned | Implemented as a Wolverine command/handler slice (ADR-015); rolls up scored + summarized repos into technology/framework/ecosystem trend summaries on schedule; persisted for the dashboard and digest to consume (FR-008). |
 | F-010 | Web API | 3 | Must | Planned | Endpoints organized as Wolverine command/query slices, one per operation (ADR-015); serve Discovery Feed, Hidden Gems, Trending, and Categories queries with filter/sort by language, star range, topic, and license; bookmark create/list/delete endpoints (FR-004, FR-007). |
 | F-011 | Web Dashboard (Angular + Angular Material) | 3 | Must | Planned | Discovery Feed, Hidden Gems, Trending, and Categories render as distinct views, built with Angular Material components, backed by F-010; filter/sort controls work end-to-end; Angular build served correctly as static assets from the ASP.NET Core host (FR-009). |
@@ -88,6 +88,8 @@
 | PM-001 | Resolve PRD Q2: set numeric success-metric targets after an initial post-launch usage baseline | Maxx | Post-launch |
 | PM-002 | Resolve PRD Q3: decide whether personalized discovery enters an early post-MVP phase | Maxx | After v1 ships |
 | PM-003 | Define the revisit trigger/threshold for outgrowing single-node Docker Compose (Architecture risk A5) | Maxx | — |
+| ~~PM-004~~ | ~~Run the live LM Studio throughput benchmark; confirm model availability; resolve risk A2~~ — **Closed 2026-08-01**: model confirmed (`google/gemma-4-e4b`), throughput measured (2.57-2.82s p95, Pass), risk A2 resolved. See `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9. | Maxx | Closed |
+| ~~PM-005~~ | ~~F-008 (Summarizer) implementation must not reuse the F-002 spike's `max_tokens: 300` setting unmodified — `google/gemma-4-e4b` spends 65-86% of that budget on internal reasoning, truncating output~~ — **Closed 2026-08-01, resolved by model swap, not by adjusting `max_tokens`**: live comparison against 4 alternatives (spike §10) found `llama-3.2-3b-instruct` produces complete, natural-stop output with zero reasoning-token waste and is ~3x faster. ADR-017 supersedes ADR-013. F-008 still shouldn't assume unlimited headroom at `max_tokens: 300` for the new model (165/300 tokens used in testing — comfortable, not unlimited), but there's no known truncation risk requiring special handling. | Maxx | Closed |
 
 ## Version History
 | Version | Date | Change | Triggered By |
@@ -102,3 +104,7 @@
 | v8 | 2026-07-28 | F-002, F-003, F-004, and F-008 updated to pin Gemma 4 E4B (ADR-013) and PostgreSQL 18.4 (ADR-014) | Ripple from Architecture v9 |
 | v9 | 2026-07-28 | F-003, F-005 through F-010, F-013, and F-014 updated for Vertical Slice + CQRS via Wolverine (ADR-015), not MediatR | Ripple from Architecture v10 |
 | v10 | 2026-07-28 | Status → ACTIVE | Gate approval |
+| v11 | 2026-07-31 | Phase 0 complete: F-001, F-002, F-003 → Done. F-002's Acceptance Criteria reworded to explicitly allow "unverifiable in this environment, operator plan provided" as a valid terminal state (matches the Task Packet's original intent, closes a doc-drift finding raised by the Reviewer-Integration gate). Added PM-004 (run the live LM Studio benchmark before F-008) to track the resulting open verification. Phase 0 status → Done. | Orchestrator Finalization, Integration Agent doc-drift finding |
+| v12 | 2026-08-01 | LM Studio changed from a Docker Compose container to host-installed (ADR-016) — F-003's AC updated to describe the new `Makefile`-orchestrated topology (Compose for app+postgres, Makefile for LM Studio). F-002's AC updated: model identifier now confirmed live (`google/gemma-4-e4b`) via `lms ls`/`lms load` against the operator's actual install; PM-004 narrowed to just the still-open throughput benchmark. | Operator correction: LM Studio already installed on the target machine, no container needed |
+| v13 | 2026-08-01 | F-002's live throughput benchmark executed for real against `google/gemma-4-e4b` — 2.57-2.82s p95 per repo, Pass vs. NFR-001. PM-004 closed. New PM-005 added: F-008 must address a reasoning-token budget-truncation finding from the live run rather than reusing the spike's `max_tokens: 300` setting; F-008's AC updated accordingly. Architecture risk A2 → Resolved (Architecture v12). | F-002 spike executed live per operator request |
+| v14 | 2026-08-01 | Summarization model changed from Gemma 4 E4B to Llama 3.2 3B Instruct, following a live comparison against 4 alternatives (spike §10) — ADR-017 (new) supersedes ADR-013. F-002 and F-008 AC updated; PM-005 closed by the model swap (not by the `max_tokens` mitigation it was originally written around). Architecture v13. | Operator: "use llama-3.2-3b-instruct, update docs. update spike and ADRs" |
