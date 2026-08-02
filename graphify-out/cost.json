@@ -23,8 +23,21 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "files": 74
+    },
+    {
+      "date": "2026-08-02T08:00:06.550191+00:00",
+      "input_tokens": 0,
+      "output_tokens": 238773,
+      "files": 52
+    },
+    {
+      "date": "2026-08-02T08:33:02.254083+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 26,
+      "note": "core/services split refactor - AST-only, semantic extraction deliberately skipped (mechanical rename, no new semantic content)"
     }
   ],
   "total_input_tokens": 0,
-  "total_output_tokens": 0
+  "total_output_tokens": 238773
 }
