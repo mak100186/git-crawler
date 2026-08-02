@@ -1,7 +1,83 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 1
-> Last updated: 2026-08-01
+> Revision: 2
+> Last updated: 2026-08-02
+
+## Revision 2 — 2026-08-02 — Phase 1 complete: core data pipeline
+
+**Features shipped:**
+- **F-004** — Data Store schema (EF Core). `GitCrawlerDbContext` with five entities (`Repository`,
+  `Score`, `Summary`, `TrendAggregate`, `Bookmark`), three migrations to date (`InitialCreate`,
+  `AddCrawlerRawSignalFields`, `AddScoreStarCountSignal`). Hangfire's own job-storage tables are
+  created separately by `UsePostgreSqlStorage` (its own `hangfire` schema, not EF-migrated) —
+  documented on the DbContext so F-006 didn't duplicate schema setup.
+- **F-005** — GitHub Crawler. `Features/Crawling/DiscoverRepositories/` — GraphQL-first discovery
+  (`Octokit.GraphQL`) with a REST fallback (typed `HttpClient`) for contributor count; idempotent
+  upsert by `Repository.GitHubId`. Implements the F-001 spike's §6 back-off strategy (GraphQL
+  `RATE_LIMITED`/`resetAt`, REST `x-ratelimit-*`/`Retry-After`, generic exponential backoff
+  otherwise) and §7 mitigation (7-day contributor-count caching cadence) for real, not just in
+  documentation.
+- **F-006** — Job Scheduler (Hangfire). `AddHangfire`/`UsePostgreSqlStorage`/`AddHangfireServer`
+  wired into `Program.cs`; dashboard at `/hangfire` behind a fail-closed shared-secret filter
+  (`Hangfire:DashboardAccessKey`/`HANGFIRE_DASHBOARD_KEY` — no auth system exists elsewhere in this
+  single-operator v1). One recurring job (`discover-repositories`, daily by default via
+  `Hangfire:CrawlerCronSchedule`) triggers the Crawler.
+- **F-007** — Scoring Engine. `Features/Scoring/ComputeScores/` — pure computation (no external
+  calls), five independently-weighted signals (license 18%, commits-per-week 27%, contributor
+  count 22.5%, fork count 22.5%, star count 10% — star count added mid-flight per operator
+  direction, weighted secondary to the PRD-committed four). Completes the pipeline chain F-006 left
+  open: `DiscoverRepositoriesJob` now attaches `ComputeScoresJob` via Hangfire `ContinueJobWith`
+  after each crawl.
+- **Operator-directed infra change**: PostgreSQL's Compose volume switched from a named Docker
+  volume to a bind mount at `./data/postgres`, so the database persists as visible host files
+  across `docker compose down` (not just `-v`-survivable, actually inspectable/backup-able).
+
+**Modules / files affected:**
+- `src/backend/GitCrawler.Api/Data/` — new (`GitCrawlerDbContext`, 5 entities, 3 migrations).
+- `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/` — new (command/handler,
+  `IGitHubDiscoveryClient`/`GitHubDiscoveryClient`, `RetryDelay`, `DiscoverRepositoriesJob`).
+- `src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/` — new (command/handler,
+  `ScoringWeights`, `ComputeScoresJob`).
+- `src/backend/GitCrawler.Api/Features/Diagnostics/HangfireDashboardAuthorizationFilter.cs` — new.
+- `src/backend/GitCrawler.Api/Program.cs` — Hangfire wiring, EF Core DbContext registration +
+  startup `Database.Migrate()`, new config bridges (`HANGFIRE_DASHBOARD_KEY`).
+- `src/backend/GitCrawler.Api/appsettings.json` — new keys: `Hangfire:CrawlerCronSchedule`,
+  `Hangfire:DashboardAccessKey`, `GitHub:DiscoveryPageSize`/`DiscoveryLookbackDays`/
+  `DiscoveryMinimumStars`.
+- `docker-compose.yml`, `.env.example`, `.gitignore` — Postgres bind-mount; `HANGFIRE_DASHBOARD_KEY`
+  plumbed through to the container.
+- `docs/test-cases.md` (v2) — TC-004 through TC-007 added, filling a gap where Phase 1 had shipped
+  without corresponding test-case scenarios.
+- 43 new xUnit tests across `src/backend/tests/GitCrawler.Api.Tests/Data/` and
+  `Features/{Crawling,Scoring,Diagnostics}/` (up from 1 smoke test at Phase 0 close).
+
+**Breaking changes:** None.
+
+**Known gaps / follow-ups:**
+- Live verification of three scenarios was not possible in the Integration Agent's environment
+  (Docker unavailable there): a real migration run against a fresh PostgreSQL 18.4 instance, live
+  Hangfire dashboard reachability, and a mid-run container-restart persistence check. Automated
+  test coverage exists for the underlying logic in each case (see `docs/test-cases.md` TC-004-01/
+  TC-004-02/TC-006-01/TC-006-03) — the live-infrastructure half is a residual gap for the operator
+  to close with a real `make up` run before relying on this in production.
+- `docs/diagrams/mmd/daily-discovery-flow.mmd` is now stale: it depicts the Scheduler triggering
+  Scoring independently/in-parallel with the Crawler, but the actual (and intended) design is a
+  single `RecurringJob` (Crawler only) chaining into Scoring via `ContinueJobWith` — flagged by
+  Integration, needs a manual diagramming pass.
+- The frontend `npm audit` finding from Phase 0 (6 moderate, dev-only) remains open, unchanged this
+  phase.
+
+**Smoke tests (see `docs/test-runbook.md` for full steps):**
+1. **Happy path:** `make up`, then trigger the `discover-repositories` Hangfire job (dashboard or
+   its daily schedule) against a `GITHUB_TOKEN`-configured environment — expect new `Repository`
+   rows, followed automatically by a chained `ComputeScoresJob` run producing `Score` rows with all
+   five signals populated.
+2. **Edge case:** re-run discovery against already-known repositories — expect updates in place
+   (no duplicate rows), and contributor-count REST calls skipped for repos fetched within the last
+   7 days.
+3. **Regression-sensitive:** restart the `app` container mid-crawl — expect Hangfire's
+   PostgreSQL-backed job state to survive the restart with no duplicate or dropped work, per
+   F-005's idempotent upsert design.
 
 ## Revision 1 — 2026-08-01 — Phase 0 complete
 

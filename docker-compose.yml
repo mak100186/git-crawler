@@ -37,6 +37,12 @@ services:
       # Must match the identifier `make up`/`lms load --identifier` assigns the loaded model (see
       # Makefile's LMSTUDIO_IDENTIFIER) - this is the fixed alias, not the catalog model name.
       LmStudio__Model: "${LMSTUDIO_IDENTIFIER:?Set LMSTUDIO_IDENTIFIER in .env - see .env.example}"
+      # F-006: shared secret for the Hangfire dashboard's authorization filter (see
+      # HangfireDashboardAuthorizationFilter) - unlike GITHUB_TOKEN/POSTGRES_PASSWORD above, this
+      # is optional (`:-` not `:?`): the filter already fails closed (dashboard inaccessible) when
+      # it's blank, so an operator who doesn't need the dashboard isn't forced to set one just to
+      # run `make up`.
+      Hangfire__DashboardAccessKey: "${HANGFIRE_DASHBOARD_KEY:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -63,14 +69,17 @@ services:
     # PostgreSQL 18+ images store data in a major-version-specific subdirectory under
     # /var/lib/postgresql (not directly at /var/lib/postgresql/data as in older images) - mounting
     # the volume at /var/lib/postgresql/data breaks startup. Verified live against postgres:18.4.
+    #
+    # Bind-mounted to a local repo-root folder (./data/postgres) rather than a named Docker
+    # volume, so the data survives `docker compose down` (no accidental loss to `-v`/`docker
+    # volume prune`) and stays visible/backup-able as plain files on the host instead of living
+    # inside Docker's opaque volume storage. Git-ignored (see .gitignore) - this is runtime data,
+    # not source.
     volumes:
-      - postgres-data:/var/lib/postgresql
+      - ./data/postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?Set POSTGRES_USER in .env - see .env.example} -d ${POSTGRES_DB:?Set POSTGRES_DB in .env - see .env.example}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-
-volumes:
-  postgres-data:

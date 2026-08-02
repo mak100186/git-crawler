@@ -9,6 +9,17 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <!-- Pinned to match GitCrawler.Api's Microsoft.EntityFrameworkCore version - Npgsql's own
+         dependency range floors at 10.0.4, and without a direct pin here NuGet resolves this
+         project's transitive Microsoft.EntityFrameworkCore.Relational reference down to that
+         floor instead of the 10.0.10 GitCrawler.Api.dll was actually built against. Also gives
+         the F-004 DbContext tests a relational provider that enforces unique indexes/FKs, unlike
+         the EF Core InMemory provider. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <!-- Direct override: Microsoft.EntityFrameworkCore.Sqlite 10.0.10 transitively pulls
+         SQLitePCLRaw.bundle_e_sqlite3 2.1.11, which has a known high-severity advisory
+         (GHSA-2m69-gcr7-jv3q) in its bundled native e_sqlite3 library. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />

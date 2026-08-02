@@ -67,3 +67,17 @@ npm-debug.log*
 # src/backend/Dockerfile) - generated, not committed.
 src/backend/**/wwwroot/*
 !src/backend/**/wwwroot/.gitkeep
+
+# graphify tool cache - stray/regeneratable AST+semantic cache, not the intentional output. The
+# real deliverables (graph.html, graph.json, GRAPH_REPORT.md, manifest.json) live in the
+# repo-root graphify-out/ and are committed there; this rule catches any accidental duplicate
+# cache dir created elsewhere (e.g. src/graphify-out/, src/backend/graphify-out/ - both produced
+# at different times depending on the cwd graphify was invoked from) while still allowing the
+# root one through.
+**/graphify-out/
+!/graphify-out/
+
+# PostgreSQL data directory (docker-compose.yml bind mount) - runtime data, not source; persists
+# across `docker compose down` on purpose, but must never be committed.
+data/postgres/*
+!data/postgres/.gitkeep

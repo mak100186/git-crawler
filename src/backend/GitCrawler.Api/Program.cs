@@ -1,6 +1,19 @@
+using System.Net.Http.Headers;
+
 using DotNetEnv;
 
+using GitCrawler.Api.Data;
+using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
+using GitCrawler.Api.Features.Diagnostics;
 using GitCrawler.Api.Features.Diagnostics.Ping;
+using GitCrawler.Api.Features.Scoring.ComputeScores;
+
+using Hangfire;
+using Hangfire.PostgreSql;
+
+using Microsoft.EntityFrameworkCore;
+
+using Octokit.GraphQL;
 
 using Wolverine;
 
@@ -27,6 +40,15 @@ if (!string.IsNullOrEmpty(githubToken))
     builder.Configuration["GitHub:Token"] = githubToken;
 }
 
+// F-006: same bridge pattern as GITHUB_TOKEN above, for the Hangfire dashboard's shared secret
+// (see HangfireDashboardAuthorizationFilter). Unset/blank is a valid choice here (the filter fails
+// closed on it), so there's no fail-fast guard - just the same flat-to-hierarchical translation.
+var hangfireDashboardKey = Environment.GetEnvironmentVariable("HANGFIRE_DASHBOARD_KEY");
+if (!string.IsNullOrEmpty(hangfireDashboardKey))
+{
+    builder.Configuration["Hangfire:DashboardAccessKey"] = hangfireDashboardKey;
+}
+
 // LM Studio always runs on the host (ADR-016), so a bare `dotnet run` reaches it at localhost -
 // unlike Docker Compose, which goes via host.docker.internal (see docker-compose.yml).
 var lmStudioPort = Environment.GetEnvironmentVariable("LMSTUDIO_PORT");
@@ -46,9 +68,8 @@ if (!string.IsNullOrEmpty(lmStudioIdentifier))
 
 // Host is "localhost" here since a bare `dotnet run` isn't on the Compose network - it reaches
 // Postgres through docker-compose.yml's published port (POSTGRES_PORT) instead of the "postgres"
-// container hostname docker-compose.yml uses for the app service. No DbContext consumes this yet
-// - that's F-004 (Data Store schema)'s job, see docs/handoff.md - but the value is wired through
-// now so F-004 doesn't also need to solve config sourcing. Deliberately no "gitcrawler"/"5432"
+// container hostname docker-compose.yml uses for the app service. Consumed below by
+// GitCrawlerDbContext's AddDbContext registration (F-004). Deliberately no "gitcrawler"/"5432"
 // fallback literals here - .env.example is the single source of truth for those defaults; if any
 // of the four is missing while the others are present, that's a malformed .env worth surfacing
 // (via the resulting bridge no-op) rather than silently papering over with a second guess at the
@@ -68,10 +89,80 @@ if (!string.IsNullOrEmpty(postgresDb) && !string.IsNullOrEmpty(postgresUser)
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
+// Read once, before Build(), so both the DbContext registration below and the Hangfire
+// registration further down (which must also happen pre-Build, unlike the post-Build migration
+// guard further below) see the same value instead of re-querying Configuration redundantly.
+var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres");
+
+// F-004: the Data Store, shared by every Phase 1 pipeline stage (see GitCrawlerDbContext's
+// header comment for the Hangfire schema-separation note - Hangfire's own storage, wired by
+// F-006, coexists in this same database without conflicting with these migrations).
+builder.Services.AddDbContext<GitCrawlerDbContext>(options =>
+    options.UseNpgsql(postgresConnectionString));
+
+// F-005: named HttpClient for the Crawler's REST fallback call (contributor count - GraphQL has
+// no cheap equivalent field, F-001 spike §2). A named client via IHttpClientFactory rather than a
+// dedicated REST client package, since this is the only REST endpoint the Crawler needs (Task
+// Packet's REST-client-choice constraint).
+builder.Services.AddHttpClient(GitHubDiscoveryClient.GitHubRestClientName, (sp, client) =>
+{
+    client.BaseAddress = new Uri("https://api.github.com/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("GitCrawler/1.0");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    client.DefaultRequestHeaders.TryAddWithoutValidation("X-GitHub-Api-Version", "2022-11-28");
+
+    var token = sp.GetRequiredService<IConfiguration>()["GitHub:Token"];
+    if (!string.IsNullOrEmpty(token))
+    {
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    }
+});
+
+// F-005: Octokit.GraphQL's Connection is safe to share as a singleton - the token is fixed for
+// this single-operator system's lifetime (F-001 spike assumption 1), so there's no per-request
+// identity to scope it to.
+builder.Services.AddSingleton(sp =>
+    new Connection(new Octokit.GraphQL.ProductHeaderValue("GitCrawler"), sp.GetRequiredService<IConfiguration>()["GitHub:Token"] ?? string.Empty));
+
+// F-005: TimeProvider/IRetryDelay back DiscoverRepositoriesCommandHandler's rate-limit backoff
+// loop (F-001 spike §6) - abstracted so tests can fake "now" and skip real waiting rather than
+// blocking for the minutes/hours a real backoff would take.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IRetryDelay, TaskDelayRetryDelay>();
+builder.Services.AddScoped<IGitHubDiscoveryClient, GitHubDiscoveryClient>();
+
 // Wolverine is the in-process command/query bus for every vertical slice (ADR-015) - this
 // scans the assembly for handlers by convention (e.g. PingQueryHandler) rather than requiring
 // manual registration per slice.
 builder.Host.UseWolverine();
+
+// F-006: Hangfire is the Job Scheduler (Architecture §3) that triggers each pipeline stage on
+// schedule. PostgreSQL-backed storage (ADR-009) is what makes a scheduled recurring job's
+// next-fire time, and any in-flight job's state, survive an app restart (AC2/NFR-003) - that's
+// Hangfire's own persistence, not something this app builds separately. Guarded the same way as
+// the DbContext migration further below: a no-op when no Postgres connection is configured (e.g.
+// a design-time host build) rather than a startup crash.
+if (!string.IsNullOrEmpty(postgresConnectionString))
+{
+    builder.Services.AddHangfire(config => config
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UsePostgreSqlStorage(options => options.UseNpgsqlConnection(postgresConnectionString)));
+
+    // The recurring trigger registered below only *schedules* runs against storage - without a
+    // server, nothing actually dequeues and executes them.
+    builder.Services.AddHangfireServer();
+
+    // Hangfire's AspNetCoreJobActivator resolves the job type from this DI container per
+    // execution - it must be registered like any other constructor-injected service, not just be
+    // constructible. ComputeScoresJob (F-007, link 2 of the chain) is resolved the same way, since
+    // DiscoverRepositoriesJob now takes it as a constructor dependency to chain into via
+    // IScoringContinuationLink (see DiscoverRepositoriesJob's header comment) - it has no
+    // RecurringJob registration of its own below, since it's triggered only via that chain.
+    builder.Services.AddScoped<DiscoverRepositoriesJob>();
+    builder.Services.AddScoped<ComputeScoresJob>();
+    builder.Services.AddScoped<IScoringContinuationLink, HangfireScoringContinuationLink>();
+}
 
 // Liveness-only check for the Docker Compose health check (TC-003-04). Deliberately does not
 // probe PostgreSQL/EF Core here: this scaffold has no schema yet (that's F-004), and coupling the
@@ -80,6 +171,50 @@ builder.Host.UseWolverine();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// Apply pending migrations against a fresh PostgreSQL instance on every startup (F-004 AC2) so
+// there's no separate manual migration step for the Docker Compose / bare `dotnet run` cases this
+// file already bridges config for above. Guarded on a non-empty connection string, same pattern as
+// those bridges - this is a no-op rather than a startup crash when Postgres isn't configured (e.g.
+// a design-time host build), and keeps this out of the way of any future WebApplicationFactory
+// test host that swaps in a different connection string/provider before startup.
+if (!string.IsNullOrEmpty(postgresConnectionString))
+{
+    using var migrationScope = app.Services.CreateScope();
+    migrationScope.ServiceProvider.GetRequiredService<GitCrawlerDbContext>().Database.Migrate();
+}
+
+// F-006: dashboard and recurring-job registration, guarded the same way as the migration above
+// (both need the same live Postgres-backed Hangfire storage configured earlier).
+if (!string.IsNullOrEmpty(postgresConnectionString))
+{
+    // Dashboard access-controlled per NFR-003/AC3 - see HangfireDashboardAuthorizationFilter for
+    // why a shared-secret filter, not a loopback check or a full auth system, is the right-sized
+    // mechanism here. The secret is blank by default (appsettings.json), which the filter treats
+    // as "deny all" until an operator sets one.
+    app.UseHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        Authorization = [new HangfireDashboardAuthorizationFilter(app.Configuration)]
+    });
+
+    // AC1: the recurring trigger that starts the pipeline chain. This is link 1 of "RecurringJob +
+    // ContinueJobWith" (Architecture §3) - link 2 (Scoring Engine, F-007) now exists and is chained
+    // in from inside DiscoverRepositoriesJob.RunAsync itself (see that class's header comment), not
+    // registered as its own RecurringJob here, since its schedule IS "right after crawl finishes".
+    // AddOrUpdate is idempotent on the "discover-repositories" job id, so re-running this on every
+    // startup (including after a mid-run restart, AC2) updates the existing schedule rather than
+    // creating a duplicate.
+    //
+    // `null!` for the PerformContext argument: Hangfire special-cases this parameter type and
+    // substitutes the real per-execution context at invocation time, discarding whatever value is
+    // supplied when building this expression - the same pattern documented in
+    // DiscoverRepositoriesJob's header comment for the RunAsync signature itself.
+    var crawlerCronSchedule = builder.Configuration.GetValue("Hangfire:CrawlerCronSchedule", "0 3 * * *");
+    RecurringJob.AddOrUpdate<DiscoverRepositoriesJob>(
+        "discover-repositories",
+        job => job.RunAsync(null!),
+        crawlerCronSchedule);
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
