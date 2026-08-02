@@ -1,7 +1,7 @@
 .repo-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 9px;
   padding: 18px 20px;
   border-radius: 32px;
   background: var(--color-surface);
@@ -23,8 +23,10 @@
     align-items: center;
     justify-content: center;
     font-family: var(--font-display);
-    font-size: 16px;
-    color: var(--color-olive-100);
+    font-size: 15px;
+    // Design uses one text color (--color-bg) across all three avatar dot colors, not a
+    // per-palette shade (dashboard-design-directions-exploration §1's `bm`/dots rotation).
+    color: var(--color-bg);
 
     &--terracotta {
       background: var(--color-accent);
@@ -43,7 +45,7 @@
     height: 52px;
     border-radius: 50%;
     background: var(--color-accent);
-    color: #fff;
+    color: var(--color-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -163,19 +165,19 @@
   &__footer {
     display: flex;
     align-items: center;
-    gap: 10px;
-    // 10px 0 0 padding + a Material .mat-mdc-card-actions padding: 8px rule of equal specificity
+    gap: 6px;
+    // padding-top 9px + a Material .mat-mdc-card-actions padding: 8px rule of equal specificity
     // tying on source order - !important guarantees this component's own spacing always wins,
     // matching the precedent already set for the same class of fight in app.scss/styles.scss.
-    padding: 10px 0 0 !important;
+    padding: 9px 0 0 !important;
     margin: 0;
-    // color-neutral-200 (#eee7db) on this card's own surface bg (#ebddc5) is nearly the same
-    // lightness - visually read as "no divider at all". neutral-300 keeps it a thin, subtle line
-    // (matching the design) but with enough contrast to actually be visible.
-    border-top: 1px solid var(--color-neutral-300);
+    border-top: 1px solid var(--color-divider);
     flex-wrap: wrap;
   }
 
+  // Language chip is deliberately larger than the design's own .tag default (11px/3px 10px) - user
+  // feedback asked for this specifically ("language chip should be slightly larger"), overriding
+  // the reference file on this one point.
   &__language-chip {
     background: var(--color-olive-800);
     color: var(--color-olive-100);
@@ -186,18 +188,27 @@
 
   &__license-chip {
     background: var(--color-neutral-100);
-    color: var(--color-neutral-600);
+    color: var(--color-neutral-800);
     border-radius: 999px;
-    padding: 2px 12px;
+    padding: 3px 10px;
     font-size: 11px;
   }
 
   &__stars {
-    font-size: 12px;
-    color: var(--color-neutral-600);
+    font-size: 11px;
+    color: var(--color-neutral-700);
   }
 
   &__github-link {
     margin-left: auto;
+    --mat-button-text-label-text-color: var(--color-accent-700);
+    font-size: 11px;
+    font-weight: 600;
+
+    ::ng-deep .mat-icon {
+      width: 11px;
+      height: 11px;
+      font-size: 11px;
+    }
   }
 }

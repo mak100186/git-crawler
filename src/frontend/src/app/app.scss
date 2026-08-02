@@ -27,19 +27,19 @@
     margin-left: 24px;
   }
 
-  // mat-button's own compiled CSS sets font-family/color directly on .mat-mdc-button (the same
-  // host element these classes are on, via [mat-button]) at equal specificity to a plain BEM
-  // class - whichever stylesheet happens to load later in the cascade wins, which was leaving
-  // Material's default typography/color (not ours) on the nav links. !important matches the
-  // precedent already set in styles.scss for the same class of Material-specificity fight.
+  // mat-button reads its own font-family/color from --mat-button-text-label-text-font/-color
+  // (falling back to the M3 system tokens) rather than a plain `font-family`/`color` declaration -
+  // setting those custom properties is the supported override path Material provides for exactly
+  // this, and (being custom properties) they apply regardless of stylesheet load order, no
+  // !important needed.
   &__nav-link {
-    color: var(--color-neutral-300, #c0b6a5) !important;
     border-radius: 999px;
-    font-family: var(--font-display) !important;
+    --mat-button-text-label-text-color: var(--color-neutral-300, #c0b6a5);
+    --mat-button-text-label-text-font: var(--font-display);
 
     &--active {
       background: var(--color-accent);
-      color: var(--color-ink) !important;
+      --mat-button-text-label-text-color: var(--color-ink);
     }
   }
 

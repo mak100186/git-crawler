@@ -30,6 +30,11 @@ html {
   --color-surface: #ebddc5;
   --color-ink: #201e1d;
   --color-ink-900: #2e2b25;
+  // Matches the design system's --color-divider exactly (color-mix(in srgb, #201e1d 16%,
+  // transparent) - #201e1d is --color-ink). Missing from this port until now - components needing
+  // a subtle border/divider had been substituting one of the flat --color-neutral-* steps instead,
+  // which doesn't visually match the design's ink-tinted-transparent line at every surface color.
+  --color-divider: color-mix(in srgb, var(--color-ink) 16%, transparent);
 
   --color-accent: #c67139;
   --color-accent-600: #b2622d;
@@ -104,12 +109,51 @@ body {
   border-radius: var(--radius-pill) !important;
 }
 
+// mat-stroked-button (outlined) defaults its label/outline color to --mat-sys-primary (our accent
+// orange) and Caprasimo/Figtree only where set elsewhere - a reasonable default for a
+// call-to-action, but this app uses outlined buttons as quiet neutral chrome (filter-bar facet
+// triggers, "Clear all filters") rather than CTAs, so it reads as consistent ink-on-neutral,
+// Caprasimo-labeled chrome everywhere instead. Set once, globally, via the actual custom
+// properties Material reads - not per-component, and not by fighting `color`/`border-color` on
+// specificity (which is what --mat-button-outlined-* exist to avoid). Border/font share the exact
+// same tokens as the mat-select outline below, rather than each independently guessing a shade -
+// that's what was leaving Stars/Topic's border visibly lighter than Language/License's. Color is
+// --color-divider (the design's actual .btn-secondary border-color), not a flat neutral step. Font
+// size is deliberately NOT set here - the design gives every .btn usage its own contextual size
+// (13px facet triggers, 12px "Clear all filters", etc.), so there's no single correct global value;
+// each use site sets its own via the same custom property, scoped locally.
+.mat-mdc-outlined-button {
+  --mat-button-outlined-label-text-color: var(--color-ink);
+  --mat-button-outlined-outline-color: var(--color-divider);
+  --mat-button-outlined-label-text-font: var(--font-display);
+}
+
 // mat-mdc-text-field-wrapper's own border-radius (above) only affects its own box/clipping - for
 // appearance="outline" fields, the VISIBLE border is drawn separately by the notched-outline
 // leading/trailing pieces, themed via --mat-form-field-outlined-container-shape (defaults to a
 // small ~4px corner, i.e. still a rounded rectangle even with the override above in place).
+// --mat-form-field-outlined-outline-color shares the same --color-divider the outlined button uses
+// above, instead of falling back to Material's own auto-generated --mat-sys-outline tone (which
+// was rendering visibly darker/bolder than the button border, despite both being meant to look
+// like the same pill chrome).
 .mat-mdc-form-field {
   --mat-form-field-outlined-container-shape: var(--radius-pill);
+  --mat-form-field-outlined-outline-color: var(--color-divider);
+}
+
+// .mdc-text-field--outlined is the SAME element as .mat-mdc-text-field-wrapper (both classes on
+// one div), and Material's own compiled CSS for it hardcodes `height: 56px; overflow: visible;` -
+// neither has a custom-property backing (unlike almost everything else here), so there's no clean
+// token to redirect. It's also a direct property clash on the identical element: whichever
+// stylesheet's overflow declaration happens to load last wins, and Material's was winning, which
+// silently undid an earlier overflow: hidden attempt here - the 56px box was never actually
+// clipped, so the notched-outline's border extended past the visually-compact pill as a stray
+// vertical line. !important on both settles it outright, and 40px height matches
+// --mat-button-outlined-container-height's own default (Stars/Topic/etc.), so mat-select and
+// mat-stroked-button facet triggers render at the same height.
+.mdc-text-field--outlined {
+  height: 40px !important;
+  overflow: hidden !important;
 }
 
 // MDC's own horizontal-padding formula also reads that same --mat-form-field-outlined-container-

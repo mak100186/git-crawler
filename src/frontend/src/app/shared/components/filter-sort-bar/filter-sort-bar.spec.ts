@@ -129,7 +129,7 @@ describe('FilterSortBar', () => {
     setUp();
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelector('.filter-bar__facets')).toBeTruthy();
+    expect(el.querySelector('.filter-bar__row')).toBeTruthy();
     expect(el.querySelector('.filter-bar__filters-trigger')).toBeNull();
   });
 

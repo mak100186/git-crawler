@@ -167,6 +167,7 @@
     <mat-slide-toggle
       class="filter-bar__bookmarked-toggle"
       [checked]="bookmarkedOnly()"
+      hideIcon
       (change)="onBookmarkedOnlyChange($event.checked)"
     >
       Bookmarked
@@ -174,15 +175,48 @@
   }
 </ng-template>
 
+<!-- dashboard-handoff.md §3/screenshot: chips + "Clear all" are reused both inline in the desktop
+     row (below) and on their own line under the narrow-mode "Filters · N" trigger. -->
+<ng-template #activeChipsContent>
+  @if (activeChips().length > 0) {
+    <mat-chip-set class="filter-bar__active-chips" aria-label="Active filters">
+      @for (chip of activeChips(); track chip.key) {
+        <mat-chip [removable]="chip.removable" (removed)="chip.remove()">
+          {{ chip.label }}
+          @if (chip.removable) {
+            <button matChipRemove aria-label="Remove filter">
+              <mat-icon svgIcon="x" />
+            </button>
+          }
+        </mat-chip>
+      }
+    </mat-chip-set>
+
+    @if (hasRemovableFilters()) {
+      <button mat-button class="filter-bar__clear-all" (click)="clearAll()">Clear all</button>
+    }
+  }
+</ng-template>
+
 <div class="filter-bar" [class.filter-bar--narrow]="isNarrow()">
   @if (!isNarrow()) {
-    <div class="filter-bar__facets">
+    <!-- Reference design (Dashboard Design.dc.html §1): facets, the active-filter chips, and the
+         sort controls are one single flex-wrap row (sort pushed right via margin-left: auto), not
+         three stacked rows - matches the wrapping behavior seen live at in-between widths. -->
+    <div class="filter-bar__row">
       <ng-container *ngTemplateOutlet="facetsContent" />
-    </div>
-  }
 
-  <div class="filter-bar__active-row">
-    @if (isNarrow()) {
+      @if (activeChips().length > 0) {
+        <span class="filter-bar__divider" aria-hidden="true"></span>
+      }
+      <ng-container *ngTemplateOutlet="activeChipsContent" />
+
+      <div class="filter-bar__sort-group">
+        <ng-container *ngTemplateOutlet="sortRowContent" />
+      </div>
+    </div>
+  } @else {
+    <div class="filter-bar__active-row">
       <button
         mat-stroked-button
         type="button"
@@ -191,31 +225,7 @@
       >
         Filters · {{ activeFilterCount() }}
       </button>
-    }
-
-    @if (activeChips().length > 0) {
-      <mat-chip-set class="filter-bar__active-chips" aria-label="Active filters">
-        @for (chip of activeChips(); track chip.key) {
-          <mat-chip [removable]="chip.removable" (removed)="chip.remove()">
-            {{ chip.label }}
-            @if (chip.removable) {
-              <button matChipRemove aria-label="Remove filter">
-                <mat-icon svgIcon="x" />
-              </button>
-            }
-          </mat-chip>
-        }
-      </mat-chip-set>
-
-      @if (hasRemovableFilters()) {
-        <button mat-button class="filter-bar__clear-all" (click)="clearAll()">Clear all</button>
-      }
-    }
-  </div>
-
-  @if (!isNarrow()) {
-    <div class="filter-bar__sort-row">
-      <ng-container *ngTemplateOutlet="sortRowContent" />
+      <ng-container *ngTemplateOutlet="activeChipsContent" />
     </div>
   }
 </div>
