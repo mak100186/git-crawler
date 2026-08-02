@@ -25,14 +25,18 @@ Phase 1 (Core data pipeline) is complete, orchestrated end-to-end via `orchestra
   real, not assumed.
 - **F-006** (Job Scheduler, Hangfire) — PASS on the first attempt. `AddHangfire`/
   `UsePostgreSqlStorage`/`AddHangfireServer` wired into `Program.cs` — the wiring F-003/F-004
-  deliberately deferred. Dashboard at `/hangfire` behind a fail-closed shared-secret filter
-  (`Hangfire:DashboardAccessKey`/`HANGFIRE_DASHBOARD_KEY`) since no auth system exists elsewhere in
-  this single-operator v1 — a loopback-IP check was considered and rejected because Docker
-  Desktop's port-publishing proxy doesn't preserve `127.0.0.1` as the apparent remote address. One
-  recurring job (`discover-repositories`, daily by default via `Hangfire:CrawlerCronSchedule`)
-  triggers the Crawler; the `ContinueJobWith` attachment point for the next stage was left as a
-  documented code comment (not a stub), per the scope note that only one real pipeline stage
-  existed yet.
+  deliberately deferred. Dashboard at `/hangfire` is unauthenticated (updated 2026-08-02, same
+  day, per operator request — the original fail-closed shared-secret query-key filter was removed
+  after it also blocked the dashboard's own CSS/JS assets and stats-polling XHR, none of which
+  carry the `?key=` query string forward). Removing the filter alone still left the dashboard
+  401ing, since Hangfire's own default (`DashboardOptions.Authorization` unset) falls back to a
+  `LocalRequestsOnlyAuthorizationFilter`, and Docker Desktop's proxy doesn't preserve `127.0.0.1`
+  for a host-browser request through it — fixed by passing `Authorization = []` explicitly.
+  Live-verified against the real `make up` stack (`curl` 401 → 200). See ADR-009 Consequences for
+  both write-ups. One recurring job (`discover-repositories`, daily by default via
+  `Hangfire:CrawlerCronSchedule`) triggers the Crawler; the `ContinueJobWith` attachment point for
+  the next stage was left as a documented code comment (not a stub), per the scope note that only
+  one real pipeline stage existed yet.
 - **F-007** (Scoring Engine) — PASS after a mid-flight scope amendment (see below), following a
   clean PASS on the original four-signal scope. `Features/Scoring/ComputeScores/` — pure
   computation (Architecture §3 requires zero external calls here), reads `Repository`'s raw
@@ -109,7 +113,7 @@ The platform now has a working, self-hosted, end-to-end crawl-to-score pipeline:
 |---|---|
 | Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 3 migrations; consumed at runtime (`Database.Migrate()` on startup) — no longer just wired-through-unused as at Phase 0 close |
 | Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, idempotent upsert, rate-limit-aware retry, 7-day contributor-count caching — implemented as a Wolverine command/handler slice |
-| Job Scheduler | Hangfire wired (`AddHangfire`/`UsePostgreSqlStorage`/`AddHangfireServer`), dashboard at `/hangfire` behind a fail-closed shared-secret filter, one daily recurring job (Crawler) chaining into Scoring via `ContinueJobWith` |
+| Job Scheduler | Hangfire wired (`AddHangfire`/`UsePostgreSqlStorage`/`AddHangfireServer`), dashboard at `/hangfire` unauthenticated (operator decision, 2026-08-02), one daily recurring job (Crawler) chaining into Scoring via `ContinueJobWith` |
 | Scoring Engine | Pure computation (no external calls), five independently-weighted signals (license, commits-per-week, contributor count, fork count, star count), scoring history preserved (multiple `Score` rows per repo over time) |
 | Postgres persistence | Bind-mounted to `./data/postgres` (operator request) — survives `docker compose down`, backup-able as plain host files |
 | Test harness | 43 xUnit tests (up from 1 smoke test at Phase 0 close), all passing; `dotnet list package --vulnerable` clean |

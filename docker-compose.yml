@@ -37,12 +37,6 @@ services:
       # Must match the identifier `make up`/`lms load --identifier` assigns the loaded model (see
       # Makefile's LMSTUDIO_IDENTIFIER) - this is the fixed alias, not the catalog model name.
       LmStudio__Model: "${LMSTUDIO_IDENTIFIER:?Set LMSTUDIO_IDENTIFIER in .env - see .env.example}"
-      # F-006: shared secret for the Hangfire dashboard's authorization filter (see
-      # HangfireDashboardAuthorizationFilter) - unlike GITHUB_TOKEN/POSTGRES_PASSWORD above, this
-      # is optional (`:-` not `:?`): the filter already fails closed (dashboard inaccessible) when
-      # it's blank, so an operator who doesn't need the dashboard isn't forced to set one just to
-      # run `make up`.
-      Hangfire__DashboardAccessKey: "${HANGFIRE_DASHBOARD_KEY:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

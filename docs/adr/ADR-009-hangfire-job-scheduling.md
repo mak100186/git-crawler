@@ -20,8 +20,8 @@ no first-party equivalent.
 
 Job scheduling and orchestration across the pipeline stages is implemented with Hangfire, using
 its PostgreSQL-backed persistent storage (ADR-003) for job state, and its built-in dashboard is
-exposed (behind the platform's own access controls) as the primary tool for monitoring pipeline
-runs.
+exposed unauthenticated as the primary tool for monitoring pipeline runs (see Consequences —
+access control was tried and reverted).
 
 ## Alternatives Considered
 
@@ -42,8 +42,22 @@ runs.
   continuations rather than Quartz's trigger-dependency graph — a different idiom, not a
   capability loss, but code written against Quartz's API in F-006 would need to be rewritten
   against Hangfire's.
-- The dashboard endpoint itself becomes a surface that needs access control in the self-hosted
-  deployment (ADR-002) — it must not be exposed unauthenticated.
+- **Tried and reverted (2026-08-02):** a shared-secret `?key=` query-string filter
+  (`HangfireDashboardAuthorizationFilter`) initially gated the dashboard, fail-closed by default.
+  Hangfire applies whatever `IDashboardAuthorizationFilter` is configured to *every* request under
+  `/hangfire`, including the dashboard's own CSS/JS assets and its stats-polling XHR — none of
+  which carry the page's `?key=` query string forward (relative URLs don't inherit it), so the
+  filter also denied those, leaving the dashboard unstyled and its live stats erroring. Removed
+  entirely rather than special-cased further: this is a single-operator, self-hosted diagnostic
+  tool with no other auth system in the app, so the operator's own network boundary (don't publish
+  the port beyond localhost/a trusted network) is the access control, not an in-app filter.
+- **Gotcha found while removing the filter above:** simply omitting `DashboardOptions` from
+  `UseHangfireDashboard` does *not* make the dashboard unauthenticated — Hangfire's own default
+  (`DashboardOptions.Authorization` unset) falls back to a `LocalRequestsOnlyAuthorizationFilter`,
+  and Docker Desktop's port-publishing proxy doesn't preserve `127.0.0.1` as the apparent remote
+  address for a host-browser request through it (the exact reason a loopback check was rejected
+  as an alternative to the shared-secret filter in the first place, above). `Program.cs` passes
+  `Authorization = []` explicitly to actually disable the check.
 
 ## Related
 

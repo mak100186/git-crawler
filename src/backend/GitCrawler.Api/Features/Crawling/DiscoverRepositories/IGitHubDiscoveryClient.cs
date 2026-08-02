@@ -75,3 +75,11 @@ public sealed class GitHubSecondaryRateLimitException(TimeSpan retryAfter)
 {
     public TimeSpan RetryAfter { get; } = retryAfter;
 }
+
+// Not a GitHubRateLimitException: GitHub's 403 "history or contributor list is too large to list
+// contributors for this repository via the API" is permanent for a given repo, not a budget that
+// resets - observed live for torvalds/linux. Retrying it (generic backoff or otherwise) always
+// reproduces the exact same 403, so the handler must treat this as a one-shot skip instead of
+// routing it through either retry pathway.
+public sealed class GitHubContributorListUnavailableException(string owner, string name)
+    : Exception($"GitHub cannot compute a contributor count for {owner}/{name} (history/contributor list too large via the API).");

@@ -1,7 +1,7 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v2
+> Version: v3
 > Last updated: 2026-08-02
 > Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007)
 > Source of truth for acceptance criteria: docs/project-management.md
@@ -182,13 +182,12 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-006 — Job Scheduler (Hangfire)
 
 ### TC-006-01 (Happy path) — Recurring job registered and dashboard reachable
-1. Run `make up`, then check Hangfire's dashboard at `/hangfire?key=<HANGFIRE_DASHBOARD_KEY>`
-   (the key configured via `.env`'s `HANGFIRE_DASHBOARD_KEY`).
-2. **Expect:** HTTP 200 and the dashboard renders; the `discover-repositories` recurring job is
-   listed with its configured cron schedule (`Hangfire:CrawlerCronSchedule`, default `0 3 * * *`).
-3. Request `/hangfire` with no `key` query parameter, or an incorrect one.
-4. **Expect:** access denied (fails closed) — confirms NFR-003's access-control requirement, not
-   just that the dashboard exists.
+1. Run `make up`, then check Hangfire's dashboard at `/hangfire` (unauthenticated — no auth
+   system exists elsewhere in this single-operator v1; see ADR-009 Consequences for why an
+   earlier shared-secret filter was tried and reverted).
+2. **Expect:** HTTP 200 and the dashboard renders fully styled (CSS/JS/stats requests all
+   succeed); the `discover-repositories` recurring job is listed with its configured cron
+   schedule (`Hangfire:CrawlerCronSchedule`, default `0 3 * * *`).
 
 ### TC-006-02 (Happy path) — Crawl-to-score chaining
 1. Trigger the `discover-repositories` job (manually via the dashboard, or by waiting for its
@@ -250,3 +249,4 @@ LM Studio instance — those steps are marked **Manual**).
 |---------|------|--------|---------------|
 | v1 | 2026-07-31 | Initial draft covering Phase 0 (F-001, F-002, F-003) | Orchestrator Step 0.0 gap — no test-cases-doc existed at build handoff |
 | v2 | 2026-08-02 | Added Phase 1 scenarios: TC-004 (Data Store schema), TC-005 (GitHub Crawler), TC-006 (Job Scheduler), TC-007 (Scoring Engine, including the five-signal independence check added after the star-count amendment) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 0 when Phase 1 features completed |
+| v3 | 2026-08-02 | TC-006-01 updated: Hangfire dashboard access control removed (F-006), so the `?key=` requirement and the access-denied assertion no longer apply | Operator: "remove the auth for hangfire" |

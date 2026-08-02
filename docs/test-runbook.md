@@ -147,8 +147,8 @@ them.
 ### Happy path — discovery and idempotent upsert
 1. Ensure `.env`'s `GITHUB_TOKEN` is set to a real token (see `docs/setup.md` §1).
 2. Trigger the `discover-repositories` job manually from the Hangfire dashboard
-   (`http://localhost:8080/hangfire?key=<HANGFIRE_DASHBOARD_KEY>` → find the job → "Trigger now"),
-   or wait for its scheduled run (`Hangfire:CrawlerCronSchedule`, default 3 AM daily).
+   (`http://localhost:8080/hangfire` → find the job → "Trigger now"), or wait for its scheduled
+   run (`Hangfire:CrawlerCronSchedule`, default 3 AM daily).
 3. `psql -c 'SELECT "Owner", "Name", "LicenseIdentifier", "ContributorCount" FROM "Repositories" LIMIT 10;'`
    — expect rows matching the configured discovery criteria (`GitHub:DiscoveryLookbackDays`/
    `DiscoveryMinimumStars` in `appsettings.json`), with `LicenseIdentifier` correctly `NULL` for
@@ -177,13 +177,11 @@ them.
 
 ## F-006 — Job Scheduler (Hangfire)
 
-### Happy path — dashboard reachable, access-controlled, recurring job registered
-1. `make up`, then `curl -I "http://localhost:8080/hangfire?key=$HANGFIRE_DASHBOARD_KEY"` — expect
-   `200`.
-2. `curl -I "http://localhost:8080/hangfire"` (no key) and with a wrong key — expect a non-200
-   (access denied, fails closed).
-3. Open the dashboard in a browser (with the correct key) — expect the `discover-repositories`
-   recurring job listed under "Recurring Jobs" with its configured cron expression.
+### Happy path — dashboard reachable, recurring job registered
+1. `make up`, then `curl -I "http://localhost:8080/hangfire"` — expect `200`.
+2. Open the dashboard in a browser — expect the `discover-repositories` recurring job listed
+   under "Recurring Jobs" with its configured cron expression, and the page rendering fully
+   styled (CSS/JS assets load unauthenticated, same as the page itself).
 
 ### Happy path — crawl-to-score chaining
 1. Trigger `discover-repositories` manually from the dashboard against a database with no existing

@@ -187,6 +187,7 @@ the dashboard and receiving the digest.
 | Job scheduling / orchestration | Hangfire, persistent job storage + built-in dashboard | ADR-009 | Survives restarts mid-pipeline; built-in dashboard directly serves NFR-005 for a solo operator |
 | Runtime / SDK version | .NET 10 | ADR-010 | Operator preference; single version across all backend components |
 | Internal code organization | Vertical Slice Architecture + CQRS via Wolverine, applied to the Web API and all five background pipeline stages | ADR-015 | Operator preference; explicitly not MediatR (which is moving toward commercial licensing) — Wolverine stays fully open-source |
+| Crawler retry/resilience | Polly (`ResiliencePipeline`, chained retry strategies) | ADR-018 | Already present transitively; declaring it directly and expressing GitHub's rate-limit vs. generic-transient vs. permanent-failure pathways as distinct chained strategies replaced a hand-rolled loop that had no way to express "don't retry this" |
 
 ## 8. Open Questions & Risks
 
@@ -212,5 +213,6 @@ the dashboard and receiving the digest.
 | v9 | 2026-07-28 | Pinned summarization model to Gemma 4 E4B (ADR-013, new) and data store version to PostgreSQL 18.4 (ADR-014, new); neither had a version pinned previously | Triage edit |
 | v10 | 2026-07-28 | Adopted Vertical Slice Architecture + CQRS via Wolverine (ADR-015, new), applied to the Web API and all five background pipeline stages, not MediatR; §2, all §3 component Technology lines, and Technology Decisions table updated | Triage edit |
 | v11 | 2026-08-01 | LM Studio changed from a Docker Compose container to a host-installed native app, reached via `host.docker.internal` and orchestrated alongside Compose by a new `Makefile` (ADR-016, new — amends ADR-002 and ADR-007's deployment-topology framing, doesn't change the engine choice); §1, §2, and Technology Decisions table updated | Operator correction post-F-003 (LM Studio already installed on the target machine) |
+| v12 | 2026-08-02 | Crawler's GitHub retry/resilience pathways (rate-limit, generic-transient, and a new permanent-failure case) now expressed via Polly `ResiliencePipeline` instead of a hand-rolled loop (ADR-018, new); Technology Decisions table updated | Live-crawl verification surfaced a permanent GitHub 403 (`torvalds/linux` contributor count) the old catch-all retry loop misclassified as transient |
 | v12 | 2026-08-01 | Risk A2 marked Resolved (§8) — live benchmark run against `google/gemma-4-e4b`, 2.57-2.82s p95 per repo vs. NFR-001's target, see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9 | F-002 spike executed live |
 | v13 | 2026-08-01 | Summarization model changed from Gemma 4 E4B to Llama 3.2 3B Instruct (ADR-017, new, supersedes ADR-013) — the original pin passed throughput but truncated output on reasoning-token overhead; §3 Summarizer, §7 Technology Decisions, and §8 risk A2 updated | Live model comparison, operator decision: "use llama-3.2-3b-instruct" |

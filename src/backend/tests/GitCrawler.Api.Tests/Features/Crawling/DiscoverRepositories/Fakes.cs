@@ -39,24 +39,22 @@ internal class FakeGitHubDiscoveryClient : IGitHubDiscoveryClient
     }
 }
 
-// Records requested wait durations instead of actually waiting, so rate-limit/backoff tests run
-// instantly rather than blocking for the real minutes/hours the handler would otherwise sleep.
-internal class FakeRetryDelay : IRetryDelay
+// Fixed-clock TimeProvider that also backs Polly's retry-delay timer (ADR-018's ResiliencePipeline
+// is built with this as its TimeProvider). Overriding CreateTimer records the duration the pipeline
+// actually asked to wait (replacing the old bespoke IRetryDelay fake) while firing the timer via the
+// real base-class implementation with a near-zero due time, so rate-limit/backoff tests observe the
+// requested delays without blocking for the real minutes/hours the handler would otherwise sleep.
+internal class FakeTimeProvider(DateTimeOffset utcNow) : TimeProvider
 {
     public List<TimeSpan> RequestedDelays { get; } = [];
 
-    public Task DelayAsync(TimeSpan duration, CancellationToken cancellationToken)
-    {
-        RequestedDelays.Add(duration);
-        return Task.CompletedTask;
-    }
-}
-
-// Minimal fixed-clock TimeProvider - lets tests control "now" precisely (e.g. to compute an exact
-// expected wait duration from a resetAt value) without pulling in a testing package for it.
-internal class FakeTimeProvider(DateTimeOffset utcNow) : TimeProvider
-{
     public override DateTimeOffset GetUtcNow() => utcNow;
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        RequestedDelays.Add(dueTime);
+        return base.CreateTimer(callback, state, TimeSpan.Zero, period);
+    }
 }
 
 // Fake for the F-007 seam over Hangfire's static BackgroundJob.ContinueJobWith (see

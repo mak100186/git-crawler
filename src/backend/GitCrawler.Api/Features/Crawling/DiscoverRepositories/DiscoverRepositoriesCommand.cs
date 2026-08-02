@@ -3,6 +3,9 @@ using GitCrawler.Api.Data.Entities;
 
 using Microsoft.EntityFrameworkCore;
 
+using Polly;
+using Polly.Retry;
+
 namespace GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 
 // Wolverine message + result for this slice. No shared service/repository layer per ADR-015 -
@@ -24,23 +27,25 @@ public class DiscoverRepositoriesCommandHandler(
     GitCrawlerDbContext dbContext,
     IGitHubDiscoveryClient discoveryClient,
     ILogger<DiscoverRepositoriesCommandHandler> logger,
-    TimeProvider timeProvider,
-    IRetryDelay retryDelay)
+    TimeProvider timeProvider)
 {
     // F-001 spike §7's recommended mitigation: don't refetch contributor count every crawl -
     // refresh on a slower cadence since it's a slow-moving signal. The spike suggests "roughly
     // weekly"; 7 days is the concrete choice for that.
     private static readonly TimeSpan ContributorCountFreshnessWindow = TimeSpan.FromDays(7);
 
-    // F-001 spike §6.5: exponential backoff starting at 60s, doubling, capped - used here for any
-    // transient failure that carries no rate-limit signal at all (the "if absent" case in §6).
-    private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(30);
+    // The generic-transient pathway (any failure that carries no rate-limit signal at all, ADR-018)
+    // retries twice with a flat 1-minute gap, then aborts the run - anything still failing after
+    // three attempts three minutes apart is treated as not worth retrying further.
+    private const int MaxGenericRetries = 2;
+    private static readonly TimeSpan GenericRetryDelay = TimeSpan.FromMinutes(1);
 
-    // Spike §6.5's "cap total retries at 5... beyond that, abort the current run" - applied here
-    // to both the discovery call and the contributor-count call, not just the page/call spike §6.5
-    // originally scoped it to, since both are equally capable of failing indefinitely.
-    private const int MaxGenericRetries = 5;
+    // ADR-018: two Polly pathways chained into one pipeline instead of the two bespoke catch/loop
+    // blocks this used to be. The rate-limit pathway retries indefinitely with an exact,
+    // signal-driven delay (wait until resetAt / the server-specified Retry-After); the
+    // generic-transient pathway is capped and flat. GitHubContributorListUnavailableException is
+    // deliberately handled by neither - see BuildResiliencePipeline.
+    private readonly ResiliencePipeline resiliencePipeline = BuildResiliencePipeline(timeProvider, logger);
 
     public async Task<DiscoverRepositoriesResult> HandleAsync(DiscoverRepositoriesCommand command, CancellationToken cancellationToken)
     {
@@ -54,7 +59,9 @@ public class DiscoverRepositoriesCommandHandler(
 
         do
         {
-            var page = await FetchDiscoveryPageWithRetryAsync(cursor, cancellationToken);
+            var page = await resiliencePipeline.ExecuteAsync(
+                ct => new ValueTask<DiscoveryPage>(discoveryClient.DiscoverRepositoriesAsync(cursor, ct)),
+                cancellationToken);
             hasNextPage = page.HasNextPage;
             cursor = page.EndCursor;
 
@@ -78,9 +85,23 @@ public class DiscoverRepositoriesCommandHandler(
 
                 if (NeedsContributorCountRefresh(existing))
                 {
-                    existing.ContributorCount = await FetchContributorCountWithRetryAsync(discovered.Owner, discovered.Name, cancellationToken);
-                    existing.ContributorCountFetchedAtUtc = timeProvider.GetUtcNow();
-                    contributorFetches++;
+                    try
+                    {
+                        existing.ContributorCount = await resiliencePipeline.ExecuteAsync(
+                            ct => new ValueTask<int>(discoveryClient.GetContributorCountAsync(discovered.Owner, discovered.Name, ct)),
+                            cancellationToken);
+                        existing.ContributorCountFetchedAtUtc = timeProvider.GetUtcNow();
+                        contributorFetches++;
+                    }
+                    catch (GitHubContributorListUnavailableException ex)
+                    {
+                        // Permanent for this repo (ADR-018) - stamp ContributorCountFetchedAtUtc
+                        // anyway so the freshness window above stops this hitting the same wall
+                        // every single crawl run, instead of just once every 7 days.
+                        logger.LogWarning("{Message}", ex.Message);
+                        existing.ContributorCountFetchedAtUtc = timeProvider.GetUtcNow();
+                        contributorSkipped++;
+                    }
                 }
                 else
                 {
@@ -120,88 +141,56 @@ public class DiscoverRepositoriesCommandHandler(
         entity.CommitCount = discovered.CommitCount;
     }
 
-    private async Task<DiscoveryPage> FetchDiscoveryPageWithRetryAsync(string? cursor, CancellationToken cancellationToken)
-    {
-        var genericRetryCount = 0;
-        var backoff = InitialBackoff;
-
-        while (true)
-        {
-            try
+    // ADR-018: chained Polly pipeline replacing the old hand-rolled while/catch retry loops.
+    // First AddRetry = outer pathway = GitHub's own rate-limit signals (GraphQL/REST primary budget
+    // exhausted, or the secondary abuse-detection limit) - retried indefinitely, since these always
+    // resolve at a known, signal-provided time rather than being an open-ended failure. Second
+    // AddRetry = inner pathway = anything else transient - capped, flat backoff. Neither pathway's
+    // ShouldHandle matches GitHubContributorListUnavailableException, so that exception always
+    // propagates straight out of ExecuteAsync on the first attempt - a deliberate non-retryable
+    // pathway for GitHub's permanent "history/contributor list too large" 403 (see that exception's
+    // own comment), which the handler catches at its call site instead.
+    private static ResiliencePipeline BuildResiliencePipeline(TimeProvider timeProvider, ILogger logger) =>
+        new ResiliencePipelineBuilder { TimeProvider = timeProvider }
+            .AddRetry(new RetryStrategyOptions
             {
-                return await discoveryClient.DiscoverRepositoriesAsync(cursor, cancellationToken);
-            }
-            catch (GitHubGraphQlRateLimitExceededException ex)
-            {
-                logger.LogWarning("GitHub GraphQL rate limit exhausted; waiting until {ResetAt}", ex.ResetAtUtc);
-                await WaitUntilAsync(ex.ResetAtUtc, cancellationToken);
-            }
-            catch (GitHubSecondaryRateLimitException ex)
-            {
-                logger.LogWarning("GitHub secondary rate limit hit during discovery; retrying after {RetryAfter}", ex.RetryAfter);
-                await retryDelay.DelayAsync(ex.RetryAfter, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not GitHubRateLimitException)
-            {
-                genericRetryCount++;
-                if (genericRetryCount > MaxGenericRetries)
+                ShouldHandle = args => ValueTask.FromResult(args.Outcome.Exception is GitHubRateLimitException),
+                MaxRetryAttempts = int.MaxValue,
+                DelayGenerator = args => new ValueTask<TimeSpan?>(args.Outcome.Exception switch
                 {
-                    // Abort this run, not the whole schedule - the next Hangfire trigger (F-006)
-                    // picks it up (spike §6.5).
-                    logger.LogError(ex, "Discovery page fetch failed after {Retries} retries; aborting this run", MaxGenericRetries);
-                    throw;
-                }
-
-                logger.LogWarning(ex, "Transient failure fetching discovery page (attempt {Attempt}); backing off {Backoff}", genericRetryCount, backoff);
-                await retryDelay.DelayAsync(backoff, cancellationToken);
-                backoff = NextBackoff(backoff);
-            }
-        }
-    }
-
-    private async Task<int> FetchContributorCountWithRetryAsync(string owner, string name, CancellationToken cancellationToken)
-    {
-        var genericRetryCount = 0;
-        var backoff = InitialBackoff;
-
-        while (true)
-        {
-            try
-            {
-                return await discoveryClient.GetContributorCountAsync(owner, name, cancellationToken);
-            }
-            catch (GitHubRestRateLimitExceededException ex)
-            {
-                logger.LogWarning("GitHub REST rate limit exhausted; waiting until {ResetAt}", ex.ResetAtUtc);
-                await WaitUntilAsync(ex.ResetAtUtc, cancellationToken);
-            }
-            catch (GitHubSecondaryRateLimitException ex)
-            {
-                logger.LogWarning("GitHub secondary rate limit hit fetching contributor count for {Owner}/{Name}; retrying after {RetryAfter}", owner, name, ex.RetryAfter);
-                await retryDelay.DelayAsync(ex.RetryAfter, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not GitHubRateLimitException)
-            {
-                genericRetryCount++;
-                if (genericRetryCount > MaxGenericRetries)
+                    GitHubGraphQlRateLimitExceededException ex => ResetDelay(ex.ResetAtUtc, timeProvider),
+                    GitHubRestRateLimitExceededException ex => ResetDelay(ex.ResetAtUtc, timeProvider),
+                    GitHubSecondaryRateLimitException ex => ex.RetryAfter,
+                    _ => TimeSpan.Zero,
+                }),
+                OnRetry = args =>
                 {
-                    logger.LogError(ex, "Contributor-count fetch for {Owner}/{Name} failed after {Retries} retries; aborting this run", owner, name, MaxGenericRetries);
-                    throw;
-                }
+                    logger.LogWarning(args.Outcome.Exception, "GitHub rate limit hit; waiting {Delay} before retrying", args.RetryDelay);
+                    return default;
+                },
+            })
+            .AddRetry(new RetryStrategyOptions
+            {
+                ShouldHandle = args => ValueTask.FromResult(
+                    args.Outcome.Exception is not (null or GitHubRateLimitException or GitHubContributorListUnavailableException)),
+                MaxRetryAttempts = MaxGenericRetries,
+                BackoffType = DelayBackoffType.Constant,
+                Delay = GenericRetryDelay,
+                OnRetry = args =>
+                {
+                    logger.LogWarning(
+                        args.Outcome.Exception,
+                        "Transient failure (attempt {Attempt}); retrying in {Delay}",
+                        args.AttemptNumber + 1,
+                        args.RetryDelay);
+                    return default;
+                },
+            })
+            .Build();
 
-                logger.LogWarning(ex, "Transient failure fetching contributor count for {Owner}/{Name} (attempt {Attempt}); backing off {Backoff}", owner, name, genericRetryCount, backoff);
-                await retryDelay.DelayAsync(backoff, cancellationToken);
-                backoff = NextBackoff(backoff);
-            }
-        }
-    }
-
-    private async Task WaitUntilAsync(DateTimeOffset resetAtUtc, CancellationToken cancellationToken)
+    private static TimeSpan ResetDelay(DateTimeOffset resetAtUtc, TimeProvider timeProvider)
     {
         var wait = resetAtUtc - timeProvider.GetUtcNow();
-        await retryDelay.DelayAsync(wait, cancellationToken);
+        return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
     }
-
-    private static TimeSpan NextBackoff(TimeSpan current) =>
-        TimeSpan.FromSeconds(Math.Min(current.TotalSeconds * 2, MaxBackoff.TotalSeconds));
 }

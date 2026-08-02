@@ -16,7 +16,6 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly GitCrawlerDbContext _dbContext;
     private readonly FakeGitHubDiscoveryClient _discoveryClient = new();
-    private readonly FakeRetryDelay _retryDelay = new();
     private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 8, 2, 0, 0, 0, TimeSpan.Zero));
 
     public DiscoverRepositoriesCommandHandlerTests()
@@ -38,7 +37,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
     }
 
     private DiscoverRepositoriesCommandHandler CreateHandler() =>
-        new(_dbContext, _discoveryClient, NullLogger<DiscoverRepositoriesCommandHandler>.Instance, _timeProvider, _retryDelay);
+        new(_dbContext, _discoveryClient, NullLogger<DiscoverRepositoriesCommandHandler>.Instance, _timeProvider);
 
     private static DiscoveredRepository NewDiscoveredRepo(
         long gitHubId,
@@ -154,8 +153,8 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         // proving it actually reads the reset-time signal rather than a hardcoded/generic wait.
         Assert.Equal(0, result.DiscoveredCount);
         Assert.Equal(2, _discoveryClient.DiscoverRepositoriesCallCount);
-        Assert.Single(_retryDelay.RequestedDelays);
-        Assert.Equal(TimeSpan.FromMinutes(10), _retryDelay.RequestedDelays[0]);
+        Assert.Single(_timeProvider.RequestedDelays);
+        Assert.Equal(TimeSpan.FromMinutes(10), _timeProvider.RequestedDelays[0]);
     }
 
     [Fact]
@@ -170,17 +169,17 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
         Assert.Equal(2, _discoveryClient.GetContributorCountCallCount);
-        Assert.Contains(TimeSpan.FromMinutes(5), _retryDelay.RequestedDelays);
+        Assert.Contains(TimeSpan.FromMinutes(5), _timeProvider.RequestedDelays);
 
         var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 55);
         Assert.Equal(3, stored.ContributorCount);
     }
 
     [Fact]
-    public async Task Handle_TransientFailureWithoutRateLimitSignal_AppliesExponentialBackoff()
+    public async Task Handle_TransientFailureWithoutRateLimitSignal_RetriesTwiceWithFlatOneMinuteGap()
     {
-        // No rate-limit signal at all (F-001 spike §6's "if absent" case) - the handler must still
-        // recover via exponential backoff (60s, then 120s), not propagate the exception.
+        // No rate-limit signal at all (F-001 spike §6's "if absent" case) - ADR-018 recovers via a
+        // flat 1-minute gap for up to 2 retries, not propagating the exception.
         _discoveryClient.EnqueueDiscoveryFailure(new HttpRequestException("network blip"));
         _discoveryClient.EnqueueDiscoveryFailure(new HttpRequestException("network blip"));
         _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, []));
@@ -189,17 +188,17 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
         Assert.Equal(3, _discoveryClient.DiscoverRepositoriesCallCount);
-        Assert.Equal(2, _retryDelay.RequestedDelays.Count);
-        Assert.Equal(TimeSpan.FromSeconds(60), _retryDelay.RequestedDelays[0]);
-        Assert.Equal(TimeSpan.FromSeconds(120), _retryDelay.RequestedDelays[1]);
+        Assert.Equal(2, _timeProvider.RequestedDelays.Count);
+        Assert.Equal(TimeSpan.FromMinutes(1), _timeProvider.RequestedDelays[0]);
+        Assert.Equal(TimeSpan.FromMinutes(1), _timeProvider.RequestedDelays[1]);
     }
 
     [Fact]
     public async Task Handle_TransientFailureExceedsMaxRetries_AbortsRun()
     {
-        // Six consecutive failures with no rate-limit signal - one more than the 5-retry cap
-        // (F-001 spike §6.5) - must abort the run rather than retry forever.
-        for (var i = 0; i < 6; i++)
+        // Three consecutive failures with no rate-limit signal - one more than ADR-018's 2-retry
+        // cap - must abort the run rather than retry forever.
+        for (var i = 0; i < 3; i++)
         {
             _discoveryClient.EnqueueDiscoveryFailure(new HttpRequestException("persistent failure"));
         }
@@ -207,6 +206,27 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         var handler = CreateHandler();
 
         await Assert.ThrowsAsync<HttpRequestException>(() => handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Handle_ContributorListUnavailable_SkipsWithoutRetry_StampsFetchedAtSoItDoesNotRetryForever()
+    {
+        // GitHub's permanent "history/contributor list too large" 403 (ADR-018, observed live for
+        // torvalds/linux) must not go through either retry pathway - one call, one failure, move on.
+        _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(200)]));
+        _discoveryClient.EnqueueContributorFailure(new GitHubContributorListUnavailableException("octocat", "hello-world"));
+
+        var handler = CreateHandler();
+        var result = await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
+
+        Assert.Equal(1, _discoveryClient.GetContributorCountCallCount);
+        Assert.Empty(_timeProvider.RequestedDelays);
+        Assert.Equal(1, result.ContributorCountSkipped);
+        Assert.Equal(0, result.ContributorCountFetches);
+
+        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 200);
+        Assert.Null(stored.ContributorCount);
+        Assert.Equal(_timeProvider.GetUtcNow(), stored.ContributorCountFetchedAtUtc);
     }
 
     [Fact]

@@ -4,11 +4,11 @@ using DotNetEnv;
 
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
-using GitCrawler.Api.Features.Diagnostics;
 using GitCrawler.Api.Features.Diagnostics.Ping;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
 
 using Hangfire;
+using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
 
 using Microsoft.EntityFrameworkCore;
@@ -38,15 +38,6 @@ var githubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
 if (!string.IsNullOrEmpty(githubToken))
 {
     builder.Configuration["GitHub:Token"] = githubToken;
-}
-
-// F-006: same bridge pattern as GITHUB_TOKEN above, for the Hangfire dashboard's shared secret
-// (see HangfireDashboardAuthorizationFilter). Unset/blank is a valid choice here (the filter fails
-// closed on it), so there's no fail-fast guard - just the same flat-to-hierarchical translation.
-var hangfireDashboardKey = Environment.GetEnvironmentVariable("HANGFIRE_DASHBOARD_KEY");
-if (!string.IsNullOrEmpty(hangfireDashboardKey))
-{
-    builder.Configuration["Hangfire:DashboardAccessKey"] = hangfireDashboardKey;
 }
 
 // LM Studio always runs on the host (ADR-016), so a bare `dotnet run` reaches it at localhost -
@@ -124,17 +115,27 @@ builder.Services.AddHttpClient(GitHubDiscoveryClient.GitHubRestClientName, (sp, 
 builder.Services.AddSingleton(sp =>
     new Connection(new Octokit.GraphQL.ProductHeaderValue("GitCrawler"), sp.GetRequiredService<IConfiguration>()["GitHub:Token"] ?? string.Empty));
 
-// F-005: TimeProvider/IRetryDelay back DiscoverRepositoriesCommandHandler's rate-limit backoff
-// loop (F-001 spike §6) - abstracted so tests can fake "now" and skip real waiting rather than
-// blocking for the minutes/hours a real backoff would take.
+// F-005/ADR-018: TimeProvider backs DiscoverRepositoriesCommandHandler's Polly resilience pipeline
+// (both "now" for rate-limit reset math and the pipeline's own retry-delay timer) - injected so
+// tests can substitute a fake clock instead of waiting out real minutes/hours.
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IRetryDelay, TaskDelayRetryDelay>();
 builder.Services.AddScoped<IGitHubDiscoveryClient, GitHubDiscoveryClient>();
 
 // Wolverine is the in-process command/query bus for every vertical slice (ADR-015) - this
 // scans the assembly for handlers by convention (e.g. PingQueryHandler) rather than requiring
 // manual registration per slice.
-builder.Host.UseWolverine();
+builder.Host.UseWolverine(opts =>
+{
+    // GitCrawlerDbContext is registered via AddDbContext, so its DbContextOptions<> dependency is
+    // an "opaque" lambda factory (EF Core's own CreateDbContextOptions) that Wolverine's code
+    // generator cannot construct inline - it can only be resolved via the DI container at
+    // runtime. Wolverine 6 defaults to disallowing that ("service location") for anything not
+    // explicitly opted in, since silent service location elsewhere would hide a real DI
+    // misconfiguration; this is the documented, targeted opt-in for exactly this EF Core case
+    // (wolverinefx.net/guide/codegen.html), scoped to this one type rather than relaxing the
+    // policy for every handler dependency.
+    opts.CodeGeneration.AlwaysUseServiceLocationFor<GitCrawlerDbContext>();
+});
 
 // F-006: Hangfire is the Job Scheduler (Architecture §3) that triggers each pipeline stage on
 // schedule. PostgreSQL-backed storage (ADR-009) is what makes a scheduled recurring job's
@@ -188,13 +189,22 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
 // (both need the same live Postgres-backed Hangfire storage configured earlier).
 if (!string.IsNullOrEmpty(postgresConnectionString))
 {
-    // Dashboard access-controlled per NFR-003/AC3 - see HangfireDashboardAuthorizationFilter for
-    // why a shared-secret filter, not a loopback check or a full auth system, is the right-sized
-    // mechanism here. The secret is blank by default (appsettings.json), which the filter treats
-    // as "deny all" until an operator sets one.
+    // Unauthenticated by operator decision (single-operator v1, no auth system elsewhere in this
+    // app; a prior shared-secret query-key filter was removed after it broke the dashboard's own
+    // CSS/JS/stats requests - relative URLs and polling XHRs don't carry the page's `?key=`
+    // forward, so gating them the same as the page itself left the UI unstyled and stats
+    // polling erroring). Restrict exposure at the network layer instead if this ever needs to
+    // leave localhost (e.g. don't publish the container port beyond the host).
+    //
+    // `Authorization = []` is required, not cosmetic: DashboardOptions defaults to a
+    // LocalRequestsOnlyAuthorizationFilter when this is left unset, and Docker Desktop's
+    // port-publishing proxy doesn't preserve 127.0.0.1 as the apparent remote address for a
+    // host-browser request through it - that default would 401 every request that reaches this
+    // app via `make up`'s published port, not just non-local ones. An empty filter list means no
+    // filter ever runs, so every request is authorized.
     app.UseHangfireDashboard("/hangfire", new DashboardOptions
     {
-        Authorization = [new HangfireDashboardAuthorizationFilter(app.Configuration)]
+        Authorization = [],
     });
 
     // AC1: the recurring trigger that starts the pipeline chain. This is link 1 of "RecurringJob +

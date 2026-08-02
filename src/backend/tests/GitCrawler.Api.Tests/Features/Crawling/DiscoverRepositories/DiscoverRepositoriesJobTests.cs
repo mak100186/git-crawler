@@ -69,8 +69,7 @@ public class DiscoverRepositoriesJobTests
         }
     }
 
-    // Mirrors HangfireDashboardAuthorizationFilterTests' FakeStorage - the abstract JobStorage base
-    // requires these two members, neither of which RunAsync exercises.
+    // The abstract JobStorage base requires these two members, neither of which RunAsync exercises.
     private sealed class FakeJobStorage : JobStorage
     {
         public override IStorageConnection GetConnection() => throw new NotSupportedException();
@@ -78,9 +77,8 @@ public class DiscoverRepositoriesJobTests
         public override IMonitoringApi GetMonitoringApi() => throw new NotSupportedException();
     }
 
-    // Mirrors the FakeStorage pattern in HangfireDashboardAuthorizationFilterTests: every member
-    // throws, since none of them are meant to be exercised by RunAsync - a fake used for it would
-    // fail loudly instead of silently passing on the wrong call.
+    // Every member throws, since none of them are meant to be exercised by RunAsync - a fake used
+    // for it would fail loudly instead of silently passing on the wrong call.
     private sealed class FakeStorageConnection : IStorageConnection
     {
         public IWriteOnlyTransaction CreateWriteTransaction() => throw new NotSupportedException();

@@ -83,6 +83,11 @@ public class GitHubDiscoveryClient(
             throw new GitHubSecondaryRateLimitException(retryAfter);
         }
 
+        if (await IsContributorListTooLargeAsync(response, cancellationToken))
+        {
+            throw new GitHubContributorListUnavailableException(owner, name);
+        }
+
         response.EnsureSuccessStatusCode();
 
         return await ExtractContributorCountAsync(response, cancellationToken);
@@ -118,7 +123,7 @@ public class GitHubDiscoveryClient(
                                 repo.Owner.Login,
                                 repo.Name,
                                 repo.Url,
-                                repo.DefaultBranchRef != null ? repo.DefaultBranchRef.Name : string.Empty,
+                                repo.DefaultBranchRef != null ? repo.DefaultBranchRef.Name : "",
                                 repo.PrimaryLanguage != null ? repo.PrimaryLanguage.Name : null,
                                 repo.StargazerCount,
                                 repo.ForkCount,
@@ -186,6 +191,21 @@ public class GitHubDiscoveryClient(
         // contract (spike §6.4 assumes both are present together) - fall through to the generic
         // backoff path rather than fabricate a resume time.
         return false;
+    }
+
+    // GitHub returns this as a plain 403 with no distinguishing header (unlike the primary/secondary
+    // rate-limit cases above), so the only signal available is this documented, fixed message in the
+    // response body - confirmed live against torvalds/linux/contributors. It's the same shape of
+    // message-substring heuristic already used by IsPrimaryRateLimitError below.
+    private static async Task<bool> IsContributorListTooLargeAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode is not HttpStatusCode.Forbidden)
+        {
+            return false;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return body.Contains("too large to list contributors", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsRestSecondaryRateLimited(HttpResponseMessage response, out TimeSpan retryAfter)

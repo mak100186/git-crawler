@@ -1,7 +1,108 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 2
+> Revision: 4
 > Last updated: 2026-08-02
+
+## Revision 4 — 2026-08-02 — Crawler retry/resilience migrated to Polly; fixed a query-building crash and a permanent-403 misclassification
+
+**Changes:**
+- **F-005** — Fixed a `NullReferenceException` in `GitHubDiscoveryClient.BuildDiscoveryQuery` that
+  crashed every discovery-page fetch. The GraphQL query's `DefaultBranchRef.Name` ternary fell back
+  to `string.Empty` (a static-member `MemberExpression` with a null `.Expression`), which
+  Octokit.GraphQL's internal `QueryBuilder.VisitMember`/`ExpressionWasRewritten` can't handle when
+  visiting it inside a union `Switch<T>()` case — every other ternary in that method already used a
+  `null` literal (a `ConstantExpression`), which doesn't hit this path. Changed to `""`. Verified
+  live: the discovery query now succeeds and the pipeline reaches real GitHub repos.
+- **F-005/ADR-018** — Live-verifying the fix above surfaced a second, real issue: fetching the
+  contributor count for `torvalds/linux` returns a permanent GitHub 403 ("history/contributor list
+  too large to list contributors via the API"), which the handler's catch-all retry loop treated as
+  transient — retrying it on the same schedule as a real transient failure, then aborting the whole
+  crawl run once retries were exhausted (dropping every repo queued after it in that page, not just
+  the one that could never succeed).
+- Root-caused and fixed together with a broader change: `DiscoverRepositoriesCommandHandler`'s
+  hand-rolled `while`/`try`/`catch` retry loops (rate-limit wait-until-reset, secondary-limit
+  wait-exact-Retry-After, generic exponential backoff) replaced with a Polly `ResiliencePipeline` of
+  two chained retry strategies — see ADR-018 for the full rationale. The generic-transient pathway
+  is now 2 retries with a flat 1-minute gap (was 5 retries, exponential 60s→30min). A new
+  `GitHubContributorListUnavailableException` represents the permanent 403 case specifically; it
+  matches neither pathway's `ShouldHandle`, so it's never retried — the handler catches it at the
+  contributor-count call site, logs a warning, and marks that repo's contributor count unavailable
+  for this run (still stamping `ContributorCountFetchedAtUtc` so the existing 7-day freshness window
+  keeps it from re-attempting the same permanently-blocked repo every crawl cycle) instead of
+  aborting the run.
+- Live-verified end-to-end against the running `make up` stack: rebuilt the `app` image, manually
+  triggered the `discover-repositories` Hangfire job via its dashboard endpoint, and confirmed the
+  fixed query succeeds, real repos are upserted, and `torvalds/linux`'s permanent 403 is skipped
+  without retry rather than stalling or aborting the run.
+
+**Modules / files affected:**
+- `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs` —
+  `string.Empty` → `""` in `BuildDiscoveryQuery`; `GetContributorCountAsync` now detects the
+  permanent "too large" 403 by response-body message and throws
+  `GitHubContributorListUnavailableException` instead of falling through to a generic
+  `HttpRequestException`.
+- `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/IGitHubDiscoveryClient.cs` —
+  new `GitHubContributorListUnavailableException` (not a `GitHubRateLimitException` subtype —
+  permanent, not rate-limited).
+- `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/DiscoverRepositoriesCommand.cs`
+  — retry loops replaced by a chained Polly `ResiliencePipeline`; contributor-count call site now
+  catches `GitHubContributorListUnavailableException` specifically.
+- `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/RetryDelay.cs` — deleted
+  (`IRetryDelay`/`TaskDelayRetryDelay`, no longer needed now that Polly owns the retry delay).
+- `src/backend/GitCrawler.Api/Program.cs` — `IRetryDelay` DI registration removed.
+- `src/backend/GitCrawler.Api/GitCrawler.Api.csproj` — `Polly.Core` added as a direct
+  `PackageReference` (was transitive-only).
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Crawling/DiscoverRepositories/Fakes.cs` —
+  `FakeRetryDelay` deleted; `FakeTimeProvider` now also overrides `CreateTimer` to record Polly's
+  requested retry delays and fire them near-instantly.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Crawling/DiscoverRepositories/DiscoverRepositoriesCommandHandlerTests.cs`
+  — updated for the new 2-retry/1-minute-gap generic pathway; new test for the permanent-403 skip
+  path.
+- `docs/adr/ADR-018-polly-resilience-for-github-crawler.md` — new.
+- `docs/architecture.md` — v12: Technology Decisions row for Polly; version history.
+
+## Revision 3 — 2026-08-02 — Hangfire dashboard: access control removed
+
+**Changes:**
+- **F-006** — `HangfireDashboardAuthorizationFilter` (Revision 2's fail-closed shared-secret
+  `?key=` query-string filter) removed entirely. Hangfire applies whatever
+  `IDashboardAuthorizationFilter` is configured to every request under `/hangfire`, not just the
+  page itself — including the dashboard's own bundled CSS/JS assets and its live stats-polling
+  XHR, none of which carry the page's `?key=` query string forward (relative URLs, and the
+  dashboard's own polling requests, don't inherit it). That left the dashboard reachable but
+  unstyled, then still erroring on stats refresh once the CSS/JS gap was patched with a
+  static-asset allowlist. Rather than keep special-casing more exempted paths, removed the filter
+  entirely: `/hangfire` is now unauthenticated, matching the fact that no auth system exists
+  anywhere else in this single-operator v1. Operator's own network boundary (don't publish the
+  port beyond localhost/a trusted network) is the access control now, not an in-app filter.
+  **Second fix, same revision:** removing the custom filter still left the dashboard 401ing after
+  a rebuild — `DashboardOptions.Authorization` defaults to a `LocalRequestsOnlyAuthorizationFilter`
+  when left unset, and Docker Desktop's port-publishing proxy doesn't preserve `127.0.0.1` as the
+  apparent remote address for a host-browser request through it (the same fact ADR-009's
+  Consequences already noted about the loopback check that was never used). Fixed by passing
+  `Authorization = []` explicitly — an empty filter list means no filter ever runs, so every
+  request is authorized. Live-verified against the actual `make up` stack (`curl` 401 before, 200
+  after).
+
+**Modules / files affected:**
+- `src/backend/GitCrawler.Api/Features/Diagnostics/HangfireDashboardAuthorizationFilter.cs` —
+  deleted.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Diagnostics/HangfireDashboardAuthorizationFilterTests.cs`
+  — deleted.
+- `src/backend/GitCrawler.Api/Program.cs` — `UseHangfireDashboard` now passes
+  `new DashboardOptions { Authorization = [] }` explicitly (not just an omitted call — see above);
+  `HANGFIRE_DASHBOARD_KEY` config bridge removed.
+- `src/backend/GitCrawler.Api/appsettings.json` — `Hangfire:DashboardAccessKey` key removed.
+- `docker-compose.yml`, `.env.example` — `HANGFIRE_DASHBOARD_KEY` removed.
+- `docs/adr/ADR-009-hangfire-job-scheduling.md` — Decision and Consequences updated to record the
+  filter was tried and reverted, and why.
+- `docs/project-management.md` (v16) — F-006's AC updated; new Revision History row.
+- `docs/handoff.md`, `docs/test-runbook.md`, `docs/test-cases.md` — dashboard-reachability steps
+  updated to drop the `?key=` requirement; the access-denied assertion removed since there's no
+  longer any access control to assert.
+
+**Breaking changes:** None (dashboard access got easier, not harder — no consumer depended on the
+key).
 
 ## Revision 2 — 2026-08-02 — Phase 1 complete: core data pipeline
 

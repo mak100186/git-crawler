@@ -20,6 +20,11 @@
     <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
+    <!-- ADR-018: retry/resilience pathways for the Crawler's GitHub calls. Already pulled in
+         transitively (by Wolverine) at this pinned version - declared directly now that
+         DiscoverRepositoriesCommandHandler calls it explicitly, so it can't silently drift or
+         disappear if that transitive chain ever changes. -->
+    <PackageReference Include="Polly.Core" Version="8.6.5" />
     <PackageReference Include="WolverineFx" Version="6.24.2" />
     <PackageReference Include="WolverineFx.RuntimeCompilation" Version="6.24.2" />
   </ItemGroup>
