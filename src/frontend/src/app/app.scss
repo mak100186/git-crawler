@@ -27,14 +27,19 @@
     margin-left: 24px;
   }
 
+  // mat-button's own compiled CSS sets font-family/color directly on .mat-mdc-button (the same
+  // host element these classes are on, via [mat-button]) at equal specificity to a plain BEM
+  // class - whichever stylesheet happens to load later in the cascade wins, which was leaving
+  // Material's default typography/color (not ours) on the nav links. !important matches the
+  // precedent already set in styles.scss for the same class of Material-specificity fight.
   &__nav-link {
-    color: var(--color-neutral-300, #c0b6a5);
+    color: var(--color-neutral-300, #c0b6a5) !important;
     border-radius: 999px;
-    font-family: var(--font-display);
+    font-family: var(--font-display) !important;
 
     &--active {
       background: var(--color-accent);
-      color: var(--color-ink);
+      color: var(--color-ink) !important;
     }
   }
 
@@ -47,24 +52,14 @@
     pointer-events: none;
   }
 
+  // Shared by both reserved slots (Bookmarks and Search) - plain text pills, sized to their own
+  // content, no functionality behind either yet (F-012 and v2 free-text search respectively).
   &__reserved-pill {
     border: 1.5px dashed var(--color-neutral-600);
     border-radius: 999px;
     padding: 6px 16px;
     font-size: 12px;
     color: var(--color-neutral-300, #c0b6a5);
-  }
-
-  &__search {
-    width: 160px;
-
-    ::ng-deep .mat-mdc-text-field-wrapper {
-      border-radius: 999px;
-      border: 1.5px dashed var(--color-neutral-600);
-    }
-    ::ng-deep input {
-      color: var(--color-neutral-300, #c0b6a5);
-    }
   }
 }
 

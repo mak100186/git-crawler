@@ -39,7 +39,7 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.textContent).toContain('Bookmarks · F-012');
-    expect(el.querySelector('input[disabled]')).toBeTruthy();
+    expect(el.textContent).toContain('Search (v2)');
   });
 
   it('collapses the top nav and shows a bottom pill nav below the 960px breakpoint, built from real mat-icon-button links', async () => {

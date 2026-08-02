@@ -54,6 +54,9 @@
   &__heading {
     flex: 1 1 auto;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   &__title {
@@ -161,9 +164,15 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 0 0;
+    // 10px 0 0 padding + a Material .mat-mdc-card-actions padding: 8px rule of equal specificity
+    // tying on source order - !important guarantees this component's own spacing always wins,
+    // matching the precedent already set for the same class of fight in app.scss/styles.scss.
+    padding: 10px 0 0 !important;
     margin: 0;
-    border-top: 1px solid var(--color-neutral-200);
+    // color-neutral-200 (#eee7db) on this card's own surface bg (#ebddc5) is nearly the same
+    // lightness - visually read as "no divider at all". neutral-300 keeps it a thin, subtle line
+    // (matching the design) but with enough contrast to actually be visible.
+    border-top: 1px solid var(--color-neutral-300);
     flex-wrap: wrap;
   }
 
@@ -171,8 +180,8 @@
     background: var(--color-olive-800);
     color: var(--color-olive-100);
     border-radius: 999px;
-    padding: 2px 12px;
-    font-size: 11px;
+    padding: 4px 14px;
+    font-size: 12.5px;
   }
 
   &__license-chip {

@@ -1,16 +1,14 @@
 <ng-template #facetsContent>
   @if (showLanguageFilter() && !forcedCategory()) {
-    <mat-form-field
-      appearance="outline"
-      subscriptSizing="dynamic"
-      class="filter-bar__facet filter-bar__facet--pill"
-    >
-      <mat-label>Language</mat-label>
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__facet-select">
       <mat-select
         multiple
+        placeholder="Language"
         [value]="selectedLanguages()"
         (selectionChange)="onLanguageSelectionChange($event.value)"
+        panelClass="filter-bar__select-panel"
       >
+        <mat-select-trigger>Language</mat-select-trigger>
         @for (language of languageOptions(); track language) {
           <mat-option [value]="language">{{ language }}</mat-option>
         }
@@ -18,88 +16,123 @@
     </mat-form-field>
   }
 
-  <div class="filter-bar__facet filter-bar__facet--stars">
-    <span class="filter-bar__facet-label">Stars</span>
-    <mat-slider class="filter-bar__slider" [min]="0" [max]="starRangeMax" [step]="50" discrete>
-      <input
-        matSliderStartThumb
-        [value]="minStars() ?? 0"
-        (valueChange)="onStarRangeChange($event, maxStars())"
-      />
-      <input
-        matSliderEndThumb
-        [value]="maxStars() ?? starRangeMax"
-        (valueChange)="onStarRangeChange(minStars(), $event)"
-      />
-    </mat-slider>
-    <div class="filter-bar__star-inputs">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__star-input">
-        <mat-label>Min</mat-label>
+  <button
+    mat-stroked-button
+    type="button"
+    class="filter-bar__facet-trigger"
+    [matMenuTriggerFor]="starsMenu"
+  >
+    Stars
+    <mat-icon class="filter-bar__facet-trigger-caret" iconPositionEnd svgIcon="arrow-down" />
+  </button>
+  <mat-menu #starsMenu="matMenu" class="filter-bar__facet-panel-menu" xPosition="after">
+    <div
+      class="filter-bar__facet-panel filter-bar__facet-panel--stars"
+      role="presentation"
+      (click)="$event.stopPropagation()"
+    >
+      <mat-slider class="filter-bar__slider" [min]="0" [max]="starRangeMax" [step]="50" discrete>
         <input
-          matInput
-          type="number"
-          min="0"
-          [max]="starRangeMax"
+          matSliderStartThumb
           [value]="minStars() ?? 0"
-          (change)="onStarRangeChange($any($event.target).valueAsNumber, maxStars())"
+          (valueChange)="onStarRangeChange($event, maxStars())"
         />
-      </mat-form-field>
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__star-input">
-        <mat-label>Max</mat-label>
         <input
-          matInput
-          type="number"
-          min="0"
-          [max]="starRangeMax"
+          matSliderEndThumb
           [value]="maxStars() ?? starRangeMax"
-          (change)="onStarRangeChange(minStars(), $any($event.target).valueAsNumber)"
+          (valueChange)="onStarRangeChange(minStars(), $event)"
         />
+      </mat-slider>
+      <div class="filter-bar__star-inputs">
+        <mat-form-field
+          appearance="outline"
+          subscriptSizing="dynamic"
+          class="filter-bar__star-input"
+        >
+          <mat-label>Min</mat-label>
+          <input
+            matInput
+            type="number"
+            min="0"
+            [max]="starRangeMax"
+            [value]="minStars() ?? 0"
+            (change)="onStarRangeChange($any($event.target).valueAsNumber, maxStars())"
+          />
+        </mat-form-field>
+        <mat-form-field
+          appearance="outline"
+          subscriptSizing="dynamic"
+          class="filter-bar__star-input"
+        >
+          <mat-label>Max</mat-label>
+          <input
+            matInput
+            type="number"
+            min="0"
+            [max]="starRangeMax"
+            [value]="maxStars() ?? starRangeMax"
+            (change)="onStarRangeChange(minStars(), $any($event.target).valueAsNumber)"
+          />
+        </mat-form-field>
+      </div>
+    </div>
+  </mat-menu>
+
+  <button
+    mat-stroked-button
+    type="button"
+    class="filter-bar__facet-trigger"
+    [matMenuTriggerFor]="topicMenu"
+  >
+    Topic +
+  </button>
+  <mat-menu #topicMenu="matMenu" class="filter-bar__facet-panel-menu" xPosition="after">
+    <div
+      class="filter-bar__facet-panel filter-bar__facet-panel--topic"
+      role="presentation"
+      (click)="$event.stopPropagation()"
+    >
+      <mat-form-field
+        appearance="outline"
+        subscriptSizing="dynamic"
+        class="filter-bar__topic-field"
+      >
+        <mat-chip-grid #topicGrid aria-label="Selected topics">
+          @for (topic of selectedTopics(); track topic) {
+            <mat-chip-row (removed)="removeTopic(topic)">
+              {{ topic }}
+              <button matChipRemove aria-label="Remove topic">
+                <mat-icon svgIcon="x" />
+              </button>
+            </mat-chip-row>
+          }
+          <input
+            placeholder="Add topic…"
+            [matChipInputFor]="topicGrid"
+            [matAutocomplete]="topicAuto"
+            [ngModel]="topicInput()"
+            (ngModelChange)="topicInput.set($event)"
+            (matChipInputTokenEnd)="onTopicTokenEnd($event)"
+          />
+        </mat-chip-grid>
+        <mat-autocomplete #topicAuto="matAutocomplete" (optionSelected)="onTopicSelected($event)">
+          @for (option of filteredTopicOptions(); track option) {
+            <mat-option [value]="option">{{ option }}</mat-option>
+          }
+        </mat-autocomplete>
       </mat-form-field>
     </div>
-  </div>
+  </mat-menu>
 
-  <mat-form-field
-    appearance="outline"
-    subscriptSizing="dynamic"
-    class="filter-bar__facet filter-bar__facet--topic"
-  >
-    <mat-label>Topic</mat-label>
-    <mat-chip-grid #topicGrid aria-label="Selected topics">
-      @for (topic of selectedTopics(); track topic) {
-        <mat-chip-row (removed)="removeTopic(topic)">
-          {{ topic }}
-          <button matChipRemove aria-label="Remove topic">
-            <mat-icon svgIcon="x" />
-          </button>
-        </mat-chip-row>
-      }
-      <input
-        placeholder="Add topic…"
-        [matChipInputFor]="topicGrid"
-        [matAutocomplete]="topicAuto"
-        [ngModel]="topicInput()"
-        (ngModelChange)="topicInput.set($event)"
-        (matChipInputTokenEnd)="onTopicTokenEnd($event)"
-      />
-    </mat-chip-grid>
-    <mat-autocomplete #topicAuto="matAutocomplete" (optionSelected)="onTopicSelected($event)">
-      @for (option of filteredTopicOptions(); track option) {
-        <mat-option [value]="option">{{ option }}</mat-option>
-      }
-    </mat-autocomplete>
-  </mat-form-field>
-
-  <mat-form-field
-    appearance="outline"
-    subscriptSizing="dynamic"
-    class="filter-bar__facet filter-bar__facet--pill"
-  >
-    <mat-label>License</mat-label>
+  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__facet-select">
     <mat-select
       multiple
+      placeholder="License"
       [value]="selectedLicenses()"
       (selectionChange)="onLicenseSelectionChange($event.value)"
+      panelClass="filter-bar__select-panel"
     >
+      <mat-select-trigger>License</mat-select-trigger>
       @for (license of licenseOptions(); track license) {
         <mat-option [value]="license">{{ license }}</mat-option>
       }
@@ -112,6 +145,7 @@
     class="filter-bar__sort-toggle"
     [value]="sort()"
     (change)="setSort($event.value)"
+    hideSingleSelectionIndicator
     aria-label="Sort by"
   >
     @for (option of sortOptions; track option) {

@@ -366,6 +366,104 @@
       </div>
     </div>
   </div>
+
+  <!-- ═══ 8. FILTER PANEL INTERNALS + SUMMARY PENDING ═══ -->
+  <div data-screen-label="08 Filter panels and pending summary" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">08 · Filter panels (opened) &amp; "Summary pending" <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">overlay internals for each facet button (§5.1) + the no-layout-jump placeholder (§4.1)</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 24px 32px; display: flex; flex-direction: column; gap: 24px;">
+      <div style="display: flex; gap: 24px; align-items: flex-start;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px; align-self: flex-start; background: color-mix(in srgb, var(--color-text) 7%, transparent);">Language <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg></button>
+          <div style="width: 250px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 20px; box-shadow: var(--shadow-lg); padding: 10px 8px; display: flex; flex-direction: column;">
+            <sc-for list="{{ langOpts }}" as="o" hint-placeholder-count="5">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 999px; font-size: 13px; background: {{ o.rowBg }};">
+                <div style="width: 17px; height: 17px; border-radius: 6px; flex: none; border: 1.5px solid {{ o.boxBorder }}; background: {{ o.boxBg }}; display: grid; place-items: center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-bg)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></div>
+                <span style="flex: 1;">{{ o.label }}</span>
+                <span style="font-size: 11px; color: var(--color-neutral-600);">{{ o.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; display: {{ annD }};">mat-select multiple — option rows show catalog counts</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px; align-self: flex-start; background: color-mix(in srgb, var(--color-text) 7%, transparent);">Stars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg></button>
+          <div style="width: 300px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 20px; box-shadow: var(--shadow-lg); padding: 18px 20px; display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--color-neutral-700);"><span>Star range</span><b style="color: var(--color-text);">500 – 5,000</b></div>
+            <div style="position: relative; height: 4px; background: var(--color-neutral-300); border-radius: 2px; margin: 8px 7px 4px;">
+              <div style="position: absolute; left: 18%; right: 28%; top: 0; bottom: 0; background: var(--color-accent); border-radius: 2px;"></div>
+              <div style="position: absolute; left: 18%; top: -7px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-accent); margin-left: -9px; box-shadow: var(--shadow-sm);"></div>
+              <div style="position: absolute; right: 28%; top: -7px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-accent); margin-right: -9px; box-shadow: var(--shadow-sm);"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--color-neutral-600);"><span>0</span><span>25k+</span></div>
+            <div style="display: flex; gap: 8px;">
+              <div class="field" style="flex: 1;"><label>Min</label><div class="input" style="font-size: 13px;">500</div></div>
+              <div class="field" style="flex: 1;"><label>Max</label><div class="input" style="font-size: 13px;">5,000</div></div>
+            </div>
+          </div>
+          <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; display: {{ annD }};">mat-slider (dual thumb) + mat-form-field number inputs, kept in sync</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px; align-self: flex-start; background: color-mix(in srgb, var(--color-text) 7%, transparent);">Topic +</button>
+          <div style="width: 290px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 20px; box-shadow: var(--shadow-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border: 1px solid var(--color-divider); border-radius: 18px; padding: 8px 12px; background: var(--color-bg);">
+              <span class="tag tag-accent">agents ✕</span>
+              <span style="font-size: 13px;">mc<span style="display: inline-block; width: 1.5px; height: 14px; background: var(--color-accent); vertical-align: middle; margin-left: 1px;"></span></span>
+            </div>
+            <div style="display: flex; flex-direction: column;">
+              <div style="padding: 8px 12px; border-radius: 999px; font-size: 13px; background: color-mix(in srgb, var(--color-accent) 12%, transparent);"><b>mc</b>p-servers <span style="font-size: 11px; color: var(--color-neutral-600);">· 24</span></div>
+              <div style="padding: 8px 12px; border-radius: 999px; font-size: 13px;"><b>mc</b>p-clients <span style="font-size: 11px; color: var(--color-neutral-600);">· 9</span></div>
+              <div style="padding: 8px 12px; border-radius: 999px; font-size: 13px;"><b>mc</b>p-tooling <span style="font-size: 11px; color: var(--color-neutral-600);">· 7</span></div>
+            </div>
+          </div>
+          <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; display: {{ annD }};">mat-chip-grid (removable) + mat-autocomplete with match highlight</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px; align-self: flex-start; background: color-mix(in srgb, var(--color-text) 7%, transparent);">License <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg></button>
+          <div style="width: 230px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 20px; box-shadow: var(--shadow-lg); padding: 10px 8px; display: flex; flex-direction: column;">
+            <sc-for list="{{ licOpts }}" as="o" hint-placeholder-count="4">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 999px; font-size: 13px; background: {{ o.rowBg }};">
+                <div style="width: 17px; height: 17px; border-radius: 6px; flex: none; border: 1.5px solid {{ o.boxBorder }}; background: {{ o.boxBg }}; display: grid; place-items: center;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-bg)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></div>
+                <span style="flex: 1;">{{ o.label }}</span>
+                <span style="font-size: 11px; color: var(--color-neutral-600);">{{ o.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; display: {{ annD }};">mat-select multiple — SPDX identifiers</span>
+        </div>
+      </div>
+      <div style="border-top: 1px solid var(--color-divider); padding-top: 20px; display: flex; gap: 24px; align-items: flex-start;">
+        <div style="width: 390px; display: flex; flex-direction: column; gap: 6px;">
+          <div class="card elev-sm" style="gap: 9px; padding: 18px 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-neutral-700); display: grid; place-items: center; font-family: var(--font-heading); font-size: 15px; color: var(--color-bg); flex: none;">S</div>
+              <div style="flex: 1;">
+                <div style="font-family: var(--font-heading); font-size: 16px;">schema-scout</div>
+                <div style="font-size: 11px; color: var(--color-neutral-600);">lattice-labs · 20 minutes ago</div>
+              </div>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div style="height: 38px; display: flex; flex-direction: column; justify-content: center; gap: 5px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.56"></path></svg>
+                <span style="font-size: 12px; font-style: italic; color: var(--color-neutral-600);">Summary pending</span>
+              </div>
+              <div style="height: 7px; border-radius: 4px; background: var(--color-neutral-200); width: 86%;"></div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--color-divider); padding-top: 9px;">
+              <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">Rust</span>
+              <span style="font-size: 11px; color: var(--color-neutral-700);">★ 705</span>
+              <span class="tag tag-neutral">MIT</span>
+              <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-accent-700); font-weight: 600;">GitHub <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg></span>
+            </div>
+          </div>
+          <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; display: {{ annD }};">"Summary pending" — same 38px slot, no layout jump (§4.1)</span>
+        </div>
+        <div style="font-size: 12.5px; color: var(--color-neutral-800); max-width: 480px; line-height: 1.6; padding-top: 4px;">
+          The placeholder occupies the exact 2-line summary slot (38px): a small spinner-glyph + italic <i>"Summary pending"</i> in neutral-600, over one neutral-200 ghost bar. Copy is literal — no ellipsis animation. When the summary arrives it fades in place (150ms opacity); card height never changes.
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;showAnnotations&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Handoff&quot;}}">
@@ -384,8 +482,11 @@ class Component extends DCLogic {
     ];
     const repos = raw.map((r, i) => ({ ...r, ...bm(r.b), initial: r.name[0].toUpperCase(), dot: dots[i % 3] }));
     const gems = [...repos].sort((a, b) => b.score - a.score);
+    const opt = (label, count, sel) => ({ label, count, rowBg: sel ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent', boxBorder: sel ? 'var(--color-accent)' : 'var(--color-neutral-500)', boxBg: sel ? 'var(--color-accent)' : 'transparent' });
     return {
       annD,
+      langOpts: [opt('TypeScript', 61, true), opt('Rust', 46, true), opt('Python', 38, false), opt('Go', 27, false), opt('Shell', 11, false)],
+      licOpts: [opt('MIT', 142, false), opt('Apache-2.0', 87, true), opt('MPL-2.0', 21, false), opt('GPL-3.0', 18, false)],
       reposSix: repos,
       gemsThree: gems.slice(0, 3),
       reposMobile: repos.slice(0, 3),

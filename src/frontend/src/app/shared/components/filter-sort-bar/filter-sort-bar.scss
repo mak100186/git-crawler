@@ -10,33 +10,60 @@
   &__facets {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
     gap: 12px;
   }
 
-  &__facet {
-    min-width: 160px;
+  // Language/License: mat-select is already a native trigger-button-that-opens-a-panel - the only
+  // gap vs. the design's compact pill button (dashboard-handoff.md §3) was visual, not behavioral.
+  // A fixed <mat-select-trigger> (see .html) keeps the closed-state text static ("Language"/
+  // "License", not a floating label or the selected values - active selections surface via the
+  // chip row instead, per the design), and this shrinks the field itself to fit that short text
+  // rather than the wide default form-field box.
+  // font-family/size: mat-select sets these explicitly on the .mat-mdc-select host itself, deeper
+  // than .mat-mdc-form-field-infix below - setting them on the infix (an ancestor) has no effect,
+  // since mat-select's own declaration wins over anything merely inherited. The custom properties
+  // below are what it actually reads, and (being custom properties) apply through the component
+  // boundary without needing ::ng-deep.
+  &__facet-select {
+    width: auto;
+    flex: none;
+    --mat-select-trigger-text-font: var(--font-display);
+    --mat-select-trigger-text-size: 14px;
 
-    &--pill ::ng-deep .mat-mdc-text-field-wrapper {
-      border-radius: 999px;
-    }
-
-    &--stars {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      min-width: 260px;
-    }
-
-    &--topic {
-      min-width: 240px;
-      flex: 1 1 240px;
+    ::ng-deep .mat-mdc-form-field-infix {
+      width: auto;
+      min-width: 0;
+      min-height: 26px;
+      padding-top: 2px;
+      padding-bottom: 2px;
     }
   }
 
-  &__facet-label {
-    font-size: 11px;
-    color: var(--color-neutral-600);
+  // Stars/Topic have no native trigger+panel of their own (unlike mat-select) - each is a plain
+  // pill button (already pill-shaped via styles.scss's global .mat-mdc-outlined-button rule)
+  // opening a mat-menu anchored to it, matching "Panels open anchored to their button (CDK
+  // overlay, as mat-select does natively)" (dashboard-handoff.md §3) for the two facets that
+  // needed real click-to-open behavior added, not just restyling.
+  // mat-stroked-button defaults its label/outline color to --mat-sys-primary (our accent orange) -
+  // fine for a call-to-action, wrong for a facet trigger that should read as neutral chrome like
+  // Language/License's mat-select (dark ink text, quiet neutral border). Setting the actual
+  // Material-consumed custom properties (rather than fighting `color`/`border-color` on specificity)
+  // is the supported override path and applies regardless of stylesheet load order.
+  &__facet-trigger {
+    flex: none;
+    --mat-button-outlined-label-text-color: var(--color-ink);
+    --mat-button-outlined-outline-color: var(--color-neutral-300);
+  }
+
+  // Matches mat-select's native caret (Language/License) so Stars reads as a dropdown too, not a
+  // plain button - the only facet without a chevron is Topic, which uses a "+" affordance instead
+  // (dashboard-handoff.md §3 / reference screenshot). iconPositionEnd on the <mat-icon> (see .html)
+  // is what actually puts it after the label - mat-button projects icon content into a slot before
+  // or after the label based on that attribute, not the icon's position in template source order.
+  &__facet-trigger-caret {
+    width: 14px;
+    height: 14px;
   }
 
   &__slider {
@@ -75,18 +102,121 @@
     flex-wrap: wrap;
   }
 
-  &__sort-toggle ::ng-deep .mat-button-toggle {
-    border-radius: 999px;
+  // Material's default "standard" appearance renders mat-button-toggle-group as ONE continuous
+  // pill (a single border+radius on the group, with only the group's own outer corners rounded
+  // and a 1px divider between segments) - a classic segmented control, not the design's row of
+  // independently-pill-shaped, gapped buttons (dashboard-handoff.md §3/screenshot). Overriding
+  // only the group-level radius (as a prior version of this rule did) left each button's own
+  // corners un-rounded while the shared border/overflow-clip still spanned the whole row, which
+  // rendered as visually overlapping/cramped pills. Fix: strip the group's own border/radius,
+  // remove the inter-button divider, and give every button its own full border+radius+background
+  // instead, with a real gap between them.
+  //
+  // Checked-state color: unstyled, this falls back to Material's own --mat-sys-secondary-container
+  // system token (a generic theme color unrelated to our palette) rather than the design's solid
+  // accent fill - overridden explicitly below to match the nav's active-pill treatment
+  // (.app-toolbar__nav-link--active in app.scss).
+  //
+  // The tick: "standard" (non-legacy) mat-button-toggle renders a mat-pseudo-checkbox selection
+  // indicator by default - meant for genuinely multi-select toggle groups, not this single-select
+  // sort control. hideSingleSelectionIndicator (set on the group in the template) is Material's
+  // own supported way to turn that off, so there's no leftover checkbox-wrapper gutter/indicator
+  // to override here.
+  &__sort-toggle {
+    ::ng-deep {
+      &.mat-button-toggle-group-appearance-standard {
+        border: none;
+        border-radius: 0;
+        overflow: visible;
+        gap: 6px;
+      }
+
+      .mat-button-toggle-appearance-standard + .mat-button-toggle-appearance-standard {
+        border-left: none;
+      }
+
+      .mat-button-toggle-appearance-standard {
+        border: 1px solid var(--color-neutral-300);
+        border-radius: 999px;
+        background: var(--color-surface);
+      }
+
+      .mat-button-toggle-appearance-standard.mat-button-toggle-checked {
+        border-color: var(--color-accent);
+        background-color: var(--color-accent);
+        color: var(--color-ink);
+      }
+    }
   }
 
+  // "Circle around it, a shade different from the surrounding filter-bar background" (feedback) -
+  // mat-icon-button is already a 40px circular hit target; this adds the visible ring + fill.
+  &__direction-toggle {
+    border: 1px solid var(--color-neutral-300);
+    border-radius: 50%;
+    background: var(--color-neutral-100);
+  }
+
+  // Unselected track/handle fall back to M3's auto-generated --mat-sys-surface-variant /
+  // --mat-sys-outline tones - derived from our single accent (terracotta) seed color, these come
+  // out visibly mauve/pink rather than a plain neutral. Design calls for white when off.
   &__bookmarked-toggle {
     margin-left: auto;
+    --mat-slide-toggle-unselected-handle-color: #fff;
+    --mat-slide-toggle-unselected-hover-handle-color: #fff;
+    --mat-slide-toggle-unselected-focus-handle-color: #fff;
+    --mat-slide-toggle-unselected-pressed-handle-color: #fff;
+    --mat-slide-toggle-unselected-track-color: var(--color-neutral-200);
+    --mat-slide-toggle-unselected-hover-track-color: var(--color-neutral-200);
+    --mat-slide-toggle-unselected-focus-track-color: var(--color-neutral-200);
+    --mat-slide-toggle-unselected-pressed-track-color: var(--color-neutral-200);
+    --mat-slide-toggle-track-outline-color: var(--color-neutral-400);
   }
 
   &__filters-trigger {
     border-radius: 999px;
     flex: none;
+    --mat-button-outlined-label-text-color: var(--color-ink);
+    --mat-button-outlined-outline-color: var(--color-neutral-300);
   }
+}
+
+// Stars/Topic panels (dashboard-handoff.md §3, "Opened-panel internals... see screen 08": surface
+// bg, radius 20px, shadow-lg, 8-10px padding). mat-menu's overlay is portaled outside this
+// component's own DOM subtree, so these target the panelClass passed to <mat-menu> rather than a
+// component-local selector - the standard pattern for styling Material overlay content
+// (::ng-deep still reaches it because Angular tags overlay-created elements with the emitting
+// component's own content attribute).
+::ng-deep .filter-bar__facet-panel-menu .mat-mdc-menu-content {
+  padding: 0;
+}
+
+.filter-bar__facet-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--color-surface);
+  border-radius: 20px;
+  box-shadow: var(--elevation-lg);
+  padding: 10px;
+
+  &--stars {
+    width: 300px;
+  }
+
+  &--topic {
+    width: 290px;
+  }
+}
+
+.filter-bar__topic-field {
+  width: 100%;
+}
+
+// mat-select's own overlay panel (Language/License) - same panel chrome as the Stars/Topic
+// mat-menu panels above, for visual consistency across all four facet panels.
+::ng-deep .filter-bar__select-panel {
+  border-radius: 20px !important;
 }
 
 // Below the 960px breakpoint, the facets/sort-row above collapse and this full-height sidenav
@@ -128,6 +258,16 @@
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
+
+    // The desktop-row sizing above (width: auto/fit-content, so the pill triggers sit snugly
+    // next to each other) would leave these looking cramped stacked full-height in the sidenav -
+    // full width matches every other sidenav control here. (The Stars/Topic mat-menu panels
+    // themselves are portaled outside this DOM subtree by CDK, so their fixed 300px/290px width
+    // isn't reachable from here - acceptable at the 320px sidenav width this opens within.)
+    .filter-bar__facet-select,
+    .filter-bar__facet-trigger {
+      width: 100%;
+    }
   }
 
   .filter-bar__sort-row {

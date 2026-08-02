@@ -51,6 +51,13 @@ Chips-first row directly under the toolbar (not on Trending):
    `mat-select multiple`; **Stars** → `mat-slider` with `matSliderStartThumb`/`matSliderEndThumb`;
    **Topic +** → `mat-chip-grid` + `mat-autocomplete`; **License** → `mat-select multiple`.
    Panels open anchored to their button (CDK overlay, as `mat-select` does natively).
+   **Opened-panel internals are designed — see screen 08:** surface bg, radius 20px, shadow-lg,
+   8–10px padding. Language/License option rows are pill-shaped (hover = 7% ink tint), 17px
+   6px-radius checkboxes (terracotta fill when checked), catalog count right-aligned in
+   neutral-600. Stars panel (300px): dual-thumb slider (18px terracotta thumbs) with the live
+   range printed top-right, 0/25k+ scale captions, and synced Min/Max `mat-form-field` number
+   inputs beneath. Topic panel (290px): chip-grid input on bg-cream (removable accent chips +
+   caret), `mat-autocomplete` rows below with the typed prefix bolded and topic counts.
 2. Divider, then the active-filter `mat-chip-set`: one removable chip per active value
    (tint `#fff2eb`, text `#643312`), + ghost “Clear all” `mat-button` when ≥1 chip.
 3. Right: sort `mat-button-toggle-group` (Newest | Score | Stars | Commits — defaults per view),
@@ -66,8 +73,10 @@ Chips-first row directly under the toolbar (not on Trending):
 - Header row: 40px circular avatar (initial, rotating terracotta/olive/neutral fills) ·
   `mat-card-title` repo name (Caprasimo 16px) · `mat-card-subtitle` “owner · relative date” (11px
   neutral-600) · bookmark `mat-icon-button` far right.
-- Body: AI summary, 12.5px/1.5, clamped to 2 lines. If absent render “Summary pending” in the same
-  slot — no layout jump (§4.1).
+- Body: AI summary, 12.5px/1.5, clamped to 2 lines. If absent render the **“Summary pending”
+  placeholder in the same fixed 38px slot** (screen 08): spinner glyph + italic “Summary pending”
+  in neutral-600 over one neutral-200 ghost bar (86% width, 7px, radius 4px). Literal copy, no
+  animated ellipsis; the real summary fades in place (150ms opacity) with zero height change (§4.1).
 - Footer (`mat-card-actions`, top divider): language chip (**solid olive-800, olive-100 text**),
   star count, license `mat-chip` (neutral tint), right-aligned “GitHub” external `mat-button`
   with `open_in_new` icon.
@@ -113,7 +122,21 @@ router link to drill-down.
 “Removed from bookmarks” with terracotta-400 **UNDO** action; failure variant accent-800 bg,
 accent-100 text — “Couldn't save bookmark — try again” + **RETRY**, and the icon reverts.
 
-## 8. Deferred (do not build in F-011)
+## 8. Designer sign-off on brief-delegated choices
+
+These were left to the designer by the brief and are now confirmed, load-bearing decisions:
+
+- **Star range = dual-thumb `mat-slider`** (`matSliderStartThumb`/`matSliderEndThumb`) **plus**
+  synced min/max `mat-form-field` number inputs inside the same panel — the slider for coarse
+  sweep, the inputs for precision (resolves the brief's either/or in §5.1 as both).
+- **Sort = `mat-button-toggle-group`**, not `mat-select`: only four options, and visible options
+  make each view's default ordering (its identity) legible at a glance. Direction is a separate
+  `mat-icon-button`.
+- **Filter bar = persistent pill row**, not a collapsible `mat-expansion-panel`: filtering is the
+  dashboard's primary verb and active chips must stay visible (§5.3); collapse happens only below
+  the 960px breakpoint (into the `Filters · N` sheet).
+
+## 9. Deferred (do not build in F-011)
 
 - Dedicated Bookmarks view → F-012 (ghost nav pill only).
 - Free-text/semantic search → v2 (ghost field only).

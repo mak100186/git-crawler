@@ -12,8 +12,6 @@ Skill: `orchestrator-development-pattern` (located at `~/.claude/skills/orchestr
 Trigger: `/orchestrator-development-pattern` or when the user says "start development", "implement", "build".
 
 The `orchestrator-development-pattern` detects the platform at runtime.
-Sub-agent Developer quality gate: <TODO — no stack detected yet; fill in the lint/format command once a language is chosen>.
-Sub-agent Integration quality gate: <TODO — no stack detected yet; fill in the test command + dependency audit command once a language is chosen>.
 
 values:
   project-management-doc: "./docs/project-management.md"

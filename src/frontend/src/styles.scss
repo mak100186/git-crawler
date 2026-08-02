@@ -104,6 +104,24 @@ body {
   border-radius: var(--radius-pill) !important;
 }
 
+// mat-mdc-text-field-wrapper's own border-radius (above) only affects its own box/clipping - for
+// appearance="outline" fields, the VISIBLE border is drawn separately by the notched-outline
+// leading/trailing pieces, themed via --mat-form-field-outlined-container-shape (defaults to a
+// small ~4px corner, i.e. still a rounded rectangle even with the override above in place).
+.mat-mdc-form-field {
+  --mat-form-field-outlined-container-shape: var(--radius-pill);
+}
+
+// MDC's own horizontal-padding formula also reads that same --mat-form-field-outlined-container-
+// shape variable (`padding-right/left: max(16px, that-variable)`), so setting it to a full pill
+// radius above also blew the side padding out to ~999px, which is what was pushing these fields to
+// full-bleed width. Pin the actual padding back down explicitly rather than touching the shared
+// shape variable - the corners stay pill-shaped, the padding stays sane.
+.mdc-text-field--outlined {
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
 // Focus ring (dashboard-handoff.md §1): 2px solid terracotta, 2px offset, on :focus-visible only.
 :focus-visible {
   outline: 2px solid var(--color-accent);
