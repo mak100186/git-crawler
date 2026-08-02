@@ -3,11 +3,19 @@ using System.Net.Http.Headers;
 using DotNetEnv;
 
 using GitCrawler.Api.Data;
+using GitCrawler.Api.Features.Bookmarks.CreateBookmark;
+using GitCrawler.Api.Features.Bookmarks.DeleteBookmark;
+using GitCrawler.Api.Features.Bookmarks.ListBookmarks;
+using GitCrawler.Api.Features.Categories.GetCategories;
+using GitCrawler.Api.Features.Categories.GetCategoryRepositories;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Diagnostics.Ping;
+using GitCrawler.Api.Features.Repositories.GetDiscoveryFeed;
+using GitCrawler.Api.Features.Repositories.GetHiddenGems;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
 using GitCrawler.Api.Features.Trends.AggregateTrends;
+using GitCrawler.Api.Features.Trends.GetTrending;
 
 using Hangfire;
 using Hangfire.Dashboard;
@@ -263,6 +271,18 @@ app.UseHttpsRedirection();
 app.MapHealthChecks("/health");
 
 app.MapPingEndpoint();
+
+// F-010: the Web API's four required dashboard views plus bookmark create/list/delete, all
+// Wolverine command/query slices dispatched via IMessageBus (ADR-015), matching MapPingEndpoint's
+// pattern above.
+app.MapGetDiscoveryFeedEndpoint();
+app.MapGetHiddenGemsEndpoint();
+app.MapGetTrendingEndpoint();
+app.MapGetCategoriesEndpoint();
+app.MapGetCategoryRepositoriesEndpoint();
+app.MapCreateBookmarkEndpoint();
+app.MapDeleteBookmarkEndpoint();
+app.MapListBookmarksEndpoint();
 
 // Serve the Angular production build from wwwroot (populated by `dotnet publish` / the Docker
 // image build - see GitCrawler.Api.csproj's BuildAngularApp/CopyAngularApp targets and

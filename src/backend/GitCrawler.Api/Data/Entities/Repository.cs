@@ -50,6 +50,19 @@ public class Repository
 
     public DateTimeOffset? ContributorCountFetchedAtUtc { get; set; }
 
+    // GitHub topics (F-010 D1) - a List<string> mapped to Postgres text[] via EF Core's primitive
+    // collections support (EF8+; Npgsql maps it to a native array, no explicit HasColumnType
+    // needed - verified against the installed Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3
+    // package, which ships NpgsqlArrayMethodTranslator for translating LINQ over this shape).
+    // Capped at 10/repo by the Crawler (GitHubDiscoveryClient.BuildDiscoveryQuery) to bound
+    // GraphQL point cost, not enforced here.
+    public List<string> Topics { get; set; } = [];
+
+    // Set once, on first insert only (F-010 D1) - never updated on re-crawl, unlike
+    // LastCrawledAtUtc which changes every run. This is what Discovery Feed's "Newest" sort orders
+    // by, so a frequently re-crawled old repo can't look newer than a genuinely new discovery.
+    public DateTimeOffset FirstDiscoveredAtUtc { get; set; }
+
     public ICollection<Score> Scores { get; set; } = new List<Score>();
 
     public ICollection<Summary> Summaries { get; set; } = new List<Summary>();

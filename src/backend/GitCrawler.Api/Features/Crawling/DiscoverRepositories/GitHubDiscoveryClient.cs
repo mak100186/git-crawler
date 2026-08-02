@@ -25,6 +25,10 @@ public class GitHubDiscoveryClient(
     // connection cap while keeping call count (and therefore point cost) low (spike §1/§4).
     private readonly int _pageSize = configuration.GetValue("GitHub:DiscoveryPageSize", 50);
 
+    // F-010 D1: caps the per-repo repositoryTopics(first:) connection to bound the added GraphQL
+    // point cost of this new field - not a documented GitHub limit, this feature's own choice.
+    private const int TopicsPerRepoLimit = 10;
+
     // "Baseline discovery criteria (age, activity, exclusions)" is named only qualitatively in
     // Architecture §1, with no concrete numbers given anywhere upstream - these are this
     // feature's own v1 default (Task Packet Constraints: "use your judgment... document your
@@ -133,7 +137,16 @@ public class GitHubDiscoveryClient(
                                 repo.PushedAt,
                                 repo.DefaultBranchRef != null
                                     ? repo.DefaultBranchRef.Target.Cast<Commit>().History(1, null, null, null, null, null, null).TotalCount
-                                    : (int?)null
+                                    : (int?)null,
+                                // F-010 D1: repositoryTopics(first:10) { nodes { topic { name } } } -
+                                // shape verified via reflection against the installed Octokit.GraphQL
+                                // 0.4.0-beta package (RepositoryTopics(first,after,last,before) ->
+                                // RepositoryTopicConnection.Nodes -> RepositoryTopic.Topic.Name),
+                                // the same verification approach this feature's original Task Packet
+                                // used for its own query shape (see this feature's Assumptions and
+                                // Deviations).
+                                repo.RepositoryTopics(TopicsPerRepoLimit, null, null, null).Nodes
+                                    .Select(rt => rt.Topic.Name).ToList()
                             ))
                         )).ToList()
                     )).Single()

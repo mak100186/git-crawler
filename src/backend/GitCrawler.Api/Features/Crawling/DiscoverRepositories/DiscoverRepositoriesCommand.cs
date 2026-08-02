@@ -76,7 +76,10 @@ public class DiscoverRepositoriesCommandHandler(
                 var existing = await dbContext.Repositories.SingleOrDefaultAsync(r => r.GitHubId == discovered.GitHubId, cancellationToken);
                 if (existing is null)
                 {
-                    existing = new Repository { GitHubId = discovered.GitHubId };
+                    // FirstDiscoveredAtUtc (F-010 D1) is set once, here, and never touched again -
+                    // it backs Discovery Feed's "Newest" sort, which must reflect genuine discovery
+                    // order rather than LastCrawledAtUtc's re-crawl churn.
+                    existing = new Repository { GitHubId = discovered.GitHubId, FirstDiscoveredAtUtc = timeProvider.GetUtcNow() };
                     dbContext.Repositories.Add(existing);
                 }
 
@@ -139,6 +142,10 @@ public class DiscoverRepositoriesCommandHandler(
         entity.CreatedAtUtc = discovered.CreatedAtUtc;
         entity.PushedAtUtc = discovered.PushedAtUtc;
         entity.CommitCount = discovered.CommitCount;
+        // Topics (F-010 D1) is refreshed on every crawl, unlike FirstDiscoveredAtUtc - a repo's
+        // topic list can legitimately change over time, so it follows the same "always overwrite
+        // from the latest crawl" pattern as every other field in this method.
+        entity.Topics = [.. discovered.Topics];
     }
 
     // ADR-018: chained Polly pipeline replacing the old hand-rolled while/catch retry loops.

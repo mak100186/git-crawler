@@ -27,7 +27,8 @@ public record DiscoveryPage(bool HasNextPage, string? EndCursor, IReadOnlyList<D
 // for why this, not Owner+Name, is the safe upsert key). CommitCount is the cheap
 // history(first:1).totalCount signal (spike §3), not a weekly rate - that derivation is F-007's
 // job. Contributor count is deliberately absent here; it comes from a separate call the handler
-// decides whether to make (spike §7 caching).
+// decides whether to make (spike §7 caching). Topics (F-010 D1) is capped at 10/repo by
+// GitHubDiscoveryClient.BuildDiscoveryQuery to bound the added GraphQL point cost.
 public record DiscoveredRepository(
     long GitHubId,
     string Owner,
@@ -41,7 +42,8 @@ public record DiscoveredRepository(
     string? LicenseName,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? PushedAtUtc,
-    int? CommitCount);
+    int? CommitCount,
+    IReadOnlyList<string> Topics);
 
 // Base for every rate-limit condition IGitHubDiscoveryClient can signal, so a generic catch clause
 // elsewhere can exclude "any rate limit" in one filter, while callers still branch on the specific

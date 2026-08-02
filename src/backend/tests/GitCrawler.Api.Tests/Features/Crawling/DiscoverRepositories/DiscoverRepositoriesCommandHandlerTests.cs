@@ -43,7 +43,8 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         long gitHubId,
         string name = "hello-world",
         string? licenseId = "MIT",
-        string? licenseName = "MIT License") =>
+        string? licenseName = "MIT License",
+        IReadOnlyList<string>? topics = null) =>
         new(
             gitHubId,
             "octocat",
@@ -57,7 +58,8 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
             licenseName,
             new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero),
-            42);
+            42,
+            topics ?? []);
 
     [Fact]
     public async Task Handle_NewGitHubId_InsertsNewRepository()
@@ -76,6 +78,82 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         Assert.Equal(42, stored.CommitCount);
         Assert.Equal(1, result.DiscoveredCount);
         Assert.Equal(1, result.UpsertedCount);
+    }
+
+    [Fact]
+    public async Task Handle_NewGitHubId_SetsFirstDiscoveredAtUtcToNow()
+    {
+        _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(321)]));
+        _discoveryClient.EnqueueContributorCount(1);
+
+        var handler = CreateHandler();
+        await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
+
+        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 321);
+        Assert.Equal(_timeProvider.GetUtcNow(), stored.FirstDiscoveredAtUtc);
+    }
+
+    [Fact]
+    public async Task Handle_ExistingGitHubId_NeverOverwritesFirstDiscoveredAtUtc()
+    {
+        var originalFirstDiscovered = _timeProvider.GetUtcNow().AddDays(-30);
+        _dbContext.Repositories.Add(new Repository
+        {
+            GitHubId = 42,
+            Owner = "octocat",
+            Name = "old-name",
+            Url = "https://github.com/octocat/old-name",
+            DefaultBranch = "main",
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddYears(-2),
+            FirstDiscoveredAtUtc = originalFirstDiscovered,
+            ContributorCountFetchedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
+        });
+        await _dbContext.SaveChangesAsync();
+
+        _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(42)]));
+
+        var handler = CreateHandler();
+        await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
+
+        // A re-crawl must not touch FirstDiscoveredAtUtc (F-010 D1) - otherwise a frequently
+        // re-crawled old repo would look newer than a genuinely new discovery under "Newest" sort.
+        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 42);
+        Assert.Equal(originalFirstDiscovered, stored.FirstDiscoveredAtUtc);
+    }
+
+    [Fact]
+    public async Task Handle_DiscoveredRepositoryWithTopics_CapturesTopicsOnInsertAndRefreshesOnRecrawl()
+    {
+        _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(500, topics: ["cli", "dotnet"])]));
+        _discoveryClient.EnqueueContributorCount(1);
+
+        var handler = CreateHandler();
+        await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
+
+        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 500);
+        Assert.Equal(["cli", "dotnet"], stored.Topics);
+
+        // Topics is refreshed every crawl (unlike FirstDiscoveredAtUtc) - a repo's topic list can
+        // legitimately change over time.
+        _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(500, topics: ["cli"])]));
+        _discoveryClient.EnqueueContributorCount(1);
+        await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
+
+        stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 500);
+        Assert.Equal(["cli"], stored.Topics);
+    }
+
+    [Fact]
+    public async Task Handle_DiscoveredRepositoryWithNoTopics_StoresEmptyList()
+    {
+        _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(600)]));
+        _discoveryClient.EnqueueContributorCount(1);
+
+        var handler = CreateHandler();
+        await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
+
+        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 600);
+        Assert.Empty(stored.Topics);
     }
 
     [Fact]
