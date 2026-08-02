@@ -1,7 +1,115 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 6
+> Revision: 7
 > Last updated: 2026-08-02
+
+## Revision 7 — 2026-08-02 — F-011 (Web Dashboard), run as a standalone slice of Phase 3; post-hoc `core/services` split
+
+**Changes:**
+- **F-011 (Web Dashboard)** — the four required views (Discovery Feed, Hidden Gems, Trending,
+  Categories) plus the Category drill-down, implemented as standalone, Angular-Material-only
+  (ADR-011) routed components under `src/frontend/src/app/features/`, backed by live `HttpClient`
+  calls to F-010's endpoints. Reused shared components: `RepositoryCard` (base + hidden-gem score
+  badge + expandable "Why this score?" breakdown + "Summary pending" placeholder), `RepositoryGrid`
+  (loading/empty/error/populated states + `mat-paginator`, 24/page default), `FilterSortBar`
+  (`mat-select multiple` for language/license, dual-thumb `mat-slider` + synced number inputs for
+  star range, `mat-chip-grid`+`mat-autocomplete` for topic, `mat-button-toggle-group` for sort,
+  `mat-slide-toggle` for bookmarked-only), `BookmarkToggle` (optimistic flip, snack-bar
+  confirm/Undo, revert+Retry on failure) — reused on every card, including Trending's expanded
+  contributing-repo rows. Category drill-down reuses Discovery Feed's exact card-grid +
+  `FilterSortBar` stack rather than a second list component, with the category pinned as a
+  non-removable filter chip.
+- **App shell rebuilt to the approved "Ink Header" visual design** (`dashboard-handoff.md`) — ink-900
+  `mat-toolbar`, terracotta active-nav pill, Caprasimo/Figtree fonts, custom Material 3 theme tokens
+  (colors, pill radii, elevation, focus ring) replacing the Phase 0 scaffold's default azure/blue
+  theme. CDK `BreakpointObserver` at 960px collapses the primary nav to a bottom floating pill row
+  and the filter/sort bar to a "Filters · N" button opening a `mat-sidenav` with the same controls.
+  Reserved, inert "Bookmarks · F-012" nav pill and "Search (v2)" field ship as disabled placeholders
+  so the shell won't reflow when those land.
+- **Reviewer FAILed once (round 1), fixed and re-verified PASS (round 2)**: (1) the 960px responsive
+  filter-bar collapse was missing entirely — no `BreakpointObserver` usage, no "Filters · N" trigger,
+  no sidenav; (2) the Categories tile grid and the mobile bottom-nav links were built from
+  custom-CSS-styled `<a>` tags mimicking a card/button look instead of real `mat-card`/
+  `mat-icon-button` elements — a genuine ADR-011 violation despite the component already importing
+  `MatCardModule` for other states. Both fixed; the round-2 diff was verified scoped to exactly the
+  files the fix claimed.
+- **Integration found and fixed a genuine pre-ship runtime defect** Developer/Reviewer both missed:
+  `FilterSortBar` was missing a `MatInputModule` import, so the Star-range Min/Max facet inputs would
+  have thrown `mat-form-field must contain a MatFormFieldControl` in a live browser — AC2 ("filter/sort
+  controls work end-to-end") was not actually true until this fix landed. Root-caused to 22 of 23
+  originally-failing tests across four spec files. Also fixed four test-only defects (a
+  `RouterTestingHarness` called more than once per test, a snack-bar mock that synchronously
+  auto-fired an unmocked "Undo" call, an over-broad DOM selector matching a legitimately-reused BEM
+  modifier class, and a test assertion that contradicted `HttpParams.getAll()`'s documented
+  null-vs-empty-array behavior) — none were gamed (no test disabled/skipped/loosened).
+- **Reviewer-Integration FAILed once on a reporting-accuracy issue, not a code defect**: the
+  Integration Agent's Documentation Drift section quoted a specific sentence from
+  `docs/project-management.md`'s F-011 row that didn't actually exist in the file yet — the
+  underlying `MatInputModule` finding was true and worth recording, but the report had gotten ahead
+  of the actual document edit. Fixed by making the edit for real (PMBook → v21) and correcting the
+  report to match, re-verified PASS.
+- **Live E2E validated**, not deferred as Manual: `dotnet publish` was run for real (Node available in
+  this environment), exercising `GitCrawler.Api.csproj`'s `BuildAngularApp`/`CopyAngularApp` MSBuild
+  targets; the published host served `index.html` at `/` and correctly fell back to `index.html` for
+  a directly-requested client-side route (`/hidden-gems`) via `MapFallbackToFile`, confirming FR-009
+  AC3 end-to-end, not just via `npm run build` in isolation.
+- **Two contract gaps in F-010, pre-flagged and handled without inventing a backend endpoint**: no
+  facet-options endpoint exists (`/api/languages|licenses|topics`) — language options are sourced
+  from `/api/categories` (Category ≡ PrimaryLanguage), license/topic options accumulated client-side
+  from repository cards already fetched that session (`FacetOptionsService`). `TrendDto` has no
+  growth/period-over-period metric and `/api/trending` isn't deduplicated per category (unlike
+  `/api/categories`) — the Trending growth chip computes a real average-score delta between a
+  category's two most recent period rows when both exist, falling back to the current average score
+  (not a fabricated percentage) when only one period exists.
+- **This Orchestrator run was deliberately scoped to F-011 alone**, not the full Phase 3 (F-010,
+  F-011, F-012) — F-012 remains `Planned`; Phase 3 itself stays `Planned`.
+- **Post-hoc refactor, operator-directed**: graphify flagged `frontend core/services` as a
+  low-cohesion (0.05) 54-node community mixing four unrelated concerns — F-010 API client wrappers,
+  a query-param-building utility, a client-side facet-derivation service, and an unrelated
+  Material-icon-registration bootstrap service. Split into `core/api/` (the four `*-api.service.ts`
+  files + `query-params.util.ts`), `core/facets/` (`facet-options.service.ts`), and `core/icons/`
+  (`icon-registry.service.ts`), with all 16 consumer files' import paths updated. Verified via a full
+  rebuild/lint/test pass (57/57 still passing) before re-running graphify.
+- **Documentation drift found and fixed**: `docs/test-cases.md` extended to v6 with TC-011 (12
+  scenarios, authored directly by the Orchestrator per this pipeline's Step 0.0 gap-closure pattern —
+  stated explicitly to both Integration and Reviewer-Integration this run to avoid the F-010 run's
+  misattribution incident). `docs/test-runbook.md` extended with an F-011 section. `docs/
+  project-management.md` F-011 row → `Done` (v20, corrected to v21 for the `MatInputModule` finding).
+
+**Modules / files affected:**
+- `src/frontend/src/app/app.{ts,html,scss}`, `app.routes.ts`, `app.config.ts` — real shell, routing,
+  `provideHttpClient()`/`provideAnimationsAsync()`.
+- `src/frontend/src/styles.scss`, `src/frontend/src/index.html` — theme tokens, Caprasimo/Figtree fonts.
+- `src/frontend/proxy.conf.json` (new), `src/frontend/angular.json` — dev-server API proxy.
+- `src/frontend/package.json` — `@angular/animations` added (missing peer dep from the Phase 0 scaffold).
+- `src/frontend/src/app/core/models/` (new) — `bookmark`, `category`, `repository`, `trend` DTOs mirroring F-010.
+- `src/frontend/src/app/core/api/` (new, post-refactor location) — `bookmark-api.service.ts`, `category-api.service.ts`, `repository-api.service.ts`, `trending-api.service.ts`, `query-params.util.ts`.
+- `src/frontend/src/app/core/facets/` (new, post-refactor location) — `facet-options.service.ts`.
+- `src/frontend/src/app/core/icons/` (new, post-refactor location) — `icon-registry.service.ts`.
+- `src/frontend/src/app/shared/components/{repository-card,repository-grid,filter-sort-bar,bookmark-toggle}/` (new).
+- `src/frontend/src/app/shared/pipes/relative-date.pipe.ts` (new).
+- `src/frontend/src/app/features/{discovery-feed,hidden-gems,trending,categories,categories/category-detail}/` (new).
+- `docs/project-management.md` — v21 (F-011 → Done, `MatInputModule` finding recorded).
+- `docs/test-cases.md` — v6: TC-011 added.
+- `docs/test-runbook.md` — F-011 section added.
+- `graphify-out/` — `graph.json`/`graph.html`/`GRAPH_REPORT.md` updated (1154→1442→1445 nodes across
+  two incremental passes — F-011 content then the `core/services` split; 1754→2279→2262 edges;
+  78→112→114 communities); manifest re-saved scoped to the full `src` tree (backend + frontend),
+  closing the scope-mismatch risk flagged in the F-010 handoff.
+
+**Breaking changes:** None. Frontend-only; no backend contract or schema change.
+
+**Smoke tests:**
+1. Happy path — load the dashboard, confirm it lands on Discovery Feed, select a language + narrow
+   the star range + add a topic + pick a license, confirm the active-filter chips appear and the grid
+   re-fetches with matching query params; toggle a bookmark and confirm the optimistic flip + confirm
+   snack-bar with a working Undo.
+2. Edge case — resize the viewport below 960px on Discovery Feed; confirm the filter bar collapses to
+   a "Filters · N" button opening a sidenav with the same controls, and the primary nav collapses to
+   a bottom floating pill row.
+3. Regression-sensitive — `dotnet publish` the backend with the frontend built; confirm `GET /` serves
+   the dashboard and a directly-requested client route (e.g. `/hidden-gems`) falls back to
+   `index.html` instead of 404ing (FR-009 AC3).
 
 ## Revision 6 — 2026-08-02 — F-010 (Web API), run as a standalone slice of Phase 3
 

@@ -4,6 +4,103 @@
 
 ## What was done
 
+**F-011 (Web Dashboard) is Done**, run as a standalone, single-feature slice of Phase 3 via
+`orchestrator-development-pattern` — scoped to F-011 alone (same pattern as the prior F-010 run), so
+F-012 remains `Planned` and Phase 3 itself stays `Planned` until it completes too. F-010's own
+operative detail has been moved to "F-010 handoff" below now that this run supersedes it.
+
+- **F-011** (Web Dashboard) — PASS after one Reviewer retry round; Integration PASS (57/57 frontend
+  + 121/121 backend tests, 0 production vulnerabilities); Reviewer-Integration PASS after one
+  self-corrected round (see below). Four required views (`features/{discovery-feed,hidden-gems,
+  trending,categories}/`) plus a Category drill-down (`features/categories/category-detail/`), all
+  standalone, Angular-Material-only (ADR-011) components backed by live `HttpClient` calls to F-010.
+  Shared components (`shared/components/{repository-card,repository-grid,filter-sort-bar,
+  bookmark-toggle}/`) implement the FR-004 filter/sort contract (language/star-range/topic/license
+  facets, `mat-button-toggle-group` sort, `mat-slide-toggle` bookmarked-only), the FR-005 score
+  breakdown panel, and the FR-007 bookmark toggle (optimistic flip, snack-bar confirm/Undo,
+  revert+Retry on failure) exactly once each, reused everywhere a repo card renders — including
+  Trending's expanded contributing-repo rows.
+- **App shell restyled to the operator-approved "Ink Header" design** (`dashboard-handoff.md`) —
+  custom Material 3 theme tokens, Caprasimo/Figtree fonts, terracotta active-nav pill, CDK
+  `BreakpointObserver`-driven responsive collapse at 960px (primary nav → bottom pill row, filter bar
+  → "Filters · N" button + `mat-sidenav`). Reserved, inert "Bookmarks · F-012"/"Search (v2)"
+  placeholders ship disabled so the shell won't reflow when those land.
+- **Reviewer FAILed once, fixed and re-verified PASS**: (1) the 960px filter-bar collapse was
+  entirely missing (no `BreakpointObserver`, no trigger, no sidenav) — a silent deviation from the
+  binding design doc; (2) the Categories tile grid and mobile bottom-nav links were built from
+  custom-CSS anchors mimicking `mat-card`/`mat-icon-button` instead of the real components — an
+  ADR-011 violation despite the component already importing `MatCardModule` elsewhere. Both fixed;
+  round-2 diff verified scoped to exactly the claimed files.
+- **Integration found and fixed a genuine pre-ship runtime defect neither Developer nor Reviewer
+  caught**: `FilterSortBar` was missing a `MatInputModule` import, so the Star-range Min/Max facet
+  inputs would have thrown `mat-form-field must contain a MatFormFieldControl` in a live browser —
+  AC2 ("filter/sort controls work end-to-end") was not actually true until this fix landed. This was
+  the root cause of 22 of 23 originally-failing tests across four spec files. Also fixed four
+  test-only defects (a `RouterTestingHarness` called twice in one test, a snack-bar mock that
+  synchronously auto-fired an unmocked "Undo" call, an over-broad DOM selector colliding with a
+  legitimately-reused BEM modifier class, and an assertion contradicting `HttpParams.getAll()`'s
+  documented null-vs-empty-array behavior) — none gamed, all genuine root-cause fixes.
+- **Reviewer-Integration FAILed once on a reporting-accuracy issue, not a code defect**: the
+  Integration Agent's Documentation Drift section quoted a sentence from the PMBook's F-011 row that
+  didn't exist in the file *yet* — the `MatInputModule` finding was true and worth recording, but the
+  report had gotten ahead of the actual document edit. Fixed by making the edit for real (PMBook →
+  v21) and correcting the report to match; re-verified PASS by reading the literal post-edit file.
+- **Live E2E validated, not deferred as Manual**: this environment had both a .NET SDK and Node
+  available, so TC-011-12 (originally spec'd Manual) ran for real — `dotnet publish` triggered the
+  actual `BuildAngularApp`/`CopyAngularApp` MSBuild targets, the published host served `index.html`
+  at `/`, and a directly-requested client route (`/hidden-gems`) correctly fell back to `index.html`
+  via `MapFallbackToFile` instead of 404ing — confirming FR-009 AC3 end-to-end, closing the FR-009
+  verification gap the prior F-010 handoff had left open (see What's Next in the F-010 section below,
+  now closed).
+- **Two F-010 contract gaps handled without inventing a backend endpoint, exactly as pre-flagged**:
+  no facet-options endpoint exists, so language options are sourced from `/api/categories` and
+  license/topic options accumulate client-side from repository cards already fetched that session
+  (`FacetOptionsService`). `TrendDto` has no growth metric and `/api/trending` isn't deduplicated per
+  category — the Trending growth chip computes a real delta between a category's two most recent
+  period rows when both exist, falling back to the current average score (not a fabricated
+  percentage) when only one exists.
+- **Post-hoc refactor, operator-directed, after the feature loop closed**: the graphify pass below
+  flagged `core/services/` as a low-cohesion (0.05) 54-node community mixing four unrelated concerns
+  (F-010 API client wrappers, a query-param-building utility, a client-side facet-derivation service,
+  and an unrelated Material-icon-registration bootstrap service). Split into `core/api/`,
+  `core/facets/`, `core/icons/`; all 16 consumer files' import paths updated. Verified via a full
+  rebuild/lint/test pass (57/57 still passing, build still outputs to `dist/dashboard/browser/`)
+  before re-running graphify on the rename. The old mega-community is gone; its members now sit in
+  smaller, functionally-coherent communities (cohesion 0.07–0.31 instead of one 0.05 blob).
+- **Documentation drift found and fixed this run**: `docs/test-cases.md` extended to v6 with TC-011
+  (12 scenarios — four-view nav, filter/sort end-to-end, bookmark optimistic/undo/retry, Trending
+  server-order, Categories grid/drill-down, loading/empty/error states, pagination-beyond-last-page,
+  "Summary pending" no-layout-jump, 960px responsive collapse, category URL-encoding, reserved
+  placeholder inertness, and the live-publish smoke test). PMBook F-011 row `Planned` → `Done`
+  (v20, corrected to v21 for the `MatInputModule` finding). `docs/test-runbook.md` extended with an
+  F-011 section (Happy path ×3, Edge case, Regression-sensitive smoke test).
+- **Graphify** — two incremental passes this run. First: F-011's ~52 new/changed frontend files
+  (Node/TS + HTML templates → full AST + semantic pipeline, 3 parallel subagent chunks since HTML
+  templates aren't code-only). Second (the `core/services` split): 26 changed + 9 deleted files, all
+  `.ts` except one comment-only `index.html` edit — deliberately ran AST-only and skipped the LLM
+  semantic subagent dispatch for this pass (a judgment call: the actual content change was a
+  mechanical rename plus a one-line comment, not new semantic material, so spending on redundant
+  extraction wasn't worth it — documented explicitly rather than silently reusing the "code-only"
+  fast path the skill wouldn't have granted on its own, since `index.html`'s content technically
+  changed). Graph grew 1154→1442→**1445 nodes**, 1754→2279→**2262 edges**, 78→112→**114
+  communities** across the two passes. The incremental prune step hit the same suffix-matching issue
+  the F-010 handoff already documented (absolute deleted-file paths vs. relative `source_file`
+  fields) — applied the same fix again. Also found: AST extraction assigns `source_file` at a
+  different relative depth than semantic (LLM) extraction for the same file (e.g. `core/api/x.ts` vs
+  `src/frontend/src/app/core/api/x.ts`), which broke folder-based auto-labeling for a handful of
+  communities (`core`/`features` as bare, unhelpful labels) — caught by spot-checking and manually
+  labeled instead of trusting the heuristic blindly.
+- New/changed docs this run: `docs/project-management.md` v21, `docs/test-cases.md` v6,
+  `docs/test-runbook.md` (new F-011 section), `docs/changelog.md` Revision 7, `docs/handoff.md`
+  (this file).
+
+All of it is uncommitted in the working tree as of this handoff — the Orchestrator does not run git
+commands; see **Commit Messages** in this session's final response for what to run.
+
+---
+
+## F-010 handoff (superseded by the above, kept for history)
+
 **F-010 (Web API) is Done**, run as a standalone, single-feature slice of Phase 3 via
 `orchestrator-development-pattern` — the operator deliberately scoped this run to F-010 alone rather
 than the full phase (F-010, F-011, F-012), so F-011 and F-012 remain `Planned` and Phase 3 itself
@@ -285,26 +382,30 @@ All of it was uncommitted at the time this Phase 1 handoff was originally writte
 ## Current state
 
 The platform now has a working, self-hosted, end-to-end **crawl → score → summarize → aggregate
-trends** pipeline, plus a JSON Web API surfacing it — all four pipeline stages still chained via
-Hangfire `RecurringJob` + `ContinueJobWith`, with the Web API a separate, request-driven layer on top:
+trends** pipeline, a JSON Web API surfacing it, and a live Angular dashboard consuming that API —
+all four pipeline stages still chained via Hangfire `RecurringJob` + `ContinueJobWith`:
 
 | Layer | State |
 |---|---|
-| Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 4 migrations (added `AddRepositoryTopicsAndFirstDiscoveredAt` this run) |
-| Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, Polly resilience pipeline (ADR-018); **extended this run** to also fetch `repositoryTopics` (capped 10/repo) and set `FirstDiscoveredAtUtc` once on first insert |
+| Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 4 migrations; unchanged this run |
+| Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, Polly resilience pipeline (ADR-018); unchanged this run |
 | Job Scheduler | Hangfire wired, dashboard at `/hangfire` unauthenticated; chains **four** links: Crawler → Scoring → Summarizer → Trend Aggregator; unchanged this run |
 | Scoring Engine | Pure computation, five weighted signals; unchanged this run |
 | Summarizer | LM Studio + Llama 3.2 3B Instruct via `IRepositorySummarizer`; unchanged this run |
 | Trend Aggregator | Rolls up scored+summarized repos by `PrimaryLanguage` into `TrendAggregate` rows; unchanged this run |
-| **Web API** | **New (F-010)**: `Features/{Repositories,Trends,Categories,Bookmarks}/` — 8 Wolverine slices serving Discovery Feed, Hidden Gems, Trending, Categories (+ drill-down), and bookmark create/list/delete; shared filter/sort/paginate contract (language/star-range/topic/license facets, 4 sort fields, pagination); no auth (single-operator v1 posture) |
-| Dashboard UX brief | `docs/design-briefs/dashboard-ux-brief.md` — Discovery Feed/Hidden Gems/Trending/Categories layouts, filter/sort/bookmark interactions, Angular Material-only constraint; **the Claude Designer pass has since happened and been operator-reviewed, all three flagged gaps resolved** (PMBook F-018 row, v19) — F-011 is design-ready, unchanged by this run |
+| Web API | F-010, unchanged this run: 8 Wolverine slices serving Discovery Feed, Hidden Gems, Trending, Categories (+ drill-down), and bookmark create/list/delete |
+| **Web Dashboard** | **New (F-011)**: Angular 22 SPA, live at `/` once `make up` is running — Discovery Feed (default route), Hidden Gems, Trending, Categories (+ drill-down at `/categories/{category}`), filter/sort/bookmark all functional end-to-end against F-010; approved "Ink Header" visual design applied; responsive below 960px; `src/frontend/src/app/core/{api,facets,icons}/` (post-refactor structure, was `core/services/`) |
 | Postgres persistence | Bind-mounted to `./data/postgres`; unchanged this run |
-| Test harness | 121 xUnit tests (up from 64 at Phase 2 close), all passing; `dotnet list package --vulnerable` clean |
-| Docs | `docs/test-cases.md` (v5) and `docs/test-runbook.md` cover Phase 0-2 + F-010; `docs/project-management.md` v18, F-010 → Done, Phase 3 still `Planned` (F-011/F-012 not started) |
+| Test harness | 121 xUnit backend tests + **57 Vitest frontend tests (new)**, all passing; `npm audit --omit=dev` and `dotnet list package --vulnerable` both clean (6 moderate frontend *dev*-only vulnerabilities noted, see Important Context) |
+| Docs | `docs/test-cases.md` (v6) and `docs/test-runbook.md` cover Phase 0-2 + F-010 + F-011; `docs/project-management.md` v21, F-011 → Done, Phase 3 still `Planned` (F-012 not started) |
 
-Still nothing exists yet for: the dashboard beyond its Phase 0 shell (F-011) or bookmarking's
-dedicated view (F-012) — F-010 unblocks both, but neither has been implemented. No frontend
-implementation work happened this run — F-010 was backend-only, per its own Task Packet scope.
+Still nothing exists yet for: bookmarking's dedicated management view (F-012) — bookmark
+create/toggle/list-via-filter already works end-to-end through F-011's "Bookmarked only" toggle and
+per-card icons, but a standalone bookmarks-management page (bulk-remove, notes, its own nav entry)
+is explicitly F-012's scope, not built here (the nav even ships a disabled "Bookmarks · F-012" ghost
+pill reserving the spot). No backend work happened this run — F-011 was frontend-only, per its own
+Task Packet scope; the one production code fix (`MatInputModule`) was Integration-owned frontend
+work, not a backend change.
 
 A live database check before Phase 2 started (operator request) found the Crawler's discovery
 query is functioning but only ever surfaces very-high-star repos (18.7K-453K stars across all 1,002
@@ -314,27 +415,30 @@ visibility cap. The operator reviewed this and explicitly decided **not** to tre
 now ("leave as-is") — noted here so a future session doesn't have to re-discover it from scratch.
 If discovery strategy is revisited later (e.g. star-range bracketing, REST search with explicit
 sort, or random sampling), that's a change to `GitHubDiscoveryClient.BuildSearchQuery()` (F-005),
-not anything F-010 touched.
+not anything F-010/F-011 touched.
 
 ## What's next
 
-1. **F-011 (Web Dashboard) is next** — its two dependencies (F-010 API, F-018 UX brief) are both
-   Done and the UX design has been reviewed/approved (PMBook F-018 row, v19 — the "Ink Header"
-   direction with deep-olive second accent, `Dashboard Design.dc.html` + `dashboard-handoff.md`,
-   judged implementation-ready). Invoke `orchestrator-development-pattern`
-   scoped to F-011 the same way this run was scoped to F-010 alone, or resume the full Phase 3 loop
-   to pick up F-011 then F-012 in dependency order — operator's call.
-2. **PM-006 (new this run)**: F-010's two new `Repository` columns have no backfill for pre-existing
-   rows — `Topics` self-heals on the next re-crawl (daily per F-006's schedule), but
-   `FirstDiscoveredAtUtc` does not (it's set-once by design) and will permanently sort old repos as
-   "oldest" under Discovery Feed's default Newest sort. Decide before F-011 ships a Newest sort a
-   user will actually look at: a one-time backfill script, or accept as a permanent v1 wrinkle.
-3. **Close the live-E2E verification gap for F-010's endpoints**: no `make up` stack was available in
-   this run's environment, so the 8 new endpoints were validated via handler tests against a real
-   SQLite-provider `DbContext` (including the `Topics` array-overlap query translation), not via a
-   live HTTP walkthrough. Run the new F-010 section of `docs/test-runbook.md` against a real stack at
-   least once before relying on it in production — same category of gap Phase 1/2 also disclosed for
-   their own live-infrastructure checks.
+1. **F-012 (Bookmarking) is next** — its two dependencies (F-010 API, F-011 Dashboard) are both
+   Done. F-011 already ships bookmark create/toggle and a "Bookmarked only" filter view within the
+   four existing views (per F-018's brief), so F-012's remaining scope is specifically a dedicated
+   bookmarks-management view (its own nav entry, replacing the reserved ghost "Bookmarks · F-012"
+   pill) and whatever bulk-management affordances its own Acceptance Criteria call for. Invoke
+   `orchestrator-development-pattern` scoped to F-012 the same way this run was scoped to F-011
+   alone — this closes out Phase 3 (F-010/F-011/F-012 all Done).
+2. **PM-006, still open**: F-010's two new `Repository` columns have no backfill for pre-existing
+   rows — `Topics` self-heals on the next re-crawl, but `FirstDiscoveredAtUtc` does not (set-once by
+   design) and permanently sorts old repos as "oldest" under Discovery Feed's now-live default
+   Newest sort. This is no longer a theoretical future concern — F-011's Discovery Feed is the real
+   UI a user will actually look at. Decide: a one-time backfill script, or accept as a permanent v1
+   wrinkle.
+3. **F-010's live-E2E verification gap is now closed** — F-011's Integration pass ran `dotnet
+   publish` for real and confirmed the dashboard serves correctly from the ASP.NET Core host,
+   closing what the F-010 handoff had left open. F-011's *own* three testing-depth gaps (TC-011-03's
+   literal Undo-click-through, TC-011-04's exact server-order-preservation assertion, TC-011-08's
+   visual no-layout-shift check) remain code-reviewed-but-not-automated — see
+   `docs/test-runbook.md`'s F-011 section for the manual steps that cover them; not blocking, but
+   worth automating if this dashboard sees heavier iteration.
 4. **Close the live-E2E verification gap from Phase 2, still open**: LM Studio could not be started
    in that Integration Agent's environment, so the real F-008→F-009 chain (actual README fetch +
    actual LM Studio inference + actual trend rollup against live data) was never exercised
@@ -342,17 +446,70 @@ not anything F-010 touched.
    Path steps against a real `make up` stack with LM Studio actually running at least once.
 5. **`docs/diagrams/mmd/daily-discovery-flow.mmd` still needs a manual diagramming pass** — flagged
    at Phase 1 close, still unaddressed: it doesn't show the Summarizer or Trend Aggregator links, and
-   now also doesn't show the Web API as a separate consumer of the Data Store. Not blocking F-011,
-   but should be fixed before it misleads someone reading Architecture alongside the diagram.
+   doesn't show the Web API or Dashboard as consumers of the Data Store. Not blocking F-012, but
+   should be fixed before it misleads someone reading Architecture alongside the diagram.
 6. **`docs/architecture.md`'s Version History table has a duplicate/out-of-order `v12` row**
    (noticed in Phase 2, still unaddressed) — fixing the numbering needs to know original intent;
    flagged rather than guessed at.
 7. Once real summaries/trends exist at scale, sanity-check `max_tokens: 300` isn't clipping longer
    real-world READMEs the way the F-002 spike's synthetic test content couldn't reveal — carried over
    from Phase 1's handoff, still open.
+8. **`docs/adr/ADR-011-angular-material-ui-library.md` (or wherever ADR-011 lives) could note the
+   icon-sourcing decision** — F-011 sourced Lucide-style SVG icons via `MatIconRegistry.
+   addSvgIconLiteral` rather than the Material Icons ligature font, a judgment call within ADR-011's
+   scope (icon *assets*, not a component library) but worth a one-line ADR note if a future feature
+   also needs iconography decisions. Not blocking, purely a documentation-completeness nice-to-have.
 
 ## Important context
 
+- **Stating test-cases-doc pre-draft ownership explicitly to *both* Integration and
+  Reviewer-Integration up front (the lesson from F-010's run, below) worked cleanly this time** —
+  this run's Reviewer-Integration was told directly in its prompt that the Orchestrator authored
+  TC-011 before Integration started, and it neither flagged a misattribution nor needed to
+  self-correct. Keep doing this for every future feature run; it's a cheap prevention for a
+  confirmed real failure mode.
+- **Integration/Reviewer-Integration can and do find genuine production bugs the Developer/Reviewer
+  loop missed — that's the pipeline working as designed, not a process failure.** F-011's
+  `MatInputModule` omission would have shipped a broken Star-range filter to a live browser; neither
+  the Developer nor the Reviewer caught it (Reviewer's job is verifying claims against the Task
+  Packet, not exhaustively running every component in a browser). Integration's independent test run
+  caught it because the missing import broke `filter-sort-bar.spec.ts` and three other specs outright
+  — a reminder that "Reviewer PASS" is not the same guarantee as "Integration PASS," and both gates
+  matter.
+- **A Reviewer-Integration FAIL can be about reporting accuracy, not code** — this run's round-1 FAIL
+  was Integration's Documentation Drift section quoting PMBook text that didn't exist in the file
+  yet, even though the underlying finding (`MatInputModule`) was true. The fix was making the
+  document edit for real, not just editing the report. When an agent's report claims a specific,
+  checkable fact about a file's *content*, verify that fact against the literal file before
+  finalizing the report — don't let a true underlying finding excuse an inaccurate citation of it.
+- **`core/services/` was split into `core/api/`/`core/facets/`/`core/icons/` post-hoc, operator-
+  directed, not part of F-011's own Task Packet** — graphify flagged it as a low-cohesion (0.05)
+  community mixing unrelated concerns (API clients, a query-param util, a facet-derivation service, an
+  icon-registration bootstrap service). If a future feature adds another service to this folder,
+  place it in whichever of the three sub-folders matches its concern (or a new sub-folder) rather than
+  reintroducing a flat `core/services/` grab-bag — the split was a deliberate structural decision, not
+  an arbitrary rename.
+- **Graphify's AST and semantic (LLM) extraction passes can assign different relative depths to
+  `source_file` for the same file** (e.g. `core/api/x.ts` from an AST-only incremental pass vs.
+  `src/frontend/src/app/core/api/x.ts` from a semantic pass that scanned from the repo root) — this
+  broke the folder-based community auto-labeling heuristic for a handful of communities this run
+  (labeled bare `core`/`features` instead of something meaningful). Caught by spot-checking generic
+  single-word labels on communities with meaningful size, not by trusting the heuristic blindly.
+  Worth a fix in a future graphify-focused session (normalize `source_file` depth at extraction time)
+  if this keeps recurring, but a manual label patch is a fine one-off workaround.
+- **Deliberately skipped the semantic (LLM) extraction subagent dispatch for the `core/services`
+  split's graphify update, even though the skill's `code_only` check would have required it** (one
+  file, `index.html`, had a one-line comment change, technically making the batch not code-only) —
+  judgment call that a mechanical rename plus a comment-wording fix has no new semantic content worth
+  paying for, documented explicitly here and in the changelog rather than silently reusing the
+  code-only fast path the skill wouldn't have granted on its own. Don't treat this as precedent for
+  skipping semantic extraction whenever it's inconvenient — this was justified by the specific
+  nothing-semantically-new nature of a rename, not by cost alone.
+- **This session hit the account's monthly spend limit mid-Integration-run once** — the Integration
+  Agent was interrupted mid-task by a billing error (not a task failure), resumed cleanly from its own
+  transcript once the operator raised the limit, and picked up exactly where it left off. If a future
+  session sees an agent "fail" with a spend-limit message, that's an infra/billing event to resolve
+  and resume, not a defect to debug.
 - **When the Orchestrator pre-drafts test-cases-doc scenarios itself (Step 0.0), say so explicitly
   in a way that reaches every downstream sub-agent, not just Integration** — this run's
   Reviewer-Integration initially FAILed the whole Integration Output because it saw
@@ -399,9 +556,9 @@ not anything F-010 touched.
   discipline Phase 2's handoff already established for the inverse (under-pruning) failure mode.
 - **Version-pin caveats carried from earlier phases, still current**: LM Studio host-installed
   (ADR-016), `llama-3.2-3b-instruct` (ADR-017), PostgreSQL 18.4 (ADR-014), Angular 22 (ADR-012).
-- **Open items**: PM-001, PM-002, PM-003 remain deferred exactly as before; new PM-006 (schema
-  backfill, see What's Next #2).
+- **Open items**: PM-001, PM-002, PM-003 remain deferred exactly as before; PM-006 (schema backfill)
+  is now higher-priority since F-011's live Discovery Feed makes it user-visible — see What's Next #2.
 - **Docs are governed, not exempt** — this run's Integration and Reviewer-Integration passes again
-  treated the PMBook/test-cases/test-runbook as specs the code must satisfy, catching and fixing the
-  test-runbook gap, correctly attributing the test-cases-doc authorship once challenged, and flagging
-  the live-E2E gap it couldn't close itself. Keep doing this for F-011.
+  treated the PMBook/test-cases/test-runbook as specs the code must satisfy: catching a real
+  production bug via the quality gate, correcting a report that got ahead of an actual document edit,
+  and closing a previously-open live-E2E gap rather than re-deferring it. Keep doing this for F-012.

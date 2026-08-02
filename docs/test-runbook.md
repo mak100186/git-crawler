@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
 > Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010 so far)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011 so far)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -384,6 +384,118 @@ resembling production.
 
 ---
 
+## F-011 — Web Dashboard
+
+Automated coverage for every scenario below lives in `src/frontend/src/**/*.spec.ts` (57 Vitest
+specs, all passing as of this Integration pass — see `docs/test-cases.md`'s F-011 section for the
+full TC-011-01 through TC-011-11 scenario text). The steps here are the manual/live-browser
+equivalent, useful for confirming the built bundle actually renders and behaves this way, not just
+that the isolated component/unit tests pass.
+
+### Happy path — four views navigate, filter/sort works end-to-end
+1. `make up`, then open `http://localhost:8080/` in a browser.
+2. **Expect:** lands on Discovery Feed by default; the primary nav (`mat-toolbar`) has exactly four
+   entries in order — Discovery Feed, Hidden Gems, Trending, Categories — each navigating to its own
+   route (TC-011-01).
+3. On Discovery Feed, select a language via the Language `mat-select`, narrow the star range slider,
+   add a topic via the autocomplete, select a license. **Expect:** each selection renders as a
+   removable chip; the grid re-fetches from `GET /api/discovery-feed` with matching
+   `language[]`/`minStars`/`maxStars`/`topic[]`/`license[]` query params (TC-011-02).
+4. Change the sort control and flip the direction icon button. **Expect:** results re-order to
+   match. Click "Clear all". **Expect:** chips disappear, grid returns to the default (Newest desc)
+   set.
+5. Repeat on Hidden Gems. **Expect:** identical facet/sort behavior, default sort Score desc, each
+   card shows a score badge and an expandable "Why this score?" breakdown (TC-011-02 step 5).
+
+### Happy path — bookmark toggle, optimistic UI, undo/retry
+1. On any repository card, click the bookmark toggle. **Expect:** the icon flips immediately, a
+   snack-bar confirms ("Added to bookmarks") with an "Undo" action, and
+   `POST /api/repositories/{id}/bookmark` fires (TC-011-03).
+2. Click "Undo" on the snack-bar. **Expect:** the icon flips back and
+   `DELETE /api/repositories/{id}/bookmark` fires. **Note:** this specific click-through (the actual
+   Undo action firing a real reversal call) is not exercised by an automated test — the Vitest specs
+   cover the initial optimistic-flip/confirm, the failed-write/Retry path, and the
+   already-bookmarked-toggle-to-remove path, but mock the snack-bar's `onAction()` as a
+   non-emitting observable (see `bookmark-toggle.spec.ts`) rather than simulating a real Undo click.
+   Code review confirms `BookmarkToggle.apply()`'s reversal branch is wired correctly, but this step
+   needs a live click to fully confirm.
+3. Stop the backend mid-request (or block the network tab) and click the toggle again. **Expect:**
+   the icon reverts to its prior state and the snack-bar shows the error variant ("Couldn't save
+   bookmark — try again") with a "Retry" action.
+
+### Happy path — Trending and Categories
+1. Load Trending. **Expect:** trends render in exactly the order `/api/trending` returned (no
+   filter/sort bar on this view); expanding a trend's `mat-expansion-panel` lists its
+   `contributingRepositories` as rows (name, language, stars, bookmark toggle) (TC-011-04). **Note:**
+   automated coverage (`trending.spec.ts`) confirms the trend list renders and the
+   empty-contributing-repositories case doesn't crash, but doesn't independently assert the rendered
+   order matches server order byte-for-byte — code review confirms the template does a plain `@for`
+   iteration over the API response with no client-side sort/reorder applied.
+2. Load Categories. **Expect:** one clickable `mat-card` tile per category (label + repo count).
+   Click a tile. **Expect:** navigation to `/categories/{category}` renders the Discovery Feed's
+   exact card-grid + `mat-paginator` layout, with the category pre-applied as a non-removable filter
+   chip and the rest of the filter/sort bar still usable (TC-011-05).
+
+### Edge case — empty, loading, error states and pagination beyond the last page
+1. Filter to zero matches. **Expect:** the centered empty-state card with a "clear all filters"
+   button. Toggle "Bookmarked only" with zero bookmarks. **Expect:** the same empty state, not an
+   error (TC-011-06).
+2. Simulate a failed request (stop the backend). **Expect:** the centered error-state card with a
+   "Retry" button that re-issues the request.
+3. Request a page far beyond the last page for a small filtered result set. **Expect:** the empty
+   state renders, not a crash (TC-011-07, mirrors TC-010-10 at the UI layer).
+
+### Edge case — "Summary pending" placeholder and responsive collapse
+1. Load a card whose `summaryContent` is `null`. **Expect:** a fixed-height "Summary pending"
+   placeholder in the summary slot. When that repo's summary later becomes available (re-fetch),
+   **expect:** the real summary replaces the placeholder with no visible layout shift (TC-011-08).
+   **Note:** the layout-shift-absence part of this check is inherently visual and not covered by an
+   automated assertion; only the initial null-state rendering is unit-tested.
+2. Resize the browser below 960px on Discovery Feed or Hidden Gems. **Expect:** the primary nav
+   collapses to a bottom pill nav; the filter/sort bar collapses to a "Filters · N" button opening a
+   `mat-sidenav` with the same controls; active filter chips stay visible inline (TC-011-09). Resize
+   back above 960px. **Expect:** both return to desktop layout with selection state preserved.
+3. Drill into a category whose name needs URL encoding (e.g. a `C++`-derived language). **Expect:**
+   the request encodes correctly and resolves to the matching category, not a 404 (TC-011-10).
+4. Inspect the nav and filter-bar area. **Expect:** a visibly disabled "Bookmarks · F-012" nav pill
+   and a disabled "Search (v2)" field are present but inert — clicking either does nothing
+   (TC-011-11).
+
+### Regression-sensitive — live build-and-serve smoke test (FR-009 AC3, TC-011-12)
+**Executed live in this Integration pass** (both a .NET 10 SDK and a Node toolchain — v26.5.1/npm
+12.0.2 — were available in the environment, so this did not need to be deferred as Manual):
+1. `dotnet publish src/backend/GitCrawler.Api/GitCrawler.Api.csproj -c Release -o <dir>` — the
+   `BuildAngularApp`/`CopyAngularApp` MSBuild targets ran for real (not just `npm run build` in
+   isolation): `npm run build` executed against `src/frontend`, producing
+   `dist/dashboard/browser/`, and its contents were copied into `<dir>/wwwroot/`.
+2. **Expect:** `<dir>/wwwroot/` contains `index.html`, the built JS/CSS chunks, and `favicon.ico`.
+   **Confirmed** — all present.
+3. Started the published host (`dotnet GitCrawler.Api.dll`, run from `<dir>` so `wwwroot` resolves
+   correctly relative to the content root — see the caveat below) against the already-running
+   `postgres` Compose service. `curl http://localhost:<port>/` — **expect** `200` serving the
+   dashboard's `index.html`. **Confirmed.**
+4. `curl http://localhost:<port>/hidden-gems` (a client-side route requested directly, not via
+   in-app navigation) — **expect** `200`, falling back to `index.html` via `MapFallbackToFile` rather
+   than 404ing. **Confirmed** — response body was the same `index.html` shell, letting the Angular
+   router take over client-side.
+5. **Caveat for whoever re-runs this:** run `dotnet <published-dll>` with the publish output
+   directory itself as the working directory (as a real deployment/Docker image would), not the repo
+   root. ASP.NET Core resolves `WebRootPath` relative to the process's content root (defaulted from
+   the working directory when unspecified) — running from the repo root while pointing at a DLL
+   elsewhere resolves `wwwroot` to `<repo-root>/wwwroot` (which doesn't exist) instead of
+   `<publish-dir>/wwwroot`, producing a spurious 404 that has nothing to do with the actual publish
+   pipeline (confirmed by reproducing it, then re-running correctly from the publish directory with
+   `POSTGRES_*`/`GITHUB_TOKEN` passed as explicit env vars instead of relying on `.env`
+   auto-discovery, which fixed it).
+6. **Side effect to note:** this run applied the pending `AddRepositoryTopicsAndFirstDiscoveredAt`
+   EF Core migration to the shared local dev Postgres database (it had not yet been applied there,
+   despite the long-running `app` container appearing healthy — that container predates the
+   migration). This is the legitimate F-010 migration catching up, not a schema change introduced by
+   this Integration pass; no data was altered beyond the new columns' defaults (`Topics = '{}'`,
+   `FirstDiscoveredAtUtc = -infinity`), consistent with PM-006's already-documented backfill gap.
+
+---
+
 ### Known caveats to check when re-running this runbook later
 - `postgres:18.4`'s data directory must be mounted at `/var/lib/postgresql` (not the older
   `/var/lib/postgresql/data` convention) — check `docker-compose.yml`'s inline comment if the
@@ -420,3 +532,11 @@ resembling production.
   Manual-verification gap as Phase 1's, just for a different reason (LM Studio unavailability
   instead of no Docker). An operator should run F-008/F-009's Happy Path steps at least once against
   a freshly-rebuilt `make up` stack with LM Studio actually running before relying on Phase 2.
+- F-011's Integration Agent environment had both a .NET 10 SDK and a Node toolchain available, so
+  TC-011-12 (the live `dotnet publish`-and-serve smoke test) was executed for real rather than
+  deferred as Manual — see the F-011 section above for the full steps and result (pass: `wwwroot`
+  populated correctly, `/` and a direct client-side route both served `index.html`). The only
+  F-011 gaps still open are the three noted inline in that section (Undo-click, Trending
+  server-order, and "no layout shift" are implementation-reviewed but not independently
+  automated-test-asserted) and the pre-existing `daily-discovery-flow.mmd` staleness above — neither
+  is new to this pass.

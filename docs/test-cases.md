@@ -1,7 +1,7 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v5
+> Version: v6
 > Last updated: 2026-08-02
 > Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
@@ -465,6 +465,115 @@ No running system to verify — this is a documentation output (`docs/design-bri
 
 ---
 
+## F-011 — Web Dashboard
+
+### TC-011-01 (Happy path) — Four required views render and navigate
+1. Load the dashboard. **Expect:** the default route lands on Discovery Feed; the primary nav has
+   exactly four entries in order (Discovery Feed → Hidden Gems → Trending → Categories); each entry
+   navigates to its own view, all composed from Angular Material components (AC1, FR-009).
+
+### TC-011-02 (Happy path) — Filter/sort controls work end-to-end (Discovery Feed / Hidden Gems)
+1. On Discovery Feed, select a language via the Language facet (`mat-select multiple`), narrow the
+   Star range slider, add a topic via the autocomplete, select a license.
+2. **Expect:** each selection renders as a removable chip in the active-filter `mat-chip-set`; the
+   grid re-fetches from `GET /api/discovery-feed` with the matching `language[]`/`minStars`/
+   `maxStars`/`topic[]`/`license[]` query params (AC2, FR-004).
+3. Change the sort control (`mat-button-toggle-group`) and flip the direction icon button.
+   **Expect:** the request's `sort`/`direction` params update and results re-order accordingly.
+4. Click "Clear all". **Expect:** all chips disappear and the grid returns to the unfiltered,
+   default-sorted (Newest desc) result set.
+5. Repeat steps 1-4 on Hidden Gems. **Expect:** identical facet/sort behavior, default sort is Score
+   desc, and each card additionally shows the score badge and an expandable "Why this score?"
+   breakdown panel (five signals + weights, sourced from `HiddenGemCardDto.scoreBreakdown`).
+
+### TC-011-03 (Happy path) — Bookmark toggle, optimistic UI, undo/retry
+1. On any card (Discovery Feed, Hidden Gems, a Category drill-down, or a Trending card's expanded
+   contributing-repo row), click the bookmark toggle.
+2. **Expect:** the icon flips immediately (optimistic), a `mat-snack-bar` confirms ("Added to
+   bookmarks") with an "Undo" action, and `POST /api/repositories/{id}/bookmark` fires.
+3. Click "Undo" on the snack-bar. **Expect:** the icon flips back and `DELETE
+   /api/repositories/{id}/bookmark` fires.
+4. Simulate the bookmark API call failing (e.g. stop the backend mid-request). **Expect:** the icon
+   reverts to its prior state and the snack-bar shows the error variant ("Couldn't save bookmark —
+   try again") with a "Retry" action (FR-007).
+
+### TC-011-04 (Happy path) — Trending view renders server order, no client-side re-sort
+1. Seed `TrendAggregate` rows so `/api/trending` returns trends in a specific `AverageScore`-descending
+   order. Load the Trending view.
+2. **Expect:** trends render in exactly the order the API returned (no filter/sort bar present on
+   this view); expanding a trend's `mat-expansion-panel` lists its `contributingRepositories` as
+   rows (name, language, stars, bookmark toggle), matching F-009's own membership rule.
+
+### TC-011-05 (Happy path) — Categories grid and drill-down
+1. Load Categories. **Expect:** one clickable `mat-card` tile per category (label + repo count).
+2. Click a tile. **Expect:** navigation to `/categories/{category}` renders Discovery Feed's exact
+   card-grid + `mat-paginator` layout, with the category pre-applied as a filter chip and the
+   filter/sort bar otherwise fully usable (additional language/star/topic/license narrowing composes
+   with the pinned category, per D2/D4).
+
+### TC-011-06 (Edge case) — Empty, loading, and error states
+1. Request a filter combination with zero matches. **Expect:** the centered empty-state `mat-card`
+   ("No repositories match these filters") with a button that clears all active filters.
+2. Toggle "Bookmarked only" with zero bookmarks. **Expect:** the same empty state, not an error.
+3. Simulate the API request failing. **Expect:** the centered error-state `mat-card` with a "Retry"
+   button that re-issues the request.
+4. Observe a fresh load. **Expect:** a centered `mat-progress-spinner` on first load, and an
+   indeterminate `mat-progress-bar` under the filter bar on a subsequent refetch (not a full-page
+   spinner) while existing results remain visible.
+
+### TC-011-07 (Edge case) — Pagination beyond the last page
+1. Filter to a small result set, then request a page far beyond the last page (mirrors TC-010-10 at
+   the UI layer).
+2. **Expect:** the empty state renders (per TC-011-06), not a crash or an unhandled error — the API's
+   `items: []` response for an out-of-range page must be handled the same as a genuine zero-match
+   filter.
+
+### TC-011-08 (Edge case) — "Summary pending" placeholder, no layout jump
+1. Render a card whose `summaryContent` is `null` (repo scored/discovered but not yet summarized by
+   F-008). **Expect:** a fixed-height "Summary pending" placeholder renders in the summary slot, not
+   an empty area.
+2. Simulate the same repo later returning a non-null `summaryContent` (re-fetch or state update).
+   **Expect:** the real summary replaces the placeholder in the same slot with no visible height
+   change/layout shift.
+
+### TC-011-09 (Edge case) — Responsive collapse at the 960px breakpoint
+1. Resize the viewport below 960px on Discovery Feed or Hidden Gems.
+2. **Expect:** the primary nav collapses to a bottom floating pill nav (brand-only toolbar); the
+   filter/sort bar collapses to a single "Filters · N" button (N = active filter count) that opens a
+   `mat-sidenav` containing the same controls the desktop layout shows inline; active filter chips
+   remain visible inline next to the trigger button regardless of panel state.
+3. Resize back above 960px. **Expect:** both the nav and filter bar return to their desktop layout
+   with selection state preserved.
+
+### TC-011-10 (Edge case) — Category name requiring URL encoding
+1. Drill into a category whose name contains characters needing URL encoding (e.g. a space or `+`,
+   such as a `C++`-derived `PrimaryLanguage` value).
+2. **Expect:** the `/categories/{category}/repositories` request encodes the segment correctly and
+   the drill-down resolves to the matching category, not a 404 or a mismatched filter.
+
+### TC-011-11 (Regression-sensitive) — Reserved F-012/v2 placeholders are inert
+1. Inspect the primary nav and the filter-bar area.
+2. **Expect:** a visibly disabled "Bookmarks · F-012" nav pill and a disabled "Search (v2)" field are
+   present (dashed border, reduced opacity) but not wired to any route or handler — clicking either
+   does nothing. These exist so the shell won't reflow when F-012/v2 land, and must not be mistaken
+   for broken functionality in a future manual pass.
+
+### TC-011-12 (Manual) — Live build-and-serve smoke test (FR-009 AC3)
+1. Run `dotnet publish` (or the Docker image build) against `src/backend/GitCrawler.Api` with a real
+   Node toolchain available, so `BuildAngularApp`/`CopyAngularApp` execute for real (not just
+   `npm run build` in isolation, which the Developer already verified produces
+   `dist/dashboard/browser/`).
+2. **Expect:** the publish output's `wwwroot` contains the built Angular app; starting the published
+   host and requesting `/` serves the dashboard's `index.html` (via `UseDefaultFiles`/
+   `UseStaticFiles`), and a client-side route (e.g. `/hidden-gems` requested directly, not via
+   in-app navigation) falls back to `index.html` via `MapFallbackToFile` and resolves correctly
+   rather than 404ing.
+3. Flagged Manual because it requires a live `make up`-equivalent environment with both a .NET SDK
+   and Node toolchain in the same execution context — same category of gap Phase 1/2/F-010's own
+   Integration passes disclosed for their own live-infrastructure checks (`docs/handoff.md`).
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
@@ -473,3 +582,4 @@ No running system to verify — this is a documentation output (`docs/design-bri
 | v3 | 2026-08-02 | TC-006-01 updated: Hangfire dashboard access control removed (F-006), so the `?key=` requirement and the access-denied assertion no longer apply | Operator: "remove the auth for hangfire" |
 | v4 | 2026-08-02 | Added Phase 2 scenarios: TC-008 (Summarizer, including score-to-summarize chaining and a Manual live-LM-Studio quality/throughput check), TC-009 (Trend Aggregator, including the upsert-idempotency and summarize-to-aggregate chaining checks), TC-018 (Dashboard UX design brief, documentation-only) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 1 when Phase 2 features completed (same gap-closure pattern as v2) |
 | v5 | 2026-08-02 | Added F-010 scenarios (TC-010): Discovery Feed/Hidden Gems/Trending/Categories filter-sort-paginate contract, bookmark CRUD + idempotency, topic filtering, and two regression checks specific to F-010's two schema additions (`FirstDiscoveredAtUtc` set-once, latest-not-highest score sort) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended for F-010 when it completed (same gap-closure pattern as v2/v4); F-010 was run as a standalone slice of Phase 3, not the full phase |
+| v6 | 2026-08-02 | Added F-011 scenarios (TC-011): four-view navigation, filter/sort end-to-end, bookmark toggle optimistic/undo/retry, Trending server-order rendering, Categories grid/drill-down, loading/empty/error states, pagination-beyond-last-page, "Summary pending" no-layout-jump, 960px responsive collapse (filter bar → sidenav, nav → bottom pills), category-name URL-encoding, reserved F-012/v2 placeholder inertness, and a Manual live-publish smoke test for FR-009 AC3 | Orchestrator drafted this section directly, before dispatching the Integration Agent, per this skill's own Step 0.0 gap-closure pattern (same as v2/v4/v5) — stated explicitly to both the Integration and Reviewer-Integration Agents in their prompts to avoid the misattribution the F-010 run's Reviewer-Integration initially made (`docs/handoff.md` "Important context") |
