@@ -1,0 +1,8 @@
+.bookmark-toggle {
+  color: var(--color-neutral-600);
+  transition: color 150ms ease;
+
+  &--active {
+    color: var(--color-accent);
+  }
+}

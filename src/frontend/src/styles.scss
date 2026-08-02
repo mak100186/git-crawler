@@ -5,18 +5,74 @@
 // custom components at https://material.angular.dev/guide/theming
 @use '@angular/material' as mat;
 
+// Approved visual design tokens (dashboard-handoff.md §1, "Ink Header" direction) - the closest
+// stock M3 palette (orange) seeds Angular Material's own internal color generation (ripples,
+// state layers, elevation surfaces), then the --mat-sys-* overrides below pin the actual visible
+// primary/surface colors to the exact approved hex values rather than the generated ones.
 html {
   height: 100%;
   @include mat.theme(
     (
       color: (
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
+        primary: mat.$orange-palette,
+        tertiary: mat.$green-palette,
       ),
-      typography: Roboto,
+      typography: Figtree,
       density: 0,
     )
   );
+
+  // Approved palette (dashboard-handoff.md §1) as plain custom properties - consumed directly by
+  // every component's own SCSS in this app (var(--color-*)) rather than only through Material's
+  // system-variable layer, since most of the UI (cards, chips, nav) is custom-styled to match the
+  // design rather than left as stock Material coloring.
+  --color-bg: #f5ead8;
+  --color-surface: #ebddc5;
+  --color-ink: #201e1d;
+  --color-ink-900: #2e2b25;
+
+  --color-accent: #c67139;
+  --color-accent-600: #b2622d;
+  --color-accent-700: #8c491a;
+  --color-accent-800: #643312;
+  --color-accent-100: #fff2eb;
+  --color-accent-200: #ffe1d0;
+  --color-accent-400: #f6a06b;
+
+  --color-olive-800: #3d472b;
+  --color-olive-100: #f0fae1;
+  --color-olive-500: #8fa073;
+
+  --color-neutral-100: #f9f4ed;
+  --color-neutral-200: #eee7db;
+  --color-neutral-300: #dcd3c4;
+  --color-neutral-400: #c0b6a5;
+  --color-neutral-500: #a19786;
+  --color-neutral-600: #82796a;
+  --color-neutral-700: #645c50;
+  --color-neutral-800: #474238;
+  --color-neutral-900: #2e2b25;
+
+  --font-display: 'Caprasimo', serif;
+  --font-body: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --radius-container-sm: 16px;
+  --radius-container-lg: 28px;
+  --radius-pill: 999px;
+
+  --elevation-sm: 0 1px 2px rgba(46, 43, 37, 0.14);
+  --elevation-md: 0 3px 10px rgba(46, 43, 37, 0.16);
+  --elevation-lg: 0 12px 32px rgba(46, 43, 37, 0.22);
+
+  // Pin Angular Material's own system variables to the approved palette so stock Material chrome
+  // (ripples, mat-select highlight, slider thumb, checkbox, paginator) tracks the design too, not
+  // just the custom-styled components above.
+  --mat-sys-primary: var(--color-accent);
+  --mat-sys-on-primary: var(--color-ink);
+  --mat-sys-surface: var(--color-bg);
+  --mat-sys-on-surface: var(--color-ink);
+  --mat-sys-surface-container: var(--color-surface);
+  --mat-sys-surface-container-high: var(--color-surface);
 }
 
 body {
@@ -25,15 +81,36 @@ body {
   // user's system settings.
   color-scheme: light;
 
-  // Set a default background, font and text colors for the application using
-  // Angular Material's system-level CSS variables. Learn more about these
-  // variables at https://material.angular.dev/guide/system-variables
-  background-color: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
-  font: var(--mat-sys-body-medium);
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
 
   // Reset the user agent margin.
   margin: 0;
   height: 100%;
+}
+
+// All buttons/chips/inputs/toggles = pill radius (999px) per the approved design
+// (dashboard-handoff.md §1). Most of this app's own components already set this explicitly; these
+// defaults catch the remaining stock Material controls (dialogs/menus aren't pilled - only
+// interactive controls are, per the design).
+.mat-mdc-raised-button,
+.mat-mdc-unelevated-button,
+.mat-mdc-outlined-button,
+.mat-mdc-button,
+.mat-mdc-icon-button,
+.mdc-evolution-chip,
+.mat-mdc-form-field .mat-mdc-text-field-wrapper {
+  border-radius: var(--radius-pill) !important;
+}
+
+// Focus ring (dashboard-handoff.md §1): 2px solid terracotta, 2px offset, on :focus-visible only.
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(198, 113, 57, 0.3);
 }
 /* You can add global styles to this file, and also import other style files */

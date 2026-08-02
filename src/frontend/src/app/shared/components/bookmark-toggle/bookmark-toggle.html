@@ -1,0 +1,13 @@
+<button
+  mat-icon-button
+  type="button"
+  class="bookmark-toggle"
+  [class.bookmark-toggle--active]="bookmarked()"
+  [matTooltip]="bookmarked() ? 'Remove bookmark' : 'Add bookmark'"
+  [attr.aria-pressed]="bookmarked()"
+  [attr.aria-label]="bookmarked() ? 'Remove bookmark' : 'Add bookmark'"
+  [disabled]="pending()"
+  (click)="toggle()"
+>
+  <mat-icon [svgIcon]="bookmarked() ? 'bookmark-filled' : 'bookmark'"></mat-icon>
+</button>

@@ -1,5 +1,54 @@
-<mat-toolbar color="primary">
-  <span>{{ title }}</span>
+<mat-toolbar class="app-toolbar">
+  <span class="app-toolbar__brand">GitCrawler</span>
+
+  @if (!isNarrow()) {
+    <nav class="app-toolbar__nav">
+      @for (entry of navEntries; track entry.path) {
+        <a
+          mat-button
+          class="app-toolbar__nav-link"
+          [routerLink]="entry.path"
+          routerLinkActive="app-toolbar__nav-link--active"
+        >
+          {{ entry.label }}
+        </a>
+      }
+    </nav>
+  }
+
+  <span class="app-toolbar__spacer"></span>
+
+  <!-- Reserved, inert placeholders (Task Packet/handoff §2) - not wired to a route or handler.
+       F-012 (dedicated Bookmarks view) and v2 free-text search don't exist yet; shipping these as
+       ghost slots now means the shell won't reflow when they do land. -->
+  <span class="app-toolbar__reserved app-toolbar__reserved-pill" aria-disabled="true"
+    >Bookmarks · F-012</span
+  >
+  <mat-form-field
+    class="app-toolbar__reserved app-toolbar__search"
+    appearance="outline"
+    subscriptSizing="dynamic"
+  >
+    <input matInput placeholder="Search (v2)" disabled />
+  </mat-form-field>
 </mat-toolbar>
 
-<router-outlet />
+<main class="app-content">
+  <router-outlet />
+</main>
+
+@if (isNarrow()) {
+  <nav class="app-bottom-nav">
+    @for (entry of navEntries; track entry.path) {
+      <a
+        mat-icon-button
+        class="app-bottom-nav__link"
+        [routerLink]="entry.path"
+        routerLinkActive="app-bottom-nav__link--active"
+        [attr.aria-label]="entry.label"
+      >
+        <mat-icon [svgIcon]="entry.icon" />
+      </a>
+    }
+  </nav>
+}

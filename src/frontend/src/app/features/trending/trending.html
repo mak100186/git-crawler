@@ -1,0 +1,68 @@
+<div class="view view--trending">
+  @if (error()) {
+    <mat-card class="trending-state trending-state--error" appearance="outlined">
+      <mat-icon svgIcon="alert-circle" />
+      <p>Something went wrong loading trends.</p>
+      <button mat-flat-button color="primary" (click)="onRetry()">Retry</button>
+    </mat-card>
+  } @else if (loading()) {
+    <div class="trending-state trending-state--loading">
+      <mat-progress-spinner mode="indeterminate" diameter="48" />
+      <p>Loading trends…</p>
+    </div>
+  } @else if (trends().length === 0) {
+    <mat-card class="trending-state trending-state--empty" appearance="outlined">
+      <mat-icon svgIcon="trending-up" />
+      <p>No trends yet — check back once more repositories have been analyzed.</p>
+    </mat-card>
+  } @else {
+    <div class="trend-list">
+      @for (trend of trends(); track trend.id) {
+        <mat-card class="trend-card" appearance="outlined">
+          <div class="trend-card__header">
+            <div class="trend-card__icon">
+              <mat-icon svgIcon="trending-up" />
+            </div>
+            <div class="trend-card__heading">
+              <div class="trend-card__title">{{ trend.category }}</div>
+              <div class="trend-card__subtitle">
+                {{ trend.repositoryCount }} repos in this trend
+              </div>
+            </div>
+            <span class="trend-card__growth-chip">{{ growthLabelFor(trend) }}</span>
+          </div>
+
+          <mat-expansion-panel class="trend-card__panel">
+            <mat-expansion-panel-header>
+              <mat-panel-title>Repositories in this trend</mat-panel-title>
+            </mat-expansion-panel-header>
+
+            @if (trend.contributingRepositories.length === 0) {
+              <p class="trend-card__no-repos">No contributing repositories yet.</p>
+            } @else {
+              <div class="trend-card__repo-list">
+                @for (repo of trend.contributingRepositories; track repo.id) {
+                  <div class="trend-card__repo-row">
+                    <span class="trend-card__repo-name">{{ repo.owner }}/{{ repo.name }}</span>
+                    @if (repo.primaryLanguage; as language) {
+                      <span class="trend-card__repo-language">{{ language }}</span>
+                    }
+                    <span class="trend-card__repo-stars">★ {{ repo.starCount }}</span>
+                    <span class="trend-card__repo-summary">{{
+                      repo.summaryContent ?? 'Summary pending'
+                    }}</span>
+                    <app-bookmark-toggle
+                      class="trend-card__repo-bookmark"
+                      [repositoryId]="repo.id"
+                      [initialBookmarked]="repo.isBookmarked"
+                    />
+                  </div>
+                }
+              </div>
+            }
+          </mat-expansion-panel>
+        </mat-card>
+      }
+    </div>
+  }
+</div>

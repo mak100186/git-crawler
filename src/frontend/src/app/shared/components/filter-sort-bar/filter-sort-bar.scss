@@ -1,0 +1,143 @@
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border-radius: 20px;
+  box-shadow: var(--elevation-sm);
+
+  &__facets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  &__facet {
+    min-width: 160px;
+
+    &--pill ::ng-deep .mat-mdc-text-field-wrapper {
+      border-radius: 999px;
+    }
+
+    &--stars {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 260px;
+    }
+
+    &--topic {
+      min-width: 240px;
+      flex: 1 1 240px;
+    }
+  }
+
+  &__facet-label {
+    font-size: 11px;
+    color: var(--color-neutral-600);
+  }
+
+  &__slider {
+    width: 100%;
+  }
+
+  &__star-inputs {
+    display: flex;
+    gap: 8px;
+  }
+
+  &__star-input {
+    width: 90px;
+  }
+
+  &__active-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  &__active-chips {
+    ::ng-deep .mdc-evolution-chip {
+      background: var(--color-accent-100);
+    }
+    ::ng-deep .mdc-evolution-chip__text-label {
+      color: var(--color-accent-800);
+    }
+  }
+
+  &__sort-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  &__sort-toggle ::ng-deep .mat-button-toggle {
+    border-radius: 999px;
+  }
+
+  &__bookmarked-toggle {
+    margin-left: auto;
+  }
+
+  &__filters-trigger {
+    border-radius: 999px;
+    flex: none;
+  }
+}
+
+// Below the 960px breakpoint, the facets/sort-row above collapse and this full-height sidenav
+// carries the same controls instead (dashboard-handoff.md §2). The container itself renders no
+// main content of its own (only a mat-sidenav child) - collapsing it to zero height keeps it from
+// disturbing the view's normal document flow; the sidenav's own `fixedInViewport` positioning
+// (fixed relative to the viewport) is unaffected by the container's height.
+.filter-bar__sheet-container {
+  height: 0;
+  overflow: visible;
+}
+
+.filter-bar__sidenav {
+  width: min(320px, 100vw);
+  background: var(--color-surface);
+}
+
+.filter-bar__sidenav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+
+.filter-bar__sidenav-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.filter-bar__sidenav-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+
+  .filter-bar__facets--sidenav {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .filter-bar__sort-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .filter-bar__bookmarked-toggle {
+    margin-left: 0;
+  }
+}

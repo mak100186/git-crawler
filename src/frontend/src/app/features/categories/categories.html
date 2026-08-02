@@ -1,0 +1,39 @@
+<div class="view view--categories">
+  @if (error()) {
+    <mat-card class="categories-state categories-state--error" appearance="outlined">
+      <mat-icon svgIcon="alert-circle" />
+      <p>Something went wrong loading categories.</p>
+      <button mat-flat-button color="primary" (click)="onRetry()">Retry</button>
+    </mat-card>
+  } @else if (loading()) {
+    <div class="categories-state categories-state--loading">
+      <mat-progress-spinner mode="indeterminate" diameter="48" />
+      <p>Loading categories…</p>
+    </div>
+  } @else if (categories().length === 0) {
+    <mat-card class="categories-state categories-state--empty" appearance="outlined">
+      <mat-icon svgIcon="layers" />
+      <p>No categories yet — check back once trends have been aggregated.</p>
+    </mat-card>
+  } @else {
+    <div class="category-grid">
+      @for (category of categories(); track category.category; let i = $index) {
+        <mat-card
+          class="category-tile"
+          [class]="'category-tile--' + tileVariant(i)"
+          appearance="outlined"
+          [routerLink]="['/categories', category.category]"
+          tabindex="0"
+          role="link"
+          [attr.aria-label]="'View ' + category.category + ' category'"
+        >
+          <div class="category-tile__icon">
+            <mat-icon svgIcon="layers" />
+          </div>
+          <div class="category-tile__label">{{ category.category }}</div>
+          <div class="category-tile__count">{{ category.repositoryCount }} repos</div>
+        </mat-card>
+      }
+    </div>
+  }
+</div>

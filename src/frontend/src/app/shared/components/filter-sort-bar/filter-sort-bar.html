@@ -1,0 +1,220 @@
+<ng-template #facetsContent>
+  @if (showLanguageFilter() && !forcedCategory()) {
+    <mat-form-field
+      appearance="outline"
+      subscriptSizing="dynamic"
+      class="filter-bar__facet filter-bar__facet--pill"
+    >
+      <mat-label>Language</mat-label>
+      <mat-select
+        multiple
+        [value]="selectedLanguages()"
+        (selectionChange)="onLanguageSelectionChange($event.value)"
+      >
+        @for (language of languageOptions(); track language) {
+          <mat-option [value]="language">{{ language }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
+
+  <div class="filter-bar__facet filter-bar__facet--stars">
+    <span class="filter-bar__facet-label">Stars</span>
+    <mat-slider class="filter-bar__slider" [min]="0" [max]="starRangeMax" [step]="50" discrete>
+      <input
+        matSliderStartThumb
+        [value]="minStars() ?? 0"
+        (valueChange)="onStarRangeChange($event, maxStars())"
+      />
+      <input
+        matSliderEndThumb
+        [value]="maxStars() ?? starRangeMax"
+        (valueChange)="onStarRangeChange(minStars(), $event)"
+      />
+    </mat-slider>
+    <div class="filter-bar__star-inputs">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__star-input">
+        <mat-label>Min</mat-label>
+        <input
+          matInput
+          type="number"
+          min="0"
+          [max]="starRangeMax"
+          [value]="minStars() ?? 0"
+          (change)="onStarRangeChange($any($event.target).valueAsNumber, maxStars())"
+        />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__star-input">
+        <mat-label>Max</mat-label>
+        <input
+          matInput
+          type="number"
+          min="0"
+          [max]="starRangeMax"
+          [value]="maxStars() ?? starRangeMax"
+          (change)="onStarRangeChange(minStars(), $any($event.target).valueAsNumber)"
+        />
+      </mat-form-field>
+    </div>
+  </div>
+
+  <mat-form-field
+    appearance="outline"
+    subscriptSizing="dynamic"
+    class="filter-bar__facet filter-bar__facet--topic"
+  >
+    <mat-label>Topic</mat-label>
+    <mat-chip-grid #topicGrid aria-label="Selected topics">
+      @for (topic of selectedTopics(); track topic) {
+        <mat-chip-row (removed)="removeTopic(topic)">
+          {{ topic }}
+          <button matChipRemove aria-label="Remove topic">
+            <mat-icon svgIcon="x" />
+          </button>
+        </mat-chip-row>
+      }
+      <input
+        placeholder="Add topic…"
+        [matChipInputFor]="topicGrid"
+        [matAutocomplete]="topicAuto"
+        [ngModel]="topicInput()"
+        (ngModelChange)="topicInput.set($event)"
+        (matChipInputTokenEnd)="onTopicTokenEnd($event)"
+      />
+    </mat-chip-grid>
+    <mat-autocomplete #topicAuto="matAutocomplete" (optionSelected)="onTopicSelected($event)">
+      @for (option of filteredTopicOptions(); track option) {
+        <mat-option [value]="option">{{ option }}</mat-option>
+      }
+    </mat-autocomplete>
+  </mat-form-field>
+
+  <mat-form-field
+    appearance="outline"
+    subscriptSizing="dynamic"
+    class="filter-bar__facet filter-bar__facet--pill"
+  >
+    <mat-label>License</mat-label>
+    <mat-select
+      multiple
+      [value]="selectedLicenses()"
+      (selectionChange)="onLicenseSelectionChange($event.value)"
+    >
+      @for (license of licenseOptions(); track license) {
+        <mat-option [value]="license">{{ license }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+</ng-template>
+
+<ng-template #sortRowContent>
+  <mat-button-toggle-group
+    class="filter-bar__sort-toggle"
+    [value]="sort()"
+    (change)="setSort($event.value)"
+    aria-label="Sort by"
+  >
+    @for (option of sortOptions; track option) {
+      <mat-button-toggle [value]="option">{{ option }}</mat-button-toggle>
+    }
+  </mat-button-toggle-group>
+
+  <button
+    mat-icon-button
+    type="button"
+    class="filter-bar__direction-toggle"
+    [attr.aria-label]="direction() === 'Asc' ? 'Sort ascending' : 'Sort descending'"
+    (click)="toggleDirection()"
+  >
+    <mat-icon [svgIcon]="direction() === 'Asc' ? 'arrow-up' : 'arrow-down'" />
+  </button>
+
+  @if (showBookmarkedToggle()) {
+    <mat-slide-toggle
+      class="filter-bar__bookmarked-toggle"
+      [checked]="bookmarkedOnly()"
+      (change)="onBookmarkedOnlyChange($event.checked)"
+    >
+      Bookmarked
+    </mat-slide-toggle>
+  }
+</ng-template>
+
+<div class="filter-bar" [class.filter-bar--narrow]="isNarrow()">
+  @if (!isNarrow()) {
+    <div class="filter-bar__facets">
+      <ng-container *ngTemplateOutlet="facetsContent" />
+    </div>
+  }
+
+  <div class="filter-bar__active-row">
+    @if (isNarrow()) {
+      <button
+        mat-stroked-button
+        type="button"
+        class="filter-bar__filters-trigger"
+        (click)="filtersSheetOpen.set(true)"
+      >
+        Filters · {{ activeFilterCount() }}
+      </button>
+    }
+
+    @if (activeChips().length > 0) {
+      <mat-chip-set class="filter-bar__active-chips" aria-label="Active filters">
+        @for (chip of activeChips(); track chip.key) {
+          <mat-chip [removable]="chip.removable" (removed)="chip.remove()">
+            {{ chip.label }}
+            @if (chip.removable) {
+              <button matChipRemove aria-label="Remove filter">
+                <mat-icon svgIcon="x" />
+              </button>
+            }
+          </mat-chip>
+        }
+      </mat-chip-set>
+
+      @if (hasRemovableFilters()) {
+        <button mat-button class="filter-bar__clear-all" (click)="clearAll()">Clear all</button>
+      }
+    }
+  </div>
+
+  @if (!isNarrow()) {
+    <div class="filter-bar__sort-row">
+      <ng-container *ngTemplateOutlet="sortRowContent" />
+    </div>
+  }
+</div>
+
+@if (isNarrow()) {
+  <mat-sidenav-container class="filter-bar__sheet-container">
+    <mat-sidenav
+      class="filter-bar__sidenav"
+      mode="over"
+      position="end"
+      fixedInViewport
+      [opened]="filtersSheetOpen()"
+      (openedChange)="filtersSheetOpen.set($event)"
+    >
+      <div class="filter-bar__sidenav-header">
+        <span class="filter-bar__sidenav-title">Filters</span>
+        <button
+          mat-icon-button
+          type="button"
+          aria-label="Close filters"
+          (click)="filtersSheetOpen.set(false)"
+        >
+          <mat-icon svgIcon="x" />
+        </button>
+      </div>
+      <div class="filter-bar__sidenav-content">
+        <div class="filter-bar__facets filter-bar__facets--sidenav">
+          <ng-container *ngTemplateOutlet="facetsContent" />
+        </div>
+        <div class="filter-bar__sort-row">
+          <ng-container *ngTemplateOutlet="sortRowContent" />
+        </div>
+      </div>
+    </mat-sidenav>
+  </mat-sidenav-container>
+}

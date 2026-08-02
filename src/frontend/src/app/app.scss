@@ -1,0 +1,101 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.app-toolbar {
+  background: var(--color-ink-900);
+  color: var(--color-bg);
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+
+  &__brand {
+    font-family: var(--font-display);
+    font-size: 21px;
+  }
+
+  &__nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 24px;
+  }
+
+  &__nav-link {
+    color: var(--color-neutral-300, #c0b6a5);
+    border-radius: 999px;
+    font-family: var(--font-display);
+
+    &--active {
+      background: var(--color-accent);
+      color: var(--color-ink);
+    }
+  }
+
+  &__spacer {
+    flex: 1 1 auto;
+  }
+
+  &__reserved {
+    opacity: 0.58;
+    pointer-events: none;
+  }
+
+  &__reserved-pill {
+    border: 1.5px dashed var(--color-neutral-600);
+    border-radius: 999px;
+    padding: 6px 16px;
+    font-size: 12px;
+    color: var(--color-neutral-300, #c0b6a5);
+  }
+
+  &__search {
+    width: 160px;
+
+    ::ng-deep .mat-mdc-text-field-wrapper {
+      border-radius: 999px;
+      border: 1.5px dashed var(--color-neutral-600);
+    }
+    ::ng-deep input {
+      color: var(--color-neutral-300, #c0b6a5);
+    }
+  }
+}
+
+.app-content {
+  flex: 1 1 auto;
+  background: var(--color-bg);
+  min-height: 0;
+  padding-bottom: 72px;
+}
+
+.app-bottom-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-ink-900);
+  border-radius: 999px;
+  padding: 8px 14px;
+  box-shadow: var(--elevation-lg);
+  z-index: 10;
+
+  // mat-icon-button already provides the button chrome (sizing, circular ripple/hover target) -
+  // only the design's per-state icon color is themed here.
+  &__link {
+    color: var(--color-neutral-500);
+
+    &--active {
+      color: var(--color-accent-400, #f6a06b);
+    }
+  }
+}

@@ -1,0 +1,23 @@
+<div class="view">
+  <app-filter-sort-bar
+    defaultSort="Newest"
+    defaultDirection="Desc"
+    [showBookmarkedToggle]="true"
+    [languageOptions]="(facetOptions.languageOptions$ | async) ?? []"
+    [licenseOptions]="(facetOptions.licenseOptions$ | async) ?? []"
+    [topicOptions]="(facetOptions.topicOptions$ | async) ?? []"
+    (stateChange)="onFilterStateChange($event)"
+  />
+
+  <app-repository-grid
+    [items]="items()"
+    [loading]="loading()"
+    [error]="error()"
+    [totalCount]="totalCount()"
+    [page]="page()"
+    [pageSize]="pageSize()"
+    (pageChange)="onPageChange($event)"
+    (retry)="onRetry()"
+    (clearFilters)="onClearFilters()"
+  />
+</div>
