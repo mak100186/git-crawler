@@ -68,8 +68,12 @@ help:
 	@echo "make up      - check Docker, start docker compose (app+postgres), check/start LM Studio, load the model"
 	@echo "make down    - stop docker compose (app+postgres); LM Studio on the host is left running"
 	@echo "make status  - show whether Docker, Compose services, and LM Studio are up"
-	@echo "make health  - probe every component's actual endpoint (app /health, /api/ping, Postgres, LM Studio)"
+	@echo "make health  - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
 	@echo "make logs    - tail the app container's logs"
+	@echo ""
+	@echo "Once 'make up' finishes, the web dashboard (F-011 - Discovery Feed, Hidden Gems,"
+	@echo "Trending, Categories) is at http://localhost:$(APP_PORT)/ - it's the Angular build"
+	@echo "served as static assets by the same app container, not a separate service/port."
 	@echo ""
 	@echo "Override LMSTUDIO_MODEL, LMSTUDIO_PORT, LMSTUDIO_CONTEXT_LENGTH as needed, e.g.:"
 	@echo "  make up LMSTUDIO_MODEL=<catalog-identifier>   (run 'lms ls' to see what's downloaded)"
@@ -100,6 +104,7 @@ check-env:
 up: check-env check-docker compose-up check-lmstudio load-model
 	@echo ""
 	@echo "Stack is up:"
+	@echo "  dashboard       -> http://localhost:$(APP_PORT)/ (Discovery Feed, Hidden Gems, Trending, Categories)"
 	@echo "  app + postgres  -> docker compose (see 'make logs')"
 	@echo "  LM Studio       -> host-installed, model '$(LMSTUDIO_MODEL)' loaded on port $(LMSTUDIO_PORT)"
 
@@ -217,6 +222,11 @@ health: check-env
 		echo "App /api/ping        : OK"; \
 	else \
 		echo "App /api/ping        : FAIL"; status=1; \
+	fi; \
+	if curl -sf "http://localhost:$(APP_PORT)/" | grep -qi "<app-root" >/dev/null 2>&1; then \
+		echo "Dashboard (F-011)    : OK (http://localhost:$(APP_PORT)/)"; \
+	else \
+		echo "Dashboard (F-011)    : FAIL (Angular build not served from wwwroot - see docs/test-runbook.md F-011 TC-011-12)"; status=1; \
 	fi; \
 	if docker compose exec -T postgres pg_isready -U "$(POSTGRES_USER)" -d "$(POSTGRES_DB)" >/dev/null 2>&1; then \
 		echo "Postgres             : OK"; \
