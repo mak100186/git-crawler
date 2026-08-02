@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
 > Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010 so far)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -278,6 +278,109 @@ them.
    updated in place, not duplicated. There is no unique DB constraint enforcing this (a deliberate
    Task Packet choice); this depends on the single-threaded Hangfire job's query-then-upsert logic,
    so it's worth re-checking after any change that might make this job run concurrently.
+
+---
+
+## F-010 — Web API
+
+### Happy path — Discovery Feed filter/sort/paginate
+1. After a crawl-to-score chain has run at least once (see F-005/F-006 above) so `Repositories` has
+   varied `PrimaryLanguage`/`StarCount`/`Topics`/`LicenseIdentifier`/`FirstDiscoveredAtUtc` values,
+   `curl "http://localhost:<app-port>/api/discovery-feed"` with no query params.
+2. **Expect:** `200` with a `PagedResult<RepositoryCardDto>` body, ordered `FirstDiscoveredAtUtc`
+   descending (the endpoint's default `sort=Newest&direction=Desc`), `pageSize` 24 unless overridden.
+3. Repeat with combined filters, e.g.
+   `curl "http://localhost:<app-port>/api/discovery-feed?language=C%23&minStars=10&topic=cli&license=MIT&sort=Stars&direction=Asc&page=1&pageSize=5"`.
+4. **Expect:** only repositories matching every supplied facet (AND across facets), ordered by the
+   requested sort/direction, with the requested page/pageSize honored (see `docs/test-cases.md`
+   TC-010-01).
+
+### Happy path — Hidden Gems score breakdown
+1. `curl "http://localhost:<app-port>/api/hidden-gems"`.
+2. **Expect:** `200`, default sort `Score desc`; each card's score-breakdown block reports all five
+   signals (license/commits-per-week/contributor count/fork count/star count) with the exact
+   `ScoringWeights` constants (0.18/0.27/0.225/0.225/0.10) alongside `TotalScore`, not just the
+   aggregate number (TC-010-02).
+
+### Happy path — Trending and Categories
+1. After a summarize-to-aggregate chain has run (see F-009 above),
+   `curl "http://localhost:<app-port>/api/trending"`.
+2. **Expect:** `200`; each trend's contributing-repos list excludes any repo that has a `Score` but
+   no `Summary` yet, matching `AggregateTrendsCommandHandler`'s own membership rule byte-for-byte
+   (TC-010-03).
+3. `curl "http://localhost:<app-port>/api/categories"`.
+4. **Expect:** `200`, one entry per distinct category reflecting the latest period's
+   `RepositoryCount`/`AverageScore`.
+5. `curl "http://localhost:<app-port>/api/categories/<category>/repositories"` (URL-encode the
+   category if it contains `+`/`#`, e.g. `C%23`).
+6. **Expect:** `200`, same `PagedResult<RepositoryCardDto>` shape as Discovery Feed, scoped to that
+   `PrimaryLanguage`, with the same filter/sort contract still usable within that scope — a
+   caller-supplied `language` query param is ignored in favor of the route segment (TC-010-04).
+
+### Happy path — bookmark create/list/delete round-trip
+1. Pick a `RepositoryId` from a prior Discovery Feed response, then
+   `curl -X POST "http://localhost:<app-port>/api/repositories/<id>/bookmark"`.
+2. **Expect:** `200` with a `BookmarkDto` body.
+3. `curl "http://localhost:<app-port>/api/bookmarks"`. **Expect:** the repository is present.
+4. Re-fetch Discovery Feed or Hidden Gems for that repository. **Expect:** its card's `IsBookmarked`
+   flag is now `true` (FR-007).
+5. `curl -X DELETE "http://localhost:<app-port>/api/repositories/<id>/bookmark"`. **Expect:** `204`.
+6. Re-fetch `/api/bookmarks`. **Expect:** the repository is absent again (TC-010-05).
+
+### Edge case — bookmark idempotency
+1. `curl -X POST "http://localhost:<app-port>/api/repositories/<id>/bookmark"` twice in a row for
+   the same `id`.
+2. **Expect:** both calls return `200` — no constraint-violation error on the repeat (the unique
+   index on `Bookmark.RepositoryId` is respected without surfacing a 409/500).
+3. `curl -X DELETE "http://localhost:<app-port>/api/repositories/<id>/bookmark"` for an `id` that
+   was never bookmarked. **Expect:** `204`, not an error (TC-010-06).
+
+### Edge case — topic filter and repos with no topics
+1. `curl "http://localhost:<app-port>/api/discovery-feed?topic=<known-topic>"` where `<known-topic>`
+   is a value present in at least one repo's `Topics`.
+2. **Expect:** only repositories whose `Topics` contains that value are returned; repositories with
+   an empty `Topics` array never match and the call never errors (TC-010-07).
+
+### Regression-sensitive — sort uses the latest score, not the highest ever
+1. Pick a repository with more than one `Score` row (re-scored after a re-crawl — see F-007's
+   Edge case above), where the earlier row has a higher `TotalScore`/`CommitsPerWeek` than the most
+   recent one.
+2. `curl "http://localhost:<app-port>/api/hidden-gems?sort=Score&direction=Desc"` and
+   `curl "http://localhost:<app-port>/api/discovery-feed?sort=Commits&direction=Desc"`.
+3. **Expect:** both endpoints rank that repository using its latest (by `ComputedAtUtc`) score, not
+   its historical peak — same class of bug F-008's `GenerateSummariesCommandHandler` had before its
+   first-round fix (`docs/handoff.md` "Important context"). Automated coverage:
+   `GetHiddenGemsQueryHandlerTests.Handle_MultipleScores_UsesLatestByComputedAtUtc_NotHighestEverTotalScore`
+   and `GetDiscoveryFeedQueryHandlerTests.Handle_SortByScore_UsesLatestScoreNotHighestEver_RespectsDirection`
+   (TC-010-08).
+
+### Regression-sensitive — `FirstDiscoveredAtUtc` is set once, never overwritten
+1. Trigger discovery for a repository not yet in the database.
+   `psql -c 'SELECT "FirstDiscoveredAtUtc" FROM "Repositories" WHERE "GitHubId" = <id>;'`. **Expect:**
+   a non-default timestamp close to "now".
+2. Re-trigger discovery for the same repository after a delay (`LastCrawledAtUtc` advances).
+3. **Expect:** `FirstDiscoveredAtUtc` is unchanged from step 1 — a repeatedly re-crawled old repo
+   must never resurface as "Newest" on `/api/discovery-feed?sort=Newest`. Automated coverage:
+   `DiscoverRepositoriesCommandHandlerTests.Handle_NewGitHubId_SetsFirstDiscoveredAtUtcToNow` and
+   `Handle_ExistingGitHubId_NeverOverwritesFirstDiscoveredAtUtc` (TC-010-09).
+
+### Edge case — pagination boundaries
+1. With a seeded set of `pageSize + 1` matching repositories,
+   `curl "http://localhost:<app-port>/api/discovery-feed?pageSize=5&page=1"`, then `page=2`, then a
+   page far beyond the last (e.g. `page=999`).
+2. **Expect:** page 1 returns a full page of 5, page 2 returns exactly 1 result, and the
+   out-of-range page returns an empty result set — `200` with an empty array, never an error
+   (TC-010-10).
+
+**Not executed live in this Integration pass** — no `make up` stack was running in this
+environment (same category of gap as Phase 1/2's runbook entries above); automated coverage for
+every scenario above exists and passes (`GetDiscoveryFeedQueryHandlerTests`,
+`GetHiddenGemsQueryHandlerTests`, `GetTrendingQueryHandlerTests`, `GetCategoriesQueryHandlerTests`,
+`GetCategoryRepositoriesQueryHandlerTests`, `CreateBookmarkCommandHandlerTests`,
+`DeleteBookmarkCommandHandlerTests`, `ListBookmarksQueryHandlerTests`, all SQLite-backed against
+real EF Core query translation, not mocked) — an operator should run this section's `curl`/`psql`
+steps at least once against a freshly-seeded `make up` stack before relying on F-010 in anything
+resembling production.
 
 ---
 

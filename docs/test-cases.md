@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v4
+> Version: v5
 > Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -390,6 +390,81 @@ No running system to verify — this is a documentation output (`docs/design-bri
 
 ---
 
+## F-010 — Web API
+
+### TC-010-01 (Happy path) — Discovery Feed filters, sorts, and paginates
+1. Seed repositories with varied `PrimaryLanguage`, `StarCount`, `Topics`, `LicenseIdentifier`, and
+   `FirstDiscoveredAtUtc`. Call the Discovery Feed endpoint with a combination of `language`,
+   `minStars`/`maxStars`, `topic`, and `license` filters plus `sort=Newest&direction=Desc`.
+2. **Expect:** only repositories matching all supplied facets (AND across facets, OR within a
+   multi-value facet) are returned, ordered by `FirstDiscoveredAtUtc` descending, `page`/`pageSize`
+   honored (default `pageSize` 24) — satisfies FR-004 and D4 of F-010's Task Packet.
+3. Omit all filters. **Expect:** every repository is returned in default order (`Newest desc`).
+
+### TC-010-02 (Happy path) — Hidden Gems exposes the FR-005 weighted signal breakdown
+1. Seed a scored repository, call the Hidden Gems endpoint.
+2. **Expect:** the response's score-breakdown block reports each of the five signals
+   (license/commits-per-week/contributor count/fork count/star count) alongside the exact
+   `ScoringWeights` constants (0.18/0.27/0.225/0.225/0.10) and the `TotalScore` — not just a single
+   aggregate number. Default sort is `Score desc`.
+
+### TC-010-03 (Happy path) — Trending's contributing repos mirror F-009's own membership rule
+1. Seed repositories matching `AggregateTrendsCommandHandler`'s criteria (scored + summarized,
+   non-null `PrimaryLanguage`) for one category, plus a repo that is scored but not summarized in
+   the same category. Call the Trending endpoint and expand that trend's contributing-repos list.
+2. **Expect:** the scored-but-not-summarized repo is excluded — the read-side membership check is
+   byte-for-byte identical to F-009's own write-side rollup criteria (D3).
+
+### TC-010-04 (Happy path) — Categories list and drill-down
+1. Seed `TrendAggregate` rows for two categories, call the Categories endpoint.
+2. **Expect:** one entry per distinct category reflecting the latest period's `RepositoryCount`/
+   `AverageScore`.
+3. Call the drill-down endpoint for one category. **Expect:** it returns the same shape as Discovery
+   Feed, scoped to `PrimaryLanguage == category`, with the full D4 filter/sort contract still usable
+   within that scope (D2).
+
+### TC-010-05 (Happy path) — Bookmark create/list/delete round-trip
+1. Call create-bookmark for a repository, then list-bookmarks, then delete-bookmark for the same
+   repository, then list-bookmarks again.
+2. **Expect:** the repository appears in the list after create and is absent after delete; a repo
+   card's `IsBookmarked` flag flips accordingly on the Discovery Feed/Hidden Gems endpoints in
+   between (FR-007).
+
+### TC-010-06 (Edge case) — Bookmark idempotency
+1. Call create-bookmark twice in a row for the same repository.
+2. **Expect:** no constraint-violation error on the second call (the unique index on
+   `Bookmark.RepositoryId` is respected without surfacing a 409/500).
+3. Call delete-bookmark for a repository that was never bookmarked.
+4. **Expect:** no error — a defined, documented idempotent response either way.
+
+### TC-010-07 (Edge case) — Topic filter and repos with no topics
+1. Seed one repository with `Topics` containing a known value and one with an empty `Topics` list.
+   Filter Discovery Feed by that topic value.
+2. **Expect:** only the matching repository is returned; the empty-`Topics` repository never matches
+   any topic filter and never errors when `Topics` is empty.
+
+### TC-010-08 (Regression-sensitive) — Score/Commits sort uses the latest score, not the highest ever
+1. Seed a repository with two `Score` rows: an earlier high `TotalScore`/`CommitsPerWeek` and a
+   chronologically later (by `ComputedAtUtc`) lower one. Call Hidden Gems sorted by `Score desc` and
+   Discovery Feed sorted by `Commits desc`.
+2. **Expect:** both use the repository's latest score, not its historical peak — same class of bug
+   F-008's `GenerateSummariesCommandHandler` had before its first-round fix (`docs/handoff.md`
+   "Important context").
+
+### TC-010-09 (Regression-sensitive) — `FirstDiscoveredAtUtc` is set once, never overwritten
+1. Crawl a new repository (first insert). **Expect:** `FirstDiscoveredAtUtc` is set.
+2. Re-crawl the same repository after a delay (`LastCrawledAtUtc` advances).
+3. **Expect:** `FirstDiscoveredAtUtc` is unchanged from step 1 — a repeatedly re-crawled old repo
+   must never resurface as "Newest."
+
+### TC-010-10 (Edge case) — Pagination boundaries
+1. Seed exactly `pageSize` + 1 matching repositories. Request page 1, then page 2, then a page far
+   beyond the last page.
+2. **Expect:** page 1 returns a full page, page 2 returns exactly one result, and the out-of-range
+   page returns an empty result set — never an error.
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
@@ -397,3 +472,4 @@ No running system to verify — this is a documentation output (`docs/design-bri
 | v2 | 2026-08-02 | Added Phase 1 scenarios: TC-004 (Data Store schema), TC-005 (GitHub Crawler), TC-006 (Job Scheduler), TC-007 (Scoring Engine, including the five-signal independence check added after the star-count amendment) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 0 when Phase 1 features completed |
 | v3 | 2026-08-02 | TC-006-01 updated: Hangfire dashboard access control removed (F-006), so the `?key=` requirement and the access-denied assertion no longer apply | Operator: "remove the auth for hangfire" |
 | v4 | 2026-08-02 | Added Phase 2 scenarios: TC-008 (Summarizer, including score-to-summarize chaining and a Manual live-LM-Studio quality/throughput check), TC-009 (Trend Aggregator, including the upsert-idempotency and summarize-to-aggregate chaining checks), TC-018 (Dashboard UX design brief, documentation-only) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 1 when Phase 2 features completed (same gap-closure pattern as v2) |
+| v5 | 2026-08-02 | Added F-010 scenarios (TC-010): Discovery Feed/Hidden Gems/Trending/Categories filter-sort-paginate contract, bookmark CRUD + idempotency, topic filtering, and two regression checks specific to F-010's two schema additions (`FirstDiscoveredAtUtc` set-once, latest-not-highest score sort) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended for F-010 when it completed (same gap-closure pattern as v2/v4); F-010 was run as a standalone slice of Phase 3, not the full phase |

@@ -4,6 +4,99 @@
 
 ## What was done
 
+**F-010 (Web API) is Done**, run as a standalone, single-feature slice of Phase 3 via
+`orchestrator-development-pattern` — the operator deliberately scoped this run to F-010 alone rather
+than the full phase (F-010, F-011, F-012), so F-011 and F-012 remain `Planned` and Phase 3 itself
+stays `Planned` until they complete too. Phase 2 (AI summarization/trend detection/UX brief) closed
+2026-08-02 — see "Phase 2 handoff" below for that detail; this section covers F-010's operative state.
+
+- **F-010** (Web API) — PASS on the first Developer/Reviewer attempt; Integration PASS (121/121
+  tests, 0 vulnerabilities, ran twice for stability); Reviewer-Integration PASS after one
+  self-corrected round (see below). `Features/{Repositories,Trends,Categories,Bookmarks}/` — 8 new
+  Wolverine command/query slices (ADR-015): `GetDiscoveryFeed`, `GetHiddenGems`, `GetTrending`,
+  `GetCategories`, `GetCategoryRepositories`, `CreateBookmark`, `DeleteBookmark`, `ListBookmarks`,
+  each with its own endpoint dispatching via `IMessageBus.InvokeAsync` (matching the existing
+  `PingEndpoint` pattern). A shared *internal* helper, `Features/Repositories/RepositoryCardQuery.cs`
+  (plain class, not a Wolverine message), implements one filter/sort/paginate contract reused by
+  Discovery Feed, Hidden Gems, and Category drill-down — avoiding tripling that logic while keeping
+  each Wolverine slice boundary intact per ADR-015.
+- **Two schema gaps closed as additive migrations** (same precedent as F-007's
+  `AddScoreStarCountSignal`), both bundled into F-010 rather than deferred: `Repository.Topics`
+  (`text[]` via EF Core's primitive-collections feature — GitHub topics were never crawled before
+  this feature despite being in FR-004's filter scope; F-005's `GitHubDiscoveryClient` now fetches
+  `repositoryTopics(first: 10)` alongside the existing discovery query) and
+  `Repository.FirstDiscoveredAtUtc` (set once on first insert, never updated on re-crawl — this is
+  what Discovery Feed's default "Newest" sort orders by; `LastCrawledAtUtc` would have been wrong
+  since it advances on every re-crawl). **Neither column is backfilled for pre-existing rows**
+  (`Topics` defaults to `{}`, `FirstDiscoveredAtUtc` defaults to `-infinity`) — tracked as new open
+  item PM-006, see What's Next.
+- **Two data-model decisions resolved before implementation, not re-derived by the Developer**:
+  "Categories" stayed `TrendAggregate.Category`-derived (i.e. `Repository.PrimaryLanguage`), not
+  GitHub-topic-derived, since F-009 already shipped that semantic and reopening it was out of scope;
+  Trending's "contributing repos" for a trend are computed at query time (has both `Score` and
+  `Summary`, latest `TotalScore`, matching `PrimaryLanguage`) rather than stored, mirroring
+  `AggregateTrendsCommandHandler`'s own membership criteria exactly — `TrendAggregate` has no
+  repo-level FK by design (see its own header comment).
+- **Hidden Gems exposes FR-005's full weighted signal breakdown**, not just a total — each of the
+  five signals (license/commits-per-week/contributor count/fork count/star count) alongside
+  `ScoringWeights`' exact constants (18%/27%/22.5%/22.5%/10%) and `TotalScore`. Both Hidden Gems and
+  Discovery Feed's `Score`/`Commits` sorts use each repo's *latest* `Score` by `ComputedAtUtc`, not
+  `Max(TotalScore)` — the same class of correctness rule F-008 first got wrong and then fixed in
+  Phase 2 (see Important Context below), applied correctly from the start here.
+- **Bookmark create/delete are idempotent by design**: a double-create never throws the unique-index
+  constraint violation (`Bookmark.RepositoryId`); a delete of a nonexistent bookmark never errors.
+  Both documented in-code as deliberate choices, not oversights.
+- **Reviewer** — PASS on the first pass. Independently re-ran the full test suite (121/121, matching
+  the Developer's own report), cross-checked the score-breakdown weights against the literal
+  `ScoringWeights.cs` constants, and verified the migration's generated SQL applies cleanly with
+  correct defaults for both new NOT NULL columns against a non-empty table.
+- **Integration** — PASS on the first attempt (no code fixes needed — format/build/tests/audit were
+  already clean). Found and fixed one real documentation-drift gap: `docs/test-runbook.md` had no
+  F-010 section despite 8 new user-facing endpoints — authored one, cross-referencing every scenario
+  to its actual passing test. Flagged (not fixed, out of its scope) that no live `make up` stack was
+  available to walk the new endpoints end-to-end over real HTTP — same category of gap Phase 1/2's
+  own Integration passes disclosed for their live-infrastructure checks.
+- **Reviewer-Integration — initially FAILed on a misattribution, then self-corrected to PASS**: it
+  found `docs/test-cases.md` had also changed (+80 lines: a new `## F-010 — Web API` section,
+  TC-010-01 through TC-010-10) and assumed the Integration Agent had silently authored and hidden
+  that work, since Integration's own report only listed `docs/test-runbook.md` as touched. In fact
+  the Orchestrator (not Integration) wrote the TC-010 section directly, *before* dispatching
+  Integration, per this skill's own Step 0.0 ("Test Cases Doc — quality review... have the
+  Orchestrator draft the missing scenarios") — the same gap-closure pattern already used for
+  Phase 1/2 (see those sections below). When the Orchestrator flagged this, Reviewer-Integration
+  independently re-read the skill's actual Step 0.0 and Documentation Drift Check text (rather than
+  taking the correction at face value) and confirmed `test-cases-doc` was never in the Integration
+  Agent's Documentation Drift scope in the first place — reversed its own verdict to PASS. Worth
+  remembering for future sessions: when the Orchestrator pre-drafts test-cases-doc content itself,
+  say so explicitly in the Integration Agent's prompt in a way that also reaches Reviewer-Integration,
+  not just Integration — this ambiguity is cheap to prevent up front.
+- **Documentation drift found and fixed this run**: `docs/test-cases.md` extended to v5 with TC-010
+  (10 scenarios covering filter/sort/paginate, score breakdown, trend membership parity, categories,
+  bookmark CRUD + idempotency, topic filtering, and the two schema-specific regressions). PMBook
+  F-010 row updated `Planned` → `Done` with implementation annotations (v18); a new PM-006 open item
+  added for the unbackfilled schema columns.
+- **Graphify** — ran over `src/backend` only (`--update`, incremental), code-only fast path (all 34
+  new/changed files were `.cs`, no LLM semantic extraction needed). Graph grew from 860 nodes/1223
+  edges/55 communities (Phase 2) to **1154 nodes/1754 edges/78 communities**. The incremental diff
+  initially reported 17 `src/frontend` files as "deleted" — verified false: they still exist on disk,
+  the false-positive was purely a scope mismatch (an earlier run's saved manifest was built from a
+  wider scan root than this backend-scoped run). Deletion pruning was deliberately skipped for those
+  17 files to avoid destroying legitimate frontend graph nodes, and the manifest was re-saved scoped
+  correctly to `src/backend` so a future backend-only `--update` won't repeat the false report.
+  Community labels generated from each community's dominant `Features/<Area>/<Operation>/` source
+  folder, same heuristic as Phase 1/2. Outputs refreshed in `graphify-out/` (`graph.html`,
+  `graph.json`, `GRAPH_REPORT.md`).
+- New/changed docs this run: `docs/project-management.md` v18, `docs/test-cases.md` v5,
+  `docs/test-runbook.md` (new F-010 section), `docs/handoff.md` (this file). `docs/changelog.md` not
+  yet bumped as of this edit — see Commit Messages in this session's final response.
+
+All of it is uncommitted in the working tree as of this handoff — the Orchestrator does not run git
+commands; see **Commit Messages** in this session's final response for what to run.
+
+---
+
+## Phase 2 handoff (superseded by the above, kept for history)
+
 Phase 2 (AI summarization and trend detection; dashboard UX design brief) is complete, orchestrated end-to-end via `orchestrator-development-pattern`. Phase 1 (core data pipeline) closed 2026-08-02 — see `docs/changelog.md` Revisions 1-4 for that detail; this handoff focuses on Phase 2's operative state.
 
 - **F-008** (Summarizer) — PASS after one retry round. `Features/Summarization/GenerateSummaries/`
@@ -192,24 +285,26 @@ All of it was uncommitted at the time this Phase 1 handoff was originally writte
 ## Current state
 
 The platform now has a working, self-hosted, end-to-end **crawl → score → summarize → aggregate
-trends** pipeline — all four stages chained via Hangfire `RecurringJob` + `ContinueJobWith`:
+trends** pipeline, plus a JSON Web API surfacing it — all four pipeline stages still chained via
+Hangfire `RecurringJob` + `ContinueJobWith`, with the Web API a separate, request-driven layer on top:
 
 | Layer | State |
 |---|---|
-| Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 3 migrations; unchanged this phase |
-| Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, Polly resilience pipeline (ADR-018); unchanged this phase (fixed earlier this session, see Revision 4) |
-| Job Scheduler | Hangfire wired, dashboard at `/hangfire` unauthenticated; now chains **four** links: Crawler → Scoring → Summarizer → Trend Aggregator |
-| Scoring Engine | Pure computation, five weighted signals; unchanged this phase |
-| Summarizer | **New (F-008)**: LM Studio + Llama 3.2 3B Instruct via `IRepositorySummarizer`; selects top-scored (`Summarization:MinimumScore`, default 40), un-summarized repos (`Summarization:BatchSize`, default 20 per run); README fetched via GitHub REST; Summary rows create-once, never regenerated |
-| Trend Aggregator | **New (F-009)**: rolls up scored+summarized repos by `PrimaryLanguage` into `TrendAggregate` rows; single-day period by default (`Trends:PeriodDays`); upsert-by-`(Category, PeriodStart, PeriodEnd)` for idempotency |
-| Dashboard UX brief | **New (F-018)**: `docs/design-briefs/dashboard-ux-brief.md` — Discovery Feed/Hidden Gems/Trending/Categories layouts, filter/sort/bookmark interactions, Angular Material-only constraint; not yet handed to an actual design pass |
-| Postgres persistence | Bind-mounted to `./data/postgres`; unchanged this phase |
-| Test harness | 64 xUnit tests (up from 43 at Phase 1 close), all passing; `dotnet list package --vulnerable` clean |
-| Docs | `docs/test-cases.md` (v4) and `docs/test-runbook.md` cover Phase 0-2; `docs/project-management.md` v17, F-008/F-009/F-018 → Done, Phase 2 → Done |
+| Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 4 migrations (added `AddRepositoryTopicsAndFirstDiscoveredAt` this run) |
+| Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, Polly resilience pipeline (ADR-018); **extended this run** to also fetch `repositoryTopics` (capped 10/repo) and set `FirstDiscoveredAtUtc` once on first insert |
+| Job Scheduler | Hangfire wired, dashboard at `/hangfire` unauthenticated; chains **four** links: Crawler → Scoring → Summarizer → Trend Aggregator; unchanged this run |
+| Scoring Engine | Pure computation, five weighted signals; unchanged this run |
+| Summarizer | LM Studio + Llama 3.2 3B Instruct via `IRepositorySummarizer`; unchanged this run |
+| Trend Aggregator | Rolls up scored+summarized repos by `PrimaryLanguage` into `TrendAggregate` rows; unchanged this run |
+| **Web API** | **New (F-010)**: `Features/{Repositories,Trends,Categories,Bookmarks}/` — 8 Wolverine slices serving Discovery Feed, Hidden Gems, Trending, Categories (+ drill-down), and bookmark create/list/delete; shared filter/sort/paginate contract (language/star-range/topic/license facets, 4 sort fields, pagination); no auth (single-operator v1 posture) |
+| Dashboard UX brief | `docs/design-briefs/dashboard-ux-brief.md` — Discovery Feed/Hidden Gems/Trending/Categories layouts, filter/sort/bookmark interactions, Angular Material-only constraint; **the Claude Designer pass has since happened and been operator-reviewed, all three flagged gaps resolved** (PMBook F-018 row, v19) — F-011 is design-ready, unchanged by this run |
+| Postgres persistence | Bind-mounted to `./data/postgres`; unchanged this run |
+| Test harness | 121 xUnit tests (up from 64 at Phase 2 close), all passing; `dotnet list package --vulnerable` clean |
+| Docs | `docs/test-cases.md` (v5) and `docs/test-runbook.md` cover Phase 0-2 + F-010; `docs/project-management.md` v18, F-010 → Done, Phase 3 still `Planned` (F-011/F-012 not started) |
 
-Still nothing exists yet for: the Web API (F-010), the dashboard beyond its Phase 0 shell (F-011),
-or bookmarking (F-012). No frontend work happened this phase — Phase 2, like Phase 1, was
-backend-only (plus one docs-only feature) per the PMBook's Dependencies table.
+Still nothing exists yet for: the dashboard beyond its Phase 0 shell (F-011) or bookmarking's
+dedicated view (F-012) — F-010 unblocks both, but neither has been implemented. No frontend
+implementation work happened this run — F-010 was backend-only, per its own Task Packet scope.
 
 A live database check before Phase 2 started (operator request) found the Crawler's discovery
 query is functioning but only ever surfaces very-high-star repos (18.7K-453K stars across all 1,002
@@ -219,64 +314,94 @@ visibility cap. The operator reviewed this and explicitly decided **not** to tre
 now ("leave as-is") — noted here so a future session doesn't have to re-discover it from scratch.
 If discovery strategy is revisited later (e.g. star-range bracketing, REST search with explicit
 sort, or random sampling), that's a change to `GitHubDiscoveryClient.BuildSearchQuery()` (F-005),
-not anything Phase 2 touched.
+not anything F-010 touched.
 
 ## What's next
 
-1. Invoke `orchestrator-development-pattern` again for **Phase 3** — Web API, Dashboard, and
-   Bookmarking (F-010, F-011, F-012). F-011 (dashboard) depends on both F-010 (API) and F-018 (UX
-   brief, Done) — but F-018's brief still needs an actual design pass and approval before F-011
-   implementation begins per its own acceptance criteria; that review/approval step hasn't happened
-   yet and isn't something an orchestrator run can do on its own (it requires a human or a
-   dedicated design tool in the loop).
-2. **Close the live-E2E verification gap this session's Integration Agent flagged**: LM Studio
-   could not be started in its environment (`lms server start` timed out), so the real F-008→F-009
-   chain (actual README fetch + actual LM Studio inference + actual trend rollup against live data)
-   was never exercised end-to-end — only via SQLite-backed unit/handler tests. Run this runbook's
-   F-008 and F-009 Happy Path steps against a real `make up` stack with LM Studio actually running
-   at least once before relying on summaries/trends in anything resembling production.
-3. **`docs/diagrams/mmd/daily-discovery-flow.mmd` still needs a manual diagramming pass** — flagged
-   at Phase 1 close, still unaddressed, and now more stale: it doesn't show the Summarizer or Trend
-   Aggregator links at all. Not blocking Phase 3, but should be fixed before it misleads someone
-   reading Architecture alongside the diagram.
-4. **`docs/architecture.md`'s Version History table has a duplicate/out-of-order `v12` row**
-   (noticed this phase, pre-existing from earlier this session's Polly/ADR-018 work) — fixing the
-   numbering needs to know original intent; flagged rather than guessed at.
-5. Once real summaries/trends exist at scale, sanity-check `max_tokens: 300` isn't clipping longer
-   real-world READMEs the way the F-002 spike's synthetic test content couldn't reveal (165/300
-   tokens used in that spike — comfortable, not proven unlimited) — carried over from Phase 1's
-   handoff, still open.
+1. **F-011 (Web Dashboard) is next** — its two dependencies (F-010 API, F-018 UX brief) are both
+   Done and the UX design has been reviewed/approved (PMBook F-018 row, v19 — the "Ink Header"
+   direction with deep-olive second accent, `Dashboard Design.dc.html` + `dashboard-handoff.md`,
+   judged implementation-ready). Invoke `orchestrator-development-pattern`
+   scoped to F-011 the same way this run was scoped to F-010 alone, or resume the full Phase 3 loop
+   to pick up F-011 then F-012 in dependency order — operator's call.
+2. **PM-006 (new this run)**: F-010's two new `Repository` columns have no backfill for pre-existing
+   rows — `Topics` self-heals on the next re-crawl (daily per F-006's schedule), but
+   `FirstDiscoveredAtUtc` does not (it's set-once by design) and will permanently sort old repos as
+   "oldest" under Discovery Feed's default Newest sort. Decide before F-011 ships a Newest sort a
+   user will actually look at: a one-time backfill script, or accept as a permanent v1 wrinkle.
+3. **Close the live-E2E verification gap for F-010's endpoints**: no `make up` stack was available in
+   this run's environment, so the 8 new endpoints were validated via handler tests against a real
+   SQLite-provider `DbContext` (including the `Topics` array-overlap query translation), not via a
+   live HTTP walkthrough. Run the new F-010 section of `docs/test-runbook.md` against a real stack at
+   least once before relying on it in production — same category of gap Phase 1/2 also disclosed for
+   their own live-infrastructure checks.
+4. **Close the live-E2E verification gap from Phase 2, still open**: LM Studio could not be started
+   in that Integration Agent's environment, so the real F-008→F-009 chain (actual README fetch +
+   actual LM Studio inference + actual trend rollup against live data) was never exercised
+   end-to-end — only via SQLite-backed unit/handler tests. Run this runbook's F-008 and F-009 Happy
+   Path steps against a real `make up` stack with LM Studio actually running at least once.
+5. **`docs/diagrams/mmd/daily-discovery-flow.mmd` still needs a manual diagramming pass** — flagged
+   at Phase 1 close, still unaddressed: it doesn't show the Summarizer or Trend Aggregator links, and
+   now also doesn't show the Web API as a separate consumer of the Data Store. Not blocking F-011,
+   but should be fixed before it misleads someone reading Architecture alongside the diagram.
+6. **`docs/architecture.md`'s Version History table has a duplicate/out-of-order `v12` row**
+   (noticed in Phase 2, still unaddressed) — fixing the numbering needs to know original intent;
+   flagged rather than guessed at.
+7. Once real summaries/trends exist at scale, sanity-check `max_tokens: 300` isn't clipping longer
+   real-world READMEs the way the F-002 spike's synthetic test content couldn't reveal — carried over
+   from Phase 1's handoff, still open.
 
 ## Important context
 
+- **When the Orchestrator pre-drafts test-cases-doc scenarios itself (Step 0.0), say so explicitly
+  in a way that reaches every downstream sub-agent, not just Integration** — this run's
+  Reviewer-Integration initially FAILed the whole Integration Output because it saw
+  `docs/test-cases.md` had changed and assumed Integration was hiding that work, when actually the
+  Orchestrator wrote it before Integration even started (see What Was Done). It self-corrected by
+  reading the skill's own text directly, but the ambiguity was avoidable — future sessions should
+  make this ownership explicit to both Integration *and* Reviewer-Integration up front.
+- **F-010 bundled two additive schema columns rather than deferring them** (`Repository.Topics`,
+  `Repository.FirstDiscoveredAtUtc`) — same judgment-call pattern as F-007's mid-flight star-count
+  amendment: a feature's own Acceptance Criteria genuinely required data the schema didn't yet
+  capture, so closing the gap in the same feature (with a clear "why," an additive migration, and a
+  documented backfill caveat — see PM-006) beat either silently shipping incomplete filtering or
+  opening a whole separate feature for one column.
 - **The "hidden gems only surface mega-popular repos" finding (see Current State) was raised and
   explicitly accepted by the operator before Phase 2 started** — don't re-flag it as a fresh
   discovery in a future session without checking here first; it's a known, accepted-as-is state,
   not an open item.
-- **F-008's max-vs-latest Score bug (see What Was Done) is exactly the kind of subtle correctness
-  issue this codebase's Reviewer step exists to catch** — the codebase now has *two* documented
-  instances of "latest by time, not highest-ever value" being the correct semantics for resolving a
-  repo's current `Score` (`ComputeScoresCommandHandler`, and now `GenerateSummariesCommandHandler`
-  and `AggregateTrendsCommandHandler`, both of which got it right from the start in Phase 2 having
-  learned from F-008's first-round mistake). If a future feature also needs "this repo's current
-  score," follow the same `OrderByDescending(ComputedAtUtc).First()` pattern, not `Max(TotalScore)`.
-- **Three distinct persistence patterns now coexist in this codebase, by design**: `Score` = append
+- **The "latest by time, not highest-ever value" `Score` rule now has a third and fourth correct
+  application**: `GetHiddenGemsQueryHandler` and `GetDiscoveryFeedQueryHandler`'s `Score`/`Commits`
+  sorts both got this right from the start in F-010 (following `ComputeScoresCommandHandler`'s
+  original convention and the F-008 first-round mistake that established why it matters — see the
+  Phase 2 handoff section below for that history). If a future feature also needs "this repo's
+  current score," follow `OrderByDescending(ComputedAtUtc).First()`, never `Max(TotalScore)`.
+- **Four distinct persistence patterns now coexist in this codebase, by design**: `Score` = append
   history (one row per re-score, never updated), `Summary` = create-once (never regenerated once
   created), `TrendAggregate` = upsert-by-key (`Category`/`PeriodStart`/`PeriodEnd`, updated in place
-  on re-run). Each is deliberate and documented at its own handler — don't assume one pattern
-  generalizes to a new stage without checking that stage's own idempotency/history requirements.
-- **The graphify `--update` incremental prune has a path-format gap** (see What Was Done) — its
-  ghost-node-pruning comparison needs the deleted-file list and the graph's stored `source_file`
-  values in the same path format (both relative, or both absolute+same-separator). This session hit
-  it because the incremental file-change detector returns absolute Windows paths while the graph
-  stores relative forward-slash paths. If a future `--update` run silently reports "no drift" after
-  a file deletion, verify by grep'ing `graphify-out/graph.json` for the deleted filename directly
-  rather than trusting the prune step's own "no ghost nodes" claim.
+  on re-run), and now `Repository.FirstDiscoveredAtUtc` = set-once-on-insert-only (a single field
+  within an otherwise-mutable entity, not a whole row's persistence style, but the same "never
+  overwrite after first write" discipline as `Summary`). Each is deliberate and documented at its own
+  handler — don't assume one pattern generalizes to a new stage without checking that stage's own
+  idempotency/history requirements.
+- **`TrendAggregate` has no repo-level FK, by design** — F-010's Trending endpoint computes
+  "contributing repos" for a trend at query time (matching `PrimaryLanguage`, has both `Score` and
+  `Summary`) rather than storing the relationship, deliberately mirroring
+  `AggregateTrendsCommandHandler`'s own write-side membership criteria so the two never drift apart.
+  If a future feature needs the same "which repos are in trend X" answer, reuse this same
+  recomputation approach rather than adding a stored FK that could desync from F-009's own logic.
+- **The graphify `--update` scope must stay pinned to `src/backend`** — this run's incremental diff
+  initially misreported 17 still-present `src/frontend` files as deleted, because an earlier run's
+  saved manifest had been built from a wider scan root. Verified false (files still on disk),
+  deletion pruning was skipped for them, and the manifest was re-saved scoped correctly to
+  `src/backend` — a future `--update` run scoped the same way should not repeat this. If it does,
+  verify against the actual filesystem before trusting the prune step's "deleted" list, the same
+  discipline Phase 2's handoff already established for the inverse (under-pruning) failure mode.
 - **Version-pin caveats carried from earlier phases, still current**: LM Studio host-installed
   (ADR-016), `llama-3.2-3b-instruct` (ADR-017), PostgreSQL 18.4 (ADR-014), Angular 22 (ADR-012).
-- **Open items not touched this phase**: PM-001, PM-002, PM-003 remain deferred exactly as before.
-- **Docs are governed, not exempt** — this phase's Integration and Reviewer-Integration passes again
-  treated the PMBook/Architecture/test-cases/test-runbook as specs the code must satisfy, catching
-  and fixing the Phase 2 status drift and closing the test-cases/runbook gaps, while correctly
-  flagging the two drift items (diagram, Architecture version-history) it couldn't fix itself. Keep
-  doing this in Phase 3.
+- **Open items**: PM-001, PM-002, PM-003 remain deferred exactly as before; new PM-006 (schema
+  backfill, see What's Next #2).
+- **Docs are governed, not exempt** — this run's Integration and Reviewer-Integration passes again
+  treated the PMBook/test-cases/test-runbook as specs the code must satisfy, catching and fixing the
+  test-runbook gap, correctly attributing the test-cases-doc authorship once challenged, and flagging
+  the live-E2E gap it couldn't close itself. Keep doing this for F-011.

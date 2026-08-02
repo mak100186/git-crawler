@@ -1,7 +1,90 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 5
+> Revision: 6
 > Last updated: 2026-08-02
+
+## Revision 6 — 2026-08-02 — F-010 (Web API), run as a standalone slice of Phase 3
+
+**Changes:**
+- **F-010 (Web API)** — 8 new Wolverine command/query slices (ADR-015) under
+  `Features/{Repositories,Trends,Categories,Bookmarks}/`: `GetDiscoveryFeed`, `GetHiddenGems`,
+  `GetTrending`, `GetCategories`, `GetCategoryRepositories`, `CreateBookmark`, `DeleteBookmark`,
+  `ListBookmarks`, each with its own minimal-API endpoint dispatching via `IMessageBus.InvokeAsync`
+  (matching the existing `PingEndpoint` pattern). A shared internal (non-Wolverine) helper,
+  `Features/Repositories/RepositoryCardQuery.cs`, implements one filter/sort/paginate contract
+  (language/star-range/topic/license facets — AND across facets, OR within a facet; sort by
+  Newest/Score/Stars/Commits × Asc/Desc; pagination, default 24/page) reused by Discovery Feed,
+  Hidden Gems, and Category drill-down, rather than tripling that logic across three slices.
+- **Two schema gaps closed as additive migrations** (`AddRepositoryTopicsAndFirstDiscoveredAt`),
+  bundled into F-010 since its own Acceptance Criteria required data the schema didn't yet capture —
+  same judgment-call pattern as F-007's mid-flight star-count amendment:
+  - `Repository.Topics` (`text[]` via EF Core's primitive-collections feature) — GitHub topics were
+    never crawled before this feature. `GitHubDiscoveryClient.BuildDiscoveryQuery()` (F-005) extended
+    to fetch `repositoryTopics(first: 10)` alongside the existing discovery query fields.
+  - `Repository.FirstDiscoveredAtUtc` — set once on first insert in
+    `DiscoverRepositoriesCommandHandler`, never updated on re-crawl. Drives Discovery Feed's default
+    "Newest" sort; `LastCrawledAtUtc` would have been the wrong field since it advances on every
+    re-crawl, which would make old, frequently-re-crawled repos look newest.
+  - **Neither column is backfilled for pre-existing `Repository` rows** — `Topics` defaults to `{}`
+    (self-heals on next re-crawl), `FirstDiscoveredAtUtc` defaults to `-infinity` (does not self-heal,
+    set-once by design). Tracked as new Open Item PM-006.
+- **Two data-model decisions carried forward from F-009 rather than reopened**: "Categories" stayed
+  `TrendAggregate.Category`-derived (`Repository.PrimaryLanguage`), not GitHub-topic-derived.
+  Trending's "contributing repos" are computed at query time (matching `PrimaryLanguage`, has both a
+  `Score` and a `Summary`, latest `TotalScore`) rather than stored, deliberately mirroring
+  `AggregateTrendsCommandHandler`'s own write-side membership criteria — `TrendAggregate` has no
+  repo-level FK by design.
+- **Hidden Gems exposes FR-005's full weighted signal breakdown** — all five signals plus
+  `ScoringWeights`' exact constants (18/27/22.5/22.5/10%) and `TotalScore`, not just an aggregate.
+  Both Hidden Gems and Discovery Feed's `Score`/`Commits` sorts use each repo's *latest* `Score` by
+  `ComputedAtUtc`, following the same "latest by time, not highest-ever" convention F-008 first got
+  wrong and fixed in Phase 2 — applied correctly here from the start.
+- **Bookmark create/delete are idempotent by design**: a double-create never trips the unique-index
+  constraint on `Bookmark.RepositoryId`; deleting a nonexistent bookmark never errors.
+- **This Orchestrator run was deliberately scoped to F-010 alone**, not the full Phase 3
+  (F-010, F-011, F-012) — F-011/F-012 remain `Planned`; Phase 3 itself stays `Planned`.
+- **Documentation drift found and fixed**: `docs/test-runbook.md` had no F-010 section despite 8 new
+  endpoints — authored one, cross-referenced to passing tests. `docs/test-cases.md` extended to v5
+  with TC-010 (10 scenarios). `docs/project-management.md` F-010 row → `Done` (v18); F-018 row
+  updated to record that its design-review/approval gate (completed earlier this session, prior to
+  this Orchestrator run) is now satisfied (v19) — that fact previously existed only in conversation
+  history, not any governed doc.
+- **Reviewer-Integration process note**: initially FAILed on a misattributed `docs/test-cases.md`
+  diff (assumed Integration had silently authored and hidden it; actually the Orchestrator wrote it
+  directly before dispatching Integration, per this pipeline's own Step 0.0). Self-corrected to PASS
+  after independently re-reading the skill's actual text. See `docs/handoff.md`'s Important Context
+  for the process lesson this surfaced.
+- **Live E2E gap**: no `make up` stack was available in this environment, so the 8 new endpoints were
+  validated via handler tests against a real SQLite-provider `DbContext` (including the `Topics`
+  array-overlap query translation), not a live HTTP walkthrough. See `docs/handoff.md`'s What's Next.
+
+**Modules / files affected:**
+- `src/backend/GitCrawler.Api/Data/Entities/Repository.cs` — `Topics`, `FirstDiscoveredAtUtc` added.
+- `src/backend/GitCrawler.Api/Data/Migrations/20260802054513_AddRepositoryTopicsAndFirstDiscoveredAt.*`, `GitCrawlerDbContextModelSnapshot.cs` — new migration.
+- `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/{IGitHubDiscoveryClient,GitHubDiscoveryClient,DiscoverRepositoriesCommand}.cs` — extended for `Topics`/`FirstDiscoveredAtUtc`.
+- `src/backend/GitCrawler.Api/Features/Repositories/` — new: `RepositoryCardQuery.cs`, `GetDiscoveryFeed/`, `GetHiddenGems/`.
+- `src/backend/GitCrawler.Api/Features/Trends/GetTrending/` — new.
+- `src/backend/GitCrawler.Api/Features/Categories/` — new: `GetCategories/`, `GetCategoryRepositories/`.
+- `src/backend/GitCrawler.Api/Features/Bookmarks/` — new: `CreateBookmark/`, `DeleteBookmark/`, `ListBookmarks/`.
+- `src/backend/GitCrawler.Api/Program.cs` — 8 new `Map*Endpoint()` registrations.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/{Repositories,Trends,Categories,Bookmarks}/` — new test suites; `Crawling/DiscoverRepositories` tests/Fakes updated for the new `DiscoveredRepository` field.
+- `docs/project-management.md` — v19 (F-010 → Done; F-018 row updated for completed design review; new PM-006).
+- `docs/test-cases.md` — v5: TC-010 added.
+- `docs/test-runbook.md` — F-010 section added.
+- `graphify-out/` — `graph.json`/`graph.html`/`GRAPH_REPORT.md` updated (860→1154 nodes, 1223→1754 edges, 55→78 communities); scan scope corrected to `src/backend` only after a false-positive "17 deleted files" report against still-present `src/frontend` files (scope mismatch with an earlier wider-scoped manifest, not an actual deletion).
+
+**Breaking changes:** None. The two new `Repository` columns are additive; existing rows get safe
+(if imperfect — see PM-006) defaults rather than failing the migration.
+
+**Smoke tests:**
+1. Happy path — call the Discovery Feed endpoint with a combination of language/star-range/topic/
+   license filters and `sort=Newest&direction=Desc`; confirm results match all facets (AND across,
+   OR within) and are ordered by `FirstDiscoveredAtUtc` descending.
+2. Edge case — bookmark the same repository twice in a row via `CreateBookmark`; confirm no
+   constraint-violation error on the second call, and `ListBookmarks` shows it exactly once.
+3. Regression-sensitive — seed a repository with two `Score` rows where the chronologically later
+   one has a *lower* `TotalScore`/`CommitsPerWeek` than an earlier one; confirm Hidden Gems' `Score`
+   sort and Discovery Feed's `Commits` sort both use the later (lower) value, not the historical peak.
 
 ## Revision 5 — 2026-08-02 — Phase 2 complete: AI summarization, trend aggregation, dashboard UX brief
 
