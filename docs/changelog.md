@@ -1,7 +1,85 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 4
+> Revision: 5
 > Last updated: 2026-08-02
+
+## Revision 5 — 2026-08-02 — Phase 2 complete: AI summarization, trend aggregation, dashboard UX brief
+
+**Changes:**
+- **F-008 (Summarizer)** — New `Features/Summarization/GenerateSummaries/` slice. Selects repos with
+  a latest `Score.TotalScore ≥ Summarization:MinimumScore` (default 40) and no existing `Summary`
+  row, capped at `Summarization:BatchSize` (default 20) per run. Fetches each repo's README via
+  GitHub REST (`GET /repos/{owner}/{repo}/readme`, 404 handled gracefully, no bulk cloning) and
+  calls `IRepositorySummarizer` — implemented by `LmStudioRepositorySummarizer` against LM Studio's
+  OpenAI-compatible `/v1/chat/completions` endpoint (Llama 3.2 3B Instruct, ADR-017) at
+  `max_tokens: 300`. Per-repo failures (README or LM Studio) are logged and skipped, not
+  batch-aborting; no Polly pipeline (unlike ADR-018's Crawler pipeline — LM Studio's local API has
+  no rate-limit signal to retry against). `ComputeScoresJob` now attaches `GenerateSummariesJob` as
+  Hangfire chain link 3 via a new `ISummarizationContinuationLink` seam.
+  - **Reviewer-caught bug, fixed same round**: initial repo-selection logic used
+    `Scores.Max(s => s.TotalScore)` — the highest score a repo *ever* recorded — instead of its
+    chronologically latest score. Since `Summary` rows are create-once, this could permanently
+    summarize a repo off a historical peak it has since fallen below. Fixed to
+    `Scores.OrderByDescending(s => s.ComputedAtUtc).First().TotalScore`, matching
+    `ComputeScoresCommandHandler`'s own established "latest by time" convention; a regression test
+    now covers a repo whose chronologically-latest score is lower than an earlier one.
+- **F-009 (Trend Aggregator)** — New `Features/Trends/AggregateTrends/` slice. Rolls up repos with
+  both a `Score` and a `Summary` into per-category (`Repository.PrimaryLanguage`, null excluded)
+  `TrendAggregate` rows, using each repo's latest `TotalScore`. Single-day period by default
+  (`Trends:PeriodDays`, default 1). Persistence is upsert-by-`(Category, PeriodStart, PeriodEnd)` —
+  a third distinct persistence pattern in this codebase (alongside `Score`'s append-history and
+  `Summary`'s create-once), required for NFR-003 idempotency on re-run. `GenerateSummariesJob` now
+  attaches `AggregateTrendsJob` as chain link 4 via a new `ITrendsContinuationLink` seam, completing
+  the full pipeline: Crawler → Scoring → Summarizer → Trend Aggregator.
+- **F-018 (Dashboard UX design brief)** — New `docs/design-briefs/dashboard-ux-brief.md`. Specifies
+  the Discovery Feed, Hidden Gems, Trending, and Categories layouts; FR-004 filter/sort and FR-007
+  bookmark interactions (bookmark "list" resolved as a filter toggle within the four required views,
+  not a fifth view — that's F-012's scope); an explicit Angular Material-only constraint (ADR-011)
+  with three genuine component gaps (infinite scroll, trend sparkline, skeleton loader) flagged with
+  Material-native fallbacks. No code changed. The brief document is the handoff artifact — an actual
+  design pass and its review/approval remain a follow-up step outside this feature's scope, still
+  gating F-011.
+- **Documentation drift found and fixed**: `docs/project-management.md`'s Phase 2 row was still
+  `Planned` despite F-008/F-009/F-018 all being `Done` — corrected (v17). `docs/test-cases.md`
+  extended to v4 (TC-008: 7 scenarios + 1 Manual; TC-009: 7 scenarios; TC-018: 3 scenarios).
+  `docs/test-runbook.md` extended with F-008/F-009 sections.
+- **Documentation drift found, not fixed (carried over)**: `docs/diagrams/mmd/daily-discovery-flow.mmd`
+  still doesn't show the Summarizer/Trend Aggregator links (already stale before this phase; now more
+  so). `docs/architecture.md`'s Version History has a duplicate/out-of-order `v12` row, pre-existing
+  from this session's earlier Polly work, unrelated to Phase 2 — numbering fix needs original intent,
+  not guessed at.
+- **Pre-Phase-2 database check (operator request)**: live discovery data (1,002 repos) found to
+  consist entirely of very-high-star repos (18.7K-453K stars) due to GitHub GraphQL search's
+  best-match-only ranking (no explicit sort) combined with its ~1,000-result cap — not a "hidden
+  gems" distribution. Operator reviewed and explicitly decided to leave discovery ranking as-is for
+  now; not a Phase 2 code change, noted here for continuity.
+- **Live E2E gap**: LM Studio's local server could not be started in the Integration Agent's
+  environment this session — the real F-008→F-009 chain (live README fetch + live LM Studio
+  inference + live trend rollup) was not exercised end-to-end, only via SQLite-backed unit tests.
+  Recorded as TC-008-08 (Manual). See `docs/handoff.md`'s What's Next.
+
+**Modules / files affected:**
+- `src/backend/GitCrawler.Api/Features/Summarization/GenerateSummaries/` — new: `GenerateSummariesCommand.cs`, `IRepositorySummarizer.cs`, `LmStudioRepositorySummarizer.cs`, `GenerateSummariesJob.cs`.
+- `src/backend/GitCrawler.Api/Features/Trends/AggregateTrends/` — new: `AggregateTrendsCommand.cs`, `AggregateTrendsJob.cs`.
+- `src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/ComputeScoresJob.cs` — chain link 3 attachment (`ISummarizationContinuationLink`).
+- `src/backend/GitCrawler.Api/Program.cs` — LM Studio named `HttpClient`, `IRepositorySummarizer`, `GenerateSummariesJob`/`AggregateTrendsJob`, both continuation-link registrations.
+- `src/backend/GitCrawler.Api/appsettings.json` — new `Summarization` and `Trends` sections, `LmStudio:MaxTokens`.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Summarization/GenerateSummaries/`, `.../Trends/AggregateTrends/` — new test suites; ripple updates to `Scoring/ComputeScores` and `Crawling/DiscoverRepositories` test fakes for the new job constructor shapes.
+- `docs/design-briefs/dashboard-ux-brief.md` — new.
+- `docs/project-management.md` — v17: F-008/F-009/F-018 → Done, Phase 2 → Done.
+- `docs/test-cases.md` — v4: TC-008, TC-009, TC-018 added.
+- `docs/test-runbook.md` — F-008/F-009 sections added.
+- `graphify-out/` — `graph.json`/`graph.html`/`GRAPH_REPORT.md` updated (518→860 nodes, 674→1223 edges, 48→55 communities); three ghost nodes from Revision 4's deletions (`RetryDelay.cs`, `HangfireDashboardAuthorizationFilter.cs` + test) pruned after an initial incremental-update path-matching miss.
+
+**Smoke tests:**
+1. Happy path — trigger the full chain (`discover-repositories` job) against a database with scored,
+   summarized repos due for a trend rollup; confirm all four Hangfire chain links fire in sequence
+   and a `TrendAggregate` row appears for at least one category.
+2. Edge case — re-run `AggregateTrendsCommand` twice for the same day without an intervening crawl;
+   confirm `TrendAggregate` row count for that period doesn't grow (upsert, not duplicate).
+3. Regression-sensitive — seed a repo with two `Score` rows where the chronologically later one has
+   a *lower* `TotalScore` than an earlier one; confirm both `GenerateSummariesCommand` and
+   `AggregateTrendsCommand` use the later (lower) value, not the historical peak.
 
 ## Revision 4 — 2026-08-02 — Crawler retry/resilience migrated to Polly; fixed a query-building crash and a permanent-403 misclassification
 

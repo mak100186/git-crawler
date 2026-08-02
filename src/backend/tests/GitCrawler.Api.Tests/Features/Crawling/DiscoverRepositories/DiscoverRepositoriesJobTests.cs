@@ -1,5 +1,7 @@
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
+using GitCrawler.Api.Features.Summarization.GenerateSummaries;
+using GitCrawler.Api.Features.Trends.AggregateTrends;
 
 using Hangfire;
 using Hangfire.Server;
@@ -15,13 +17,19 @@ namespace GitCrawler.Api.Tests.Features.Crawling.DiscoverRepositories;
 // JobStorage.Current unavailable in a unit test (Task Packet's explicit testing constraint - see
 // IScoringContinuationLink's own comment); real end-to-end verification of the chaining behavior is
 // left to the Integration Agent's live Postgres+Hangfire check.
+//
+// ComputeScoresJob's own constructor now takes a GenerateSummariesJob + ISummarizationContinuationLink
+// (F-008, link 3 of the chain) - a FakeSummarizationContinuationLink is passed here purely to satisfy
+// that constructor; this file's own assertions are unaffected since they only exercise
+// DiscoverRepositoriesJob's chain into ComputeScoresJob, not ComputeScoresJob's own chain into
+// GenerateSummariesJob (that's GenerateSummariesJobTests' responsibility).
 public class DiscoverRepositoriesJobTests
 {
     [Fact]
     public async Task RunAsync_InvokesDiscoverRepositoriesCommandOnMessageBus()
     {
         var messageBus = new FakeMessageBus();
-        var job = new DiscoverRepositoriesJob(messageBus, new ComputeScoresJob(new FakeMessageBus()), new FakeScoringContinuationLink());
+        var job = new DiscoverRepositoriesJob(messageBus, CreateComputeScoresJob(), new FakeScoringContinuationLink());
 
         await job.RunAsync(CreatePerformContext("job-1"));
 
@@ -32,7 +40,7 @@ public class DiscoverRepositoriesJobTests
     [Fact]
     public async Task RunAsync_AttachesScoringContinuation_ForTheCompletedJobId()
     {
-        var scoringJob = new ComputeScoresJob(new FakeMessageBus());
+        var scoringJob = CreateComputeScoresJob();
         var continuationLink = new FakeScoringContinuationLink();
         var job = new DiscoverRepositoriesJob(new FakeMessageBus(), scoringJob, continuationLink);
 
@@ -44,6 +52,15 @@ public class DiscoverRepositoriesJobTests
         Assert.Equal("job-42", continuationLink.AttachedParentJobId);
         Assert.Same(scoringJob, continuationLink.AttachedScoringJob);
     }
+
+    // Local helper purely to satisfy ComputeScoresJob's constructor (which now also needs a
+    // GenerateSummariesJob + ISummarizationContinuationLink for its own F-008 chain attachment) -
+    // this file's tests never exercise that chain themselves.
+    private static ComputeScoresJob CreateComputeScoresJob() =>
+        new(
+            new FakeMessageBus(),
+            new GenerateSummariesJob(new FakeMessageBus(), new AggregateTrendsJob(new FakeMessageBus()), new FakeTrendsContinuationLink()),
+            new FakeSummarizationContinuationLink());
 
     // PerformContext's own constructor doesn't touch Hangfire's ambient JobStorage.Current - only
     // the static BackgroundJob.ContinueJobWith call (behind IScoringContinuationLink, faked above)

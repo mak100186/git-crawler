@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v3
+> Version: v4
 > Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -244,9 +244,156 @@ LM Studio instance — those steps are marked **Manual**).
 
 ---
 
+## F-008 — Summarizer (LM Studio + Llama 3.2 3B Instruct)
+
+### TC-008-01 (Happy path) — Top-scored repository without a summary is summarized
+1. Seed a `Repository` with a latest `Score.TotalScore` ≥ `Summarization:MinimumScore` (default 40)
+   and no existing `Summary` row, then trigger `GenerateSummariesCommand`.
+2. **Expect:** a `Summary` row is written for the repository (`GeneratedAtUtc` set), and the request
+   passed to `IRepositorySummarizer` carries the repo's `Owner`/`Name` — satisfies F-008's "generates
+   a structured summary for top-scored repos without one" AC.
+
+### TC-008-02 (Edge case) — Below-threshold and already-summarized repos are excluded
+1. Seed one repository with a latest score below `Summarization:MinimumScore`, and a second with a
+   score well above it but an existing `Summary` row. Trigger `GenerateSummariesCommand`.
+2. **Expect:** neither repository is summarized — the below-threshold repo counts toward
+   `SkippedCount`, and the already-summarized repo is untouched (still exactly one `Summary` row for
+   it). Confirms Summary's create-once semantics (deliberate divergence from Score's
+   append-history/re-scoring-on-recrawl behavior, per the Task Packet).
+
+### TC-008-03 (Edge case) — Missing README (404) does not block summarization
+1. Seed an eligible repository. Configure the README fetch (`GET /repos/{owner}/{repo}/readme`) to
+   return `404`, then trigger `GenerateSummariesCommand`.
+2. **Expect:** the repository is still summarized (`SummarizedCount` increments), using
+   `PrimaryLanguage`/`LicenseName` alone — a missing README is a legitimate, non-error input, not a
+   per-repo failure.
+
+### TC-008-04 (Regression-sensitive) — Eligibility uses the latest score by time, not the highest ever
+1. Seed a repository with two `Score` rows: an earlier one above `MinimumScore`, and a
+   chronologically later one (by `ComputedAtUtc`) below it (i.e., the repo went stale on a
+   re-crawl). Trigger `GenerateSummariesCommand`.
+2. **Expect:** the repository is **not** summarized — eligibility reflects the repo's current
+   standing (latest by `ComputedAtUtc`), not its historical peak. Since `Summary` is create-once,
+   getting this wrong would permanently summarize a repo off a stale high score.
+
+### TC-008-05 (Regression-sensitive) — Per-repository failure does not abort the batch
+1. Seed two eligible repositories. Configure `IRepositorySummarizer` (or the LM Studio call) to
+   throw for the first and succeed for the second, then trigger `GenerateSummariesCommand`.
+2. **Expect:** the failing repository is logged and skipped (`FailedCount` increments, no `Summary`
+   row written — it's retried automatically on the next run since it still has no summary), while
+   the second repository is summarized normally (`SummarizedCount` increments). One bad repo must
+   never abort the whole run.
+
+### TC-008-06 (Edge case) — Batch size caps a single run
+1. Seed more eligible repositories than `Summarization:BatchSize` (default 20; use a smaller
+   configured value to keep the test fast), then trigger `GenerateSummariesCommand`.
+2. **Expect:** exactly `BatchSize` repositories are summarized (highest-scored first), the remainder
+   counted in `SkippedCount` — not attempted this run, picked up automatically on the next one since
+   they still have no `Summary` row.
+
+### TC-008-07 (Happy path) — Score-to-summarize chaining (F-006/F-009 chain link 3)
+1. Trigger the `compute-scores` continuation (or wait for the crawl-to-score chain, F-006 TC-006-02)
+   against a database containing at least one top-scored repo without a summary.
+2. **Expect:** once scoring completes, a `GenerateSummariesJob` continuation fires automatically
+   (visible in the Hangfire dashboard's job history, chained via `ContinueJobWith`) without waiting
+   for a separate schedule — completing "score before summarize" ordering (Architecture §3).
+
+### TC-008-08 (Manual) — Live LM Studio summarization quality and throughput
+1. **Manual (requires a running LM Studio instance with `llama-3.2-3b-instruct` loaded, per
+   ADR-017/`make up`):** trigger `GenerateSummariesCommand` against real top-scored repositories with
+   real README content.
+2. **Expect:** each generated summary is non-empty, covers purpose/key features/tech stack/notable
+   caveats per `LmStudioRepositorySummarizer`'s system prompt, and completes within NFR-001's
+   seconds-per-repository target — consistent with the F-002 spike's live throughput results.
+
+---
+
+## F-009 — Trend Aggregator
+
+### TC-009-01 (Happy path) — Scored and summarized repository is counted in its category
+1. Seed a repository with `PrimaryLanguage` set, a `Score`, and a `Summary`, then trigger
+   `AggregateTrendsCommand`.
+2. **Expect:** a `TrendAggregate` row is written with `Category` = the repo's `PrimaryLanguage`,
+   `RepositoryCount` = 1, `AverageScore` = the repo's latest `TotalScore`, and
+   `PeriodStart`/`PeriodEnd` both equal to today (default `Trends:PeriodDays` = 1) — satisfies
+   F-009's "rolls up scored + summarized repos into trend summaries" AC (FR-008).
+
+### TC-009-02 (Edge case) — Scored-only (not yet summarized) and null-language repos are excluded
+1. Seed one repository with a `Score` but no `Summary`, and a second with both a `Score` and a
+   `Summary` but a `null` `PrimaryLanguage`. Trigger `AggregateTrendsCommand`.
+2. **Expect:** neither repository contributes to any `TrendAggregate` row — "scored + summarized"
+   means both must hold, and a null category has no meaningful trend bucket to attribute to (not
+   lumped into a fake "Unknown" category).
+
+### TC-009-03 (Happy path) — Multiple repositories in the same category aggregate correctly
+1. Seed two scored-and-summarized repositories sharing the same `PrimaryLanguage` with different
+   `TotalScore` values, then trigger `AggregateTrendsCommand`.
+2. **Expect:** one `TrendAggregate` row for that category, with `RepositoryCount` = 2 and
+   `AverageScore` = the arithmetic mean of both repos' latest scores.
+
+### TC-009-04 (Regression-sensitive) — Rollup uses the latest score by time, not the highest ever
+1. Seed a repository with two `Score` rows: an earlier high score and a chronologically later
+   (by `ComputedAtUtc`) lower one. Trigger `AggregateTrendsCommand`.
+2. **Expect:** the trend's `AverageScore` reflects the latest score, not the historical peak — same
+   "latest by `ComputedAtUtc`" rule F-007/F-008 each apply to their own `Score` reads.
+
+### TC-009-05 (Regression-sensitive) — Re-running for the same period upserts, never duplicates
+1. Trigger `AggregateTrendsCommand` once against a seeded repo, note the resulting `TrendAggregate`
+   row's `Id`. Seed a second repository in the same category, then trigger the command again for the
+   same period.
+2. **Expect:** still exactly one row for `(Category, PeriodStart, PeriodEnd)` — same `Id`, updated
+   `RepositoryCount`/`AverageScore`/`CreatedAtUtc` in place, not a duplicate row. Satisfies NFR-003
+   idempotency; there is no unique DB constraint enforcing this (intentional, per the Task Packet),
+   so this behavior depends entirely on the single-threaded Hangfire job's query-then-upsert logic.
+
+### TC-009-06 (Edge case) — Configurable multi-day period
+1. Configure `Trends:PeriodDays` to a value > 1 (e.g. 3), seed an eligible repo, trigger
+   `AggregateTrendsCommand`.
+2. **Expect:** `PeriodEnd` = today, `PeriodStart` = `PeriodEnd` − (`PeriodDays` − 1) — confirms the
+   window computation, not just the single-day default path.
+
+### TC-009-07 (Happy path) — Summarize-to-aggregate chaining (F-006/F-009 chain link 4)
+1. Trigger the `generate-summaries` continuation (or wait for the score-to-summarize chain,
+   TC-008-07) against a database containing at least one newly-summarized repo.
+2. **Expect:** once summarization completes, an `AggregateTrendsJob` continuation fires automatically
+   (visible in the Hangfire dashboard's job history, chained via `ContinueJobWith`) — completing the
+   full crawl → score → summarize → aggregate trends chain end-to-end (Architecture §3).
+
+---
+
+## F-018 — Dashboard UX design brief & Claude Designer handoff
+
+No running system to verify — this is a documentation output (`docs/design-briefs/dashboard-ux-brief.md`).
+
+### TC-018-01 (Happy path) — Brief covers all four required views plus filter/sort/bookmark interactions
+1. Open `docs/design-briefs/dashboard-ux-brief.md`.
+2. **Expect:** §4 specifies a layout for each of the four FR-009 views (Discovery Feed, Hidden Gems,
+   Trending, Categories); §5 specifies the FR-004 filter/sort facets (language, star range, topic,
+   license) and their controls; §6 specifies the FR-007 bookmark create/list/delete interactions
+   (collapsed into a single toggle for create/delete, plus a "bookmarked only" filter for list).
+
+### TC-018-02 (Edge case) — Material-only constraint honored, gaps flagged not silently specced
+1. Confirm §2 states the Angular-Material-only constraint (ADR-011) explicitly.
+2. **Expect:** every component named across §3-§6 is an actual `@angular/material`/`@angular/cdk`
+   component; §7 lists every case where Material has no first-class equivalent (infinite scroll,
+   sparkline/growth chart, skeleton loader) with a named Material-native fallback — none silently
+   introduces a custom/non-Material widget.
+
+### TC-018-03 (Regression-sensitive) — Handoff scope is honestly stated, review/approval remains open
+1. Confirm §8 (Handoff Note) states plainly that no design-tool invocation or external handoff
+   occurred — the document itself is the handoff artifact — and that the resulting UX design still
+   requires review/approval before F-011 begins.
+2. **Expect:** the brief does not overstate its own completion status (its own header still reads
+   "DRAFT — pending Claude Designer review") — confirms the PMBook's F-018 "Done" annotation reflects
+   "brief authored and handed off," not "design reviewed and approved," matching F-018's actual
+   acceptance criteria scope (AC4 handoff, not the downstream review gate that still blocks F-011).
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
 | v1 | 2026-07-31 | Initial draft covering Phase 0 (F-001, F-002, F-003) | Orchestrator Step 0.0 gap — no test-cases-doc existed at build handoff |
 | v2 | 2026-08-02 | Added Phase 1 scenarios: TC-004 (Data Store schema), TC-005 (GitHub Crawler), TC-006 (Job Scheduler), TC-007 (Scoring Engine, including the five-signal independence check added after the star-count amendment) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 0 when Phase 1 features completed |
 | v3 | 2026-08-02 | TC-006-01 updated: Hangfire dashboard access control removed (F-006), so the `?key=` requirement and the access-denied assertion no longer apply | Operator: "remove the auth for hangfire" |
+| v4 | 2026-08-02 | Added Phase 2 scenarios: TC-008 (Summarizer, including score-to-summarize chaining and a Manual live-LM-Studio quality/throughput check), TC-009 (Trend Aggregator, including the upsert-idempotency and summarize-to-aggregate chaining checks), TC-018 (Dashboard UX design brief, documentation-only) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 1 when Phase 2 features completed (same gap-closure pattern as v2) |

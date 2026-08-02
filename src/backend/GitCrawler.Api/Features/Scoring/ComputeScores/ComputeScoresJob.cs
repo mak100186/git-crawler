@@ -1,3 +1,7 @@
+using GitCrawler.Api.Features.Summarization.GenerateSummaries;
+
+using Hangfire.Server;
+
 using Wolverine;
 
 namespace GitCrawler.Api.Features.Scoring.ComputeScores;
@@ -12,12 +16,19 @@ namespace GitCrawler.Api.Features.Scoring.ComputeScores;
 // its own independent RecurringJob registration in Program.cs. Scoring's "schedule" IS "right after
 // crawl finishes" (Architecture §3), not a separate cron.
 //
-// No ContinueJobWith call of its own here yet, mirroring F-006's own restraint for this stage:
-// link 3 (the Summarizer, F-008) doesn't exist. Once it does, attach it here the same way
-// DiscoverRepositoriesJob attaches to this class - add a PerformContext parameter to RunAsync and
-// call BackgroundJob.ContinueJobWith(context.BackgroundJob.Id, () => summarizerJob.RunAsync())
-// after InvokeAsync below completes.
-public class ComputeScoresJob(IMessageBus messageBus)
+// F-008: link 3 (the Summarizer) is attached below, exactly as this class's own header comment
+// previously documented as the plan - a PerformContext parameter on RunAsync, and a
+// BackgroundJob.ContinueJobWith call (via continuationLink, see IScoringContinuationLink's
+// comment for why that call is behind a seam rather than a direct static call) once InvokeAsync
+// completes. Only fires after a successful scoring pass, same restart-safety reasoning
+// DiscoverRepositoriesJob's own header comment gives for chaining into this class: a failed/aborted
+// scoring run does not trigger summarization over incomplete data.
+public class ComputeScoresJob(IMessageBus messageBus, GenerateSummariesJob summarizationJob, ISummarizationContinuationLink continuationLink)
 {
-    public Task RunAsync() => messageBus.InvokeAsync(new ComputeScoresCommand());
+    public async Task RunAsync(PerformContext context)
+    {
+        await messageBus.InvokeAsync(new ComputeScoresCommand());
+
+        continuationLink.AttachAfter(context.BackgroundJob.Id, summarizationJob);
+    }
 }

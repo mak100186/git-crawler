@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
 > Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -215,6 +215,72 @@ them.
 
 ---
 
+## F-008 — Summarizer
+
+### Happy path — score-to-summarize chaining and summary generation
+1. Ensure LM Studio is up and the configured model is loaded (`make up`, or `make status`/`make
+   health` to confirm — `LmStudio:Model` bridged from `LMSTUDIO_IDENTIFIER`, default
+   `llama-3.2-3b-instruct` per ADR-017).
+2. After a crawl-to-score chain completes (see F-006/F-007 above) with at least one repository
+   scoring at or above `Summarization:MinimumScore` (default 40) and no existing `Summary` row,
+   watch the Hangfire dashboard's "Succeeded" job list.
+3. **Expect:** shortly after the `ComputeScoresJob` run completes, a `GenerateSummariesJob` run
+   appears, chained via `ContinueJobWith` — not on its own independent schedule.
+4. `psql -c 'SELECT "RepositoryId", LEFT("Content", 80) AS preview, "GeneratedAtUtc" FROM "Summaries" ORDER BY "GeneratedAtUtc" DESC LIMIT 10;'`
+   — expect non-empty `Content` for each row, and only for repositories that met the score
+   threshold.
+
+### Edge case — README-missing and per-repo failure handling
+1. Pick a repository with no README (or temporarily point at one) among the eligible batch.
+2. **Expect:** it still gets a `Summary` row — check the app logs (`make logs`) don't show an error
+   for that repo, confirming the 404-is-not-fatal path.
+3. **Manual (hard to force live):** if LM Studio is stopped or unreachable during a summarization
+   run, confirm the app logs show a `LogWarning` ("Summarization failed for {Owner}/{Name};
+   skipping") per affected repo rather than the whole job failing/aborting, and that those repos
+   still have no `Summary` row afterward (picked up automatically on the next run). Automated
+   coverage of this logic lives in `GenerateSummariesCommandHandlerTests` (see
+   `docs/test-cases.md` TC-008-05) — no live LM Studio outage needed to verify the code path.
+
+### Regression-sensitive — create-once, latest-score-wins
+1. Note a repository's `Summary` row (if any) and its latest `Score.TotalScore`.
+2. Re-crawl and re-score the same repository so a new, lower `Score` row is added below
+   `Summarization:MinimumScore`, then wait for/trigger the summarization chain again.
+3. **Expect:** `SELECT COUNT(*) FROM "Summaries" WHERE "RepositoryId" = <id>;` is unchanged — a
+   `Summary` is never regenerated once it exists, and a repo that's since fallen below threshold
+   does not get summarized off a stale high score (see `docs/test-cases.md` TC-008-02/TC-008-04).
+
+---
+
+## F-009 — Trend Aggregator
+
+### Happy path — summarize-to-aggregate chaining and rollup
+1. After a summarize step completes (see F-008 above) with at least one repository that now has
+   both a `Score` and a `Summary`, watch the Hangfire dashboard's "Succeeded" job list.
+2. **Expect:** shortly after the `GenerateSummariesJob` run completes, an `AggregateTrendsJob` run
+   appears, chained via `ContinueJobWith` — completing the full crawl → score → summarize →
+   aggregate-trends chain (Architecture §3).
+3. `psql -c 'SELECT "Category", "RepositoryCount", "AverageScore", "PeriodStart", "PeriodEnd" FROM "TrendAggregates" ORDER BY "RepositoryCount" DESC LIMIT 10;'`
+   — expect one row per distinct `PrimaryLanguage` among scored-and-summarized repos, with
+   `PeriodStart`/`PeriodEnd` both today's date (default `Trends:PeriodDays` = 1).
+
+### Edge case — excluded repositories
+1. Confirm no `TrendAggregate` row's `RepositoryCount` includes repositories that have a `Score` but
+   no `Summary` yet, or a `null` `PrimaryLanguage` — cross-check
+   `SELECT COUNT(*) FROM "Repositories" WHERE "PrimaryLanguage" IS NULL AND EXISTS (SELECT 1 FROM "Scores" WHERE "RepositoryId" = "Repositories"."Id");`
+   against the trend totals; these repos should contribute to neither.
+
+### Regression-sensitive — idempotent re-run (NFR-003)
+1. Note the current row count and a specific row's `Id` in `TrendAggregates` for today's period.
+2. Trigger the chain again for the same day (e.g. re-run `discover-repositories` and let it flow
+   through, or manually re-trigger `AggregateTrendsCommand` if a test harness is available).
+3. **Expect:** `SELECT COUNT(*) FROM "TrendAggregates" WHERE "PeriodStart" = CURRENT_DATE AND "PeriodEnd" = CURRENT_DATE;`
+   is unchanged (still one row per category) and the previously-noted row's `Id` is the same —
+   updated in place, not duplicated. There is no unique DB constraint enforcing this (a deliberate
+   Task Packet choice); this depends on the single-threaded Hangfire job's query-then-upsert logic,
+   so it's worth re-checking after any change that might make this job run concurrently.
+
+---
+
 ### Known caveats to check when re-running this runbook later
 - `postgres:18.4`'s data directory must be mounted at `/var/lib/postgresql` (not the older
   `/var/lib/postgresql/data` convention) — check `docker-compose.yml`'s inline comment if the
@@ -242,3 +308,12 @@ them.
   (no Docker available there) — automated test coverage exists for the underlying logic, but an
   operator should run this runbook's F-004/F-006 Happy Path and Regression-sensitive steps at least
   once against a real `make up` stack before relying on Phase 1 in anything resembling production.
+- Phase 2's Integration Agent environment *did* have Docker available, and found the stack already
+  running (`app`+`postgres`, both healthy) with 1,002 crawled repositories and 2,000 `Score` rows
+  present — but that running container predates the F-008/F-009 code (its logs show no
+  summarization/trend activity at all despite qualifying scores existing) and LM Studio's local
+  server was not reachable/could not be started in this session (`lms server start` timed out). A
+  live end-to-end run of the F-008/F-009 Happy Path steps above was therefore not attempted — same
+  Manual-verification gap as Phase 1's, just for a different reason (LM Studio unavailability
+  instead of no Docker). An operator should run F-008/F-009's Happy Path steps at least once against
+  a freshly-rebuilt `make up` stack with LM Studio actually running before relying on Phase 2.

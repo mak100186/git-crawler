@@ -6,6 +6,8 @@ using GitCrawler.Api.Data;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Diagnostics.Ping;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
+using GitCrawler.Api.Features.Summarization.GenerateSummaries;
+using GitCrawler.Api.Features.Trends.AggregateTrends;
 
 using Hangfire;
 using Hangfire.Dashboard;
@@ -109,6 +111,20 @@ builder.Services.AddHttpClient(GitHubDiscoveryClient.GitHubRestClientName, (sp, 
     }
 });
 
+// F-008: named HttpClient for LM Studio's OpenAI-compatible /v1/chat/completions endpoint
+// (ADR-007), mirroring the GitHubRest named-client pattern above (F-005). No auth header needed -
+// LM Studio's local server has no credential of its own (ADR-016: host-installed, reached only from
+// this app's own process/Docker network, never exposed externally).
+builder.Services.AddHttpClient(LmStudioRepositorySummarizer.LmStudioClientName, (sp, client) =>
+{
+    var baseUrl = sp.GetRequiredService<IConfiguration>()["LmStudio:BaseUrl"];
+    if (!string.IsNullOrEmpty(baseUrl))
+    {
+        client.BaseAddress = new Uri(baseUrl);
+    }
+});
+builder.Services.AddScoped<IRepositorySummarizer, LmStudioRepositorySummarizer>();
+
 // F-005: Octokit.GraphQL's Connection is safe to share as a singleton - the token is fixed for
 // this single-operator system's lifetime (F-001 spike assumption 1), so there's no per-request
 // identity to scope it to.
@@ -160,9 +176,19 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
     // DiscoverRepositoriesJob now takes it as a constructor dependency to chain into via
     // IScoringContinuationLink (see DiscoverRepositoriesJob's header comment) - it has no
     // RecurringJob registration of its own below, since it's triggered only via that chain.
+    // GenerateSummariesJob (F-008, link 3) follows the identical pattern: ComputeScoresJob now
+    // takes it as a constructor dependency to chain into via ISummarizationContinuationLink (see
+    // ComputeScoresJob's own header comment), so it likewise gets no RecurringJob registration
+    // below. AggregateTrendsJob (F-009, link 4) follows the same pattern again: GenerateSummariesJob
+    // now takes it as a constructor dependency to chain into via ITrendsContinuationLink (see
+    // GenerateSummariesJob's own header comment), so it too gets no RecurringJob registration below.
     builder.Services.AddScoped<DiscoverRepositoriesJob>();
     builder.Services.AddScoped<ComputeScoresJob>();
     builder.Services.AddScoped<IScoringContinuationLink, HangfireScoringContinuationLink>();
+    builder.Services.AddScoped<GenerateSummariesJob>();
+    builder.Services.AddScoped<ISummarizationContinuationLink, HangfireSummarizationContinuationLink>();
+    builder.Services.AddScoped<AggregateTrendsJob>();
+    builder.Services.AddScoped<ITrendsContinuationLink, HangfireTrendsContinuationLink>();
 }
 
 // Liveness-only check for the Docker Compose health check (TC-003-04). Deliberately does not

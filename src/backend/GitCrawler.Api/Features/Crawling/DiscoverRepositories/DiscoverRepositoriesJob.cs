@@ -53,6 +53,11 @@ public interface IScoringContinuationLink
 
 public class HangfireScoringContinuationLink : IScoringContinuationLink
 {
+    // `null!` for the PerformContext argument: same Hangfire special-case documented on
+    // RecurringJob.AddOrUpdate in Program.cs and on this file's own RunAsync signature above -
+    // Hangfire substitutes the real per-execution context at invocation time regardless of what's
+    // passed here while building the expression. ComputeScoresJob.RunAsync gained this parameter
+    // as of F-008, to attach its own continuation (the Summarizer) the same way this method does.
     public void AttachAfter(string parentJobId, ComputeScoresJob scoringJob) =>
-        BackgroundJob.ContinueJobWith(parentJobId, () => scoringJob.RunAsync());
+        BackgroundJob.ContinueJobWith(parentJobId, () => scoringJob.RunAsync(null!));
 }

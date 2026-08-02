@@ -1,5 +1,7 @@
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
+using GitCrawler.Api.Features.Summarization.GenerateSummaries;
+using GitCrawler.Api.Features.Trends.AggregateTrends;
 
 using Wolverine;
 
@@ -70,6 +72,31 @@ internal class FakeScoringContinuationLink : IScoringContinuationLink
     {
         AttachedParentJobId = parentJobId;
         AttachedScoringJob = scoringJob;
+    }
+}
+
+// F-008: ComputeScoresJob's constructor now also needs an ISummarizationContinuationLink (its own
+// chain attachment into GenerateSummariesJob, link 3). This file's tests only exercise
+// DiscoverRepositoriesJob's chain into ComputeScoresJob (link 1 -> 2), not link 2 -> 3, so this fake
+// exists purely to satisfy that constructor - GenerateSummariesJobTests is where the
+// Summarization-slice equivalent of this fake actually gets asserted against.
+internal class FakeSummarizationContinuationLink : ISummarizationContinuationLink
+{
+    public void AttachAfter(string parentJobId, GenerateSummariesJob summarizationJob)
+    {
+    }
+}
+
+// F-009: GenerateSummariesJob's constructor now also needs an AggregateTrendsJob +
+// ITrendsContinuationLink (its own chain attachment into the Trend Aggregator, link 4). This file's
+// tests only exercise DiscoverRepositoriesJob's chain into ComputeScoresJob (link 1 -> 2), so this
+// fake exists purely to satisfy the constructor of the GenerateSummariesJob instance that
+// ComputeScoresJob itself needs to be constructed - see the same rationale on
+// FakeSummarizationContinuationLink above.
+internal class FakeTrendsContinuationLink : ITrendsContinuationLink
+{
+    public void AttachAfter(string parentJobId, AggregateTrendsJob trendsJob)
+    {
     }
 }
 

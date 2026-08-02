@@ -4,6 +4,88 @@
 
 ## What was done
 
+Phase 2 (AI summarization and trend detection; dashboard UX design brief) is complete, orchestrated end-to-end via `orchestrator-development-pattern`. Phase 1 (core data pipeline) closed 2026-08-02 — see `docs/changelog.md` Revisions 1-4 for that detail; this handoff focuses on Phase 2's operative state.
+
+- **F-008** (Summarizer) — PASS after one retry round. `Features/Summarization/GenerateSummaries/`
+  — `GenerateSummariesCommandHandler` selects repos by latest (`ComputedAtUtc`-ordered, not
+  highest-ever) `Score.TotalScore ≥ Summarization:MinimumScore` (default 40) without an existing
+  `Summary` row, capped at `Summarization:BatchSize` (default 20); README fetched via GitHub REST
+  (`GET /repos/{owner}/{repo}/readme`, reusing the Crawler's REST client, 404 handled gracefully);
+  `IRepositorySummarizer`/`LmStudioRepositorySummarizer` call LM Studio's OpenAI-compatible
+  `/v1/chat/completions` endpoint at `max_tokens: 300` (per ADR-017, no truncation risk at this
+  model). Per-repo failures (README or LM Studio) are logged and skipped, not batch-aborting — no
+  Polly pipeline, unlike ADR-018's Crawler pipeline, since LM Studio's local API has no rate-limit
+  *signal* equivalent to retry against. `ComputeScoresJob` now attaches `GenerateSummariesJob` as
+  chain link 3 via a new `ISummarizationContinuationLink` seam. **First-round Reviewer FAIL**: the
+  original selection logic used `Scores.Max(s => s.TotalScore)` (highest-ever value) instead of the
+  chronologically latest score, which could permanently summarize a repo off a historical peak it
+  has since fallen below (Summaries are create-once, never regenerated). Fixed to
+  `OrderByDescending(ComputedAtUtc).First().TotalScore`, matching `ComputeScoresCommandHandler`'s
+  own established convention; a regression test now distinguishes the two semantics explicitly.
+- **F-009** (Trend Aggregator) — PASS on the first attempt. `Features/Trends/AggregateTrends/` —
+  rolls up repos with both a `Score` and a `Summary` into per-category (`Repository.PrimaryLanguage`,
+  null excluded) trend rows, using each repo's latest `TotalScore`. Single-day period by default
+  (`Trends:PeriodDays`, default 1). Persistence is **upsert-by-`(Category, PeriodStart, PeriodEnd)`**
+  — a third distinct persistence pattern in this codebase, alongside `Score`'s append-history and
+  `Summary`'s create-once, needed for NFR-003 idempotency (re-running the same period must not
+  duplicate rows). `GenerateSummariesJob` now attaches `AggregateTrendsJob` as chain link 4 via a new
+  `ITrendsContinuationLink` seam, completing the pipeline: **Crawler → Scoring → Summarizer → Trend
+  Aggregator**, all four links chained via Hangfire `RecurringJob` + `ContinueJobWith`.
+- **F-018** (Dashboard UX design brief) — PASS on the first attempt, no code. `docs/design-briefs/dashboard-ux-brief.md`
+  specifies the Discovery Feed, Hidden Gems, Trending, and Categories layouts, FR-004 filter/sort and
+  FR-007 bookmark interactions (the "list bookmarked" verb resolved as a filter toggle within the
+  four required views, not a fifth view — that's F-012's scope), and an explicit Angular-Material-only
+  constraint (ADR-011) with three genuine component gaps (infinite scroll, trend sparkline, skeleton
+  loader) flagged with Material-native fallbacks rather than silently spec'd as custom widgets. The
+  "handoff to Claude Designer" is a document handoff, not a tool invocation — the actual design pass
+  and its review/approval against F-018's four acceptance criteria are a follow-up step outside this
+  feature's own scope, still gating F-011.
+- **Integration** — PASS on the first attempt (no fixes needed — format/build/64 tests/audit were
+  already clean). Live E2E of the real F-008→F-009 chain was **not** executed: LM Studio's local
+  server could not be started in the Integration Agent's environment (`lms server start` timed out).
+  Recorded as TC-008-08 (Manual) in `docs/test-cases.md` and as a runbook caveat — see What's Next.
+- **Reviewer-Integration** — PASS. Independently re-ran all quality gates (exact match: 64/0/0/0
+  tests, 0 vulnerabilities) and confirmed no documentation-drift finding was dropped between being
+  found and reported.
+- **Documentation drift found and fixed this phase**: `docs/project-management.md`'s Phase 2 row was
+  still `Planned` despite F-008/F-009/F-018 all being `Done` — corrected (v17). `docs/test-cases.md`
+  extended to v4 with TC-008 (7 scenarios + 1 Manual), TC-009 (7 scenarios), TC-018 (3 scenarios).
+  `docs/test-runbook.md` extended with F-008/F-009 sections (F-018 deliberately given none — a
+  brief-vs-4-ACs review has no meaningful runbook steps beyond what TC-018 already specifies).
+- **Documentation drift found, NOT fixed (carried over, out of scope for any current agent)**:
+  `docs/diagrams/mmd/daily-discovery-flow.mmd` was already stale before this phase (showed Scoring as
+  independently scheduled rather than `ContinueJobWith`-chained) and is now more stale — the real
+  chain is a 4-link Crawler→Scoring→Summarizer→Trend Aggregator chain the diagram doesn't show at
+  all. Also noticed (pre-existing, unrelated to this phase): `docs/architecture.md`'s Version History
+  table has a duplicate/out-of-order `v12` row (the Polly/ADR-018 entry vs. the A2-risk-resolved
+  entry) — fixing the numbering needs to know original intent, not guessed at here.
+- **Graphify** — ran over `src/` (`--update`, incremental), code-only fast path (all 24 changed files
+  were `.cs`/`.json`, no LLM semantic extraction needed). Graph grew from 518 nodes/674 edges/48
+  communities (Phase 1) to **860 nodes/1223 edges/55 communities**. The incremental `--update` prune
+  step initially missed 28 ghost nodes from three files genuinely deleted earlier this session
+  (`RetryDelay.cs`, `HangfireDashboardAuthorizationFilter.cs`, its test) — the prune comparison used
+  absolute Windows paths from the file-change detector against the graph's stored relative
+  `source_file` paths, so nothing matched. Caught by spot-checking the report's "Surprising
+  Connections" section (it still referenced `IRetryDelay`/`FakeRetryDelay`, both from a deleted
+  file), fixed with a suffix-based path match, re-clustered, and re-verified zero stale hits remain.
+  Community labels for all 55 communities generated from each community's dominant
+  `Features/<Area>/<Operation>/` source folder (a fast heuristic given the scale — 55 communities —
+  rather than hand-authoring each one) — reasonable for a small, cleanly-vertical-sliced codebase
+  where folder structure already tracks feature boundaries closely. Outputs refreshed in
+  `graphify-out/` (`graph.html`, `graph.json`, `GRAPH_REPORT.md`).
+- New docs this phase: `docs/design-briefs/dashboard-ux-brief.md` (new, F-018),
+  `docs/adr/ADR-018-polly-resilience-for-github-crawler.md` (new, carried in from the Polly/Hangfire
+  fix committed at the start of this session, not a Phase 2 feature itself).
+  `docs/project-management.md` v17, `docs/test-cases.md` v4, `docs/test-runbook.md` extended,
+  `docs/changelog.md` Revision 5, `docs/handoff.md` (this file).
+
+All of it is uncommitted in the working tree as of this handoff — the Orchestrator does not run
+git commands; see **Commit Messages** in this session's final response for what to run.
+
+---
+
+## Phase 1 handoff (superseded by the above, kept for history)
+
 Phase 1 (Core data pipeline) is complete, orchestrated end-to-end via `orchestrator-development-pattern`. Phase 0 (scaffolding, spikes) closed 2026-08-01 — see `docs/changelog.md` Revision 1 for that detail; this handoff focuses on Phase 1's operative state.
 
 - **F-004** (Data Store schema, EF Core) — PASS on the first attempt. `GitCrawlerDbContext` with
@@ -102,100 +184,99 @@ Phase 1 (Core data pipeline) is complete, orchestrated end-to-end via `orchestra
   in-place rather than as new files). `docs/changelog.md` Revision 2. `docs/project-management.md`
   v15+ (F-004 through F-007 → Done, F-007's row amended for star count, all inline).
 
-All of it is uncommitted in the working tree as of this handoff — the Orchestrator does not run
-git commands; see **Commit Messages** below (this response's final section) for what to run.
+All of it was uncommitted at the time this Phase 1 handoff was originally written — see
+`docs/changelog.md` for the actual commit history since.
+
+---
 
 ## Current state
 
-The platform now has a working, self-hosted, end-to-end crawl-to-score pipeline:
+The platform now has a working, self-hosted, end-to-end **crawl → score → summarize → aggregate
+trends** pipeline — all four stages chained via Hangfire `RecurringJob` + `ContinueJobWith`:
 
 | Layer | State |
 |---|---|
-| Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 3 migrations; consumed at runtime (`Database.Migrate()` on startup) — no longer just wired-through-unused as at Phase 0 close |
-| Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, idempotent upsert, rate-limit-aware retry, 7-day contributor-count caching — implemented as a Wolverine command/handler slice |
-| Job Scheduler | Hangfire wired (`AddHangfire`/`UsePostgreSqlStorage`/`AddHangfireServer`), dashboard at `/hangfire` unauthenticated (operator decision, 2026-08-02), one daily recurring job (Crawler) chaining into Scoring via `ContinueJobWith` |
-| Scoring Engine | Pure computation (no external calls), five independently-weighted signals (license, commits-per-week, contributor count, fork count, star count), scoring history preserved (multiple `Score` rows per repo over time) |
-| Postgres persistence | Bind-mounted to `./data/postgres` (operator request) — survives `docker compose down`, backup-able as plain host files |
-| Test harness | 43 xUnit tests (up from 1 smoke test at Phase 0 close), all passing; `dotnet list package --vulnerable` clean |
-| Docs | `docs/test-cases.md` (v2) and `docs/test-runbook.md` cover Phase 0 + Phase 1; `docs/project-management.md` F-004–F-007 → Done |
+| Data Store | PostgreSQL 18.4 via EF Core; 5 entities, 3 migrations; unchanged this phase |
+| Crawler | GitHub GraphQL-first discovery + REST contributor-count fallback, Polly resilience pipeline (ADR-018); unchanged this phase (fixed earlier this session, see Revision 4) |
+| Job Scheduler | Hangfire wired, dashboard at `/hangfire` unauthenticated; now chains **four** links: Crawler → Scoring → Summarizer → Trend Aggregator |
+| Scoring Engine | Pure computation, five weighted signals; unchanged this phase |
+| Summarizer | **New (F-008)**: LM Studio + Llama 3.2 3B Instruct via `IRepositorySummarizer`; selects top-scored (`Summarization:MinimumScore`, default 40), un-summarized repos (`Summarization:BatchSize`, default 20 per run); README fetched via GitHub REST; Summary rows create-once, never regenerated |
+| Trend Aggregator | **New (F-009)**: rolls up scored+summarized repos by `PrimaryLanguage` into `TrendAggregate` rows; single-day period by default (`Trends:PeriodDays`); upsert-by-`(Category, PeriodStart, PeriodEnd)` for idempotency |
+| Dashboard UX brief | **New (F-018)**: `docs/design-briefs/dashboard-ux-brief.md` — Discovery Feed/Hidden Gems/Trending/Categories layouts, filter/sort/bookmark interactions, Angular Material-only constraint; not yet handed to an actual design pass |
+| Postgres persistence | Bind-mounted to `./data/postgres`; unchanged this phase |
+| Test harness | 64 xUnit tests (up from 43 at Phase 1 close), all passing; `dotnet list package --vulnerable` clean |
+| Docs | `docs/test-cases.md` (v4) and `docs/test-runbook.md` cover Phase 0-2; `docs/project-management.md` v17, F-008/F-009/F-018 → Done, Phase 2 → Done |
 
-Still nothing exists yet for: AI summarization (F-008), trend aggregation (F-009), the Web API
-(F-010), or the dashboard beyond its Phase 0 shell (F-011). No frontend work happened this phase —
-Phase 1 was backend-only per the PMBook's Dependencies table.
+Still nothing exists yet for: the Web API (F-010), the dashboard beyond its Phase 0 shell (F-011),
+or bookmarking (F-012). No frontend work happened this phase — Phase 2, like Phase 1, was
+backend-only (plus one docs-only feature) per the PMBook's Dependencies table.
+
+A live database check before Phase 2 started (operator request) found the Crawler's discovery
+query is functioning but only ever surfaces very-high-star repos (18.7K-453K stars across all 1,002
+discovered rows) — GitHub's GraphQL search has no explicit sort parameter and defaults to
+"best-match" relevance, which correlates heavily with popularity, combined with the ~1,000-result
+visibility cap. The operator reviewed this and explicitly decided **not** to treat it as a bug for
+now ("leave as-is") — noted here so a future session doesn't have to re-discover it from scratch.
+If discovery strategy is revisited later (e.g. star-range bracketing, REST search with explicit
+sort, or random sampling), that's a change to `GitHubDiscoveryClient.BuildSearchQuery()` (F-005),
+not anything Phase 2 touched.
 
 ## What's next
 
-1. Invoke `orchestrator-development-pattern` again for **Phase 2** — AI summarization and trend
-   detection; the dashboard UX design brief (F-018) can run in parallel since it only needs the
-   approved Functional Requirements, not a running API.
-2. Phase 2 features, in dependency order per `docs/project-management.md`'s Dependencies table:
-   - **F-008** — Summarizer, depends on F-002 (Done) + F-004 (Done) + F-007 (Done). Targets
-     `llama-3.2-3b-instruct` per ADR-017, not the original ADR-013 Gemma 4 E4B pin. No known
-     truncation risk at `max_tokens: 300` (165/300 tokens used in F-002's testing), but not
-     unlimited headroom either — worth a sanity check once real summaries are generated at scale,
-     per Phase 0's handoff carry-over note.
-   - **F-009** — Trend Aggregator, depends on F-007 (Done) + F-008.
-   - **F-018** — Dashboard UX design brief & Claude Designer handoff, no code dependency, can start
-     immediately.
-3. **Before relying on Phase 1 in anything resembling production**, close the residual
-   live-infrastructure verification gap this session's Integration Agent flagged (Docker was
-   unavailable in its environment): run this runbook's F-004 Happy Path (fresh-Postgres migration),
-   F-006 Happy Path (dashboard reachability), and F-006 Regression-sensitive (mid-run restart)
-   steps against a real `make up` stack at least once. Automated test coverage exists for the
-   underlying logic in all three cases — what's unverified is the live infrastructure integration
-   itself, not the business logic.
-4. **`docs/diagrams/mmd/daily-discovery-flow.mmd` needs a manual diagramming pass** — it currently
-   shows the Scheduler triggering Scoring independently of the Crawler, which doesn't match the
-   actual `ContinueJobWith`-chained design. Not blocking Phase 2, but should be fixed before it
-   misleads someone reading Architecture alongside the diagram.
+1. Invoke `orchestrator-development-pattern` again for **Phase 3** — Web API, Dashboard, and
+   Bookmarking (F-010, F-011, F-012). F-011 (dashboard) depends on both F-010 (API) and F-018 (UX
+   brief, Done) — but F-018's brief still needs an actual design pass and approval before F-011
+   implementation begins per its own acceptance criteria; that review/approval step hasn't happened
+   yet and isn't something an orchestrator run can do on its own (it requires a human or a
+   dedicated design tool in the loop).
+2. **Close the live-E2E verification gap this session's Integration Agent flagged**: LM Studio
+   could not be started in its environment (`lms server start` timed out), so the real F-008→F-009
+   chain (actual README fetch + actual LM Studio inference + actual trend rollup against live data)
+   was never exercised end-to-end — only via SQLite-backed unit/handler tests. Run this runbook's
+   F-008 and F-009 Happy Path steps against a real `make up` stack with LM Studio actually running
+   at least once before relying on summaries/trends in anything resembling production.
+3. **`docs/diagrams/mmd/daily-discovery-flow.mmd` still needs a manual diagramming pass** — flagged
+   at Phase 1 close, still unaddressed, and now more stale: it doesn't show the Summarizer or Trend
+   Aggregator links at all. Not blocking Phase 3, but should be fixed before it misleads someone
+   reading Architecture alongside the diagram.
+4. **`docs/architecture.md`'s Version History table has a duplicate/out-of-order `v12` row**
+   (noticed this phase, pre-existing from earlier this session's Polly/ADR-018 work) — fixing the
+   numbering needs to know original intent; flagged rather than guessed at.
+5. Once real summaries/trends exist at scale, sanity-check `max_tokens: 300` isn't clipping longer
+   real-world READMEs the way the F-002 spike's synthetic test content couldn't reveal (165/300
+   tokens used in that spike — comfortable, not proven unlimited) — carried over from Phase 1's
+   handoff, still open.
 
 ## Important context
 
-- **F-007's star-count amendment happened after its own Reviewer had already passed the original
-  four-signal scope** — this is documented in `docs/project-management.md`'s F-007 row and in the
-  changelog as a legitimate scope extension (Architecture §3 already gestured at "existing
-  popularity/quality signals" as a category), not a defect fix. If a future session touches
-  `ScoringWeights.cs`, the weight-rebalancing rationale (uniform ×0.9 scale on the original four to
-  make room for star count at 10%) is documented in that file's header comment — don't re-derive
-  it from scratch, and don't casually adjust weights without checking that comment first.
-  Discovery/scoring weighting and thresholds throughout Phase 1 (crawl lookback days, minimum
-  stars, scoring caps) were explicitly left as documented judgment calls, not specs handed down by
-  the PRD — revisit them with real usage data once the platform has run for a while, per PM-001's
-  broader "no baseline yet" framing.
-- **The Postgres bind-mount change was operator-directed mid-session, applied directly rather than
-  through the full Developer/Reviewer Task Packet cycle** — this matches how Phase 0 handled
-  similarly small, well-scoped ad hoc infra requests (the Makefile `SHELL` fix, the config
-  single-source-of-truth pass). If this pattern recurs, keep applying that same judgment: small,
-  well-understood infra/config tweaks outside the numbered feature backlog don't need the full
-  orchestration ceremony, but should still be flagged explicitly in the handoff and changelog, as
-  done here.
-- **Docker was unavailable in this session's Integration Agent environment** — this is a
-  significant, explicitly-flagged verification gap, not a silent skip. See What's Next item 3.
-  Don't assume Phase 1's live infrastructure paths (a real migration against fresh Postgres, the
-  Hangfire dashboard rendering in a browser, restart-survival under Hangfire's Postgres-backed
-  storage) are proven just because the automated test suite is green — the automated suite
-  deliberately substitutes fakes/SQLite for exactly the parts that need a live stack to fully
-  verify.
-- **`Octokit.GraphQL` is still a prerelease (`0.4.0-beta`)** — now actually exercised by F-005 (no
-  longer just referenced-but-unused as at Phase 0 close). Its `GraphQLException` type was confirmed
-  (via reflection against the installed assembly, both by the F-005 Developer and independently by
-  its Reviewer) to expose no structured `errors[]`/`Type` property — the `RATE_LIMITED` detection
-  in `GitHubDiscoveryClient.cs` relies on a string match against the exception message as a result.
-  If a future `Octokit.GraphQL` version changes that message text, this heuristic silently stops
-  matching and falls through to generic exponential backoff instead of the more precise
-  `resetAt`-based wait — not a crash, just a less-precise back-off. Re-check this if/when
-  `Octokit.GraphQL` reaches a stable release.
-- **The frontend `npm audit` finding from Phase 0 remains open, unchanged** — still blocked on an
-  `@angular/cli` downgrade that would violate ADR-012's Angular 22 pin; re-check when a patched
-  release exists that doesn't require the downgrade.
+- **The "hidden gems only surface mega-popular repos" finding (see Current State) was raised and
+  explicitly accepted by the operator before Phase 2 started** — don't re-flag it as a fresh
+  discovery in a future session without checking here first; it's a known, accepted-as-is state,
+  not an open item.
+- **F-008's max-vs-latest Score bug (see What Was Done) is exactly the kind of subtle correctness
+  issue this codebase's Reviewer step exists to catch** — the codebase now has *two* documented
+  instances of "latest by time, not highest-ever value" being the correct semantics for resolving a
+  repo's current `Score` (`ComputeScoresCommandHandler`, and now `GenerateSummariesCommandHandler`
+  and `AggregateTrendsCommandHandler`, both of which got it right from the start in Phase 2 having
+  learned from F-008's first-round mistake). If a future feature also needs "this repo's current
+  score," follow the same `OrderByDescending(ComputedAtUtc).First()` pattern, not `Max(TotalScore)`.
+- **Three distinct persistence patterns now coexist in this codebase, by design**: `Score` = append
+  history (one row per re-score, never updated), `Summary` = create-once (never regenerated once
+  created), `TrendAggregate` = upsert-by-key (`Category`/`PeriodStart`/`PeriodEnd`, updated in place
+  on re-run). Each is deliberate and documented at its own handler — don't assume one pattern
+  generalizes to a new stage without checking that stage's own idempotency/history requirements.
+- **The graphify `--update` incremental prune has a path-format gap** (see What Was Done) — its
+  ghost-node-pruning comparison needs the deleted-file list and the graph's stored `source_file`
+  values in the same path format (both relative, or both absolute+same-separator). This session hit
+  it because the incremental file-change detector returns absolute Windows paths while the graph
+  stores relative forward-slash paths. If a future `--update` run silently reports "no drift" after
+  a file deletion, verify by grep'ing `graphify-out/graph.json` for the deleted filename directly
+  rather than trusting the prune step's own "no ghost nodes" claim.
 - **Version-pin caveats carried from earlier phases, still current**: LM Studio host-installed
-  (ADR-016), `llama-3.2-3b-instruct` (ADR-017, supersedes ADR-013), PostgreSQL 18.4 (ADR-014),
-  Angular 22 (ADR-012) — none of these changed this phase.
-- **Open items not touched this phase**: PM-001 (numeric success-metric targets), PM-002
-  (personalized discovery phasing), PM-003 (Docker Compose scaling ceiling trigger) all remain
-  deferred exactly as they were at Phase 0 close.
-- **Docs are governed, not exempt** — this session's Integration and Reviewer-Integration passes
-  both treated `docs/project-management.md`, `docs/architecture.md`, `docs/test-cases.md`, and
-  `docs/test-runbook.md` as specs the code must satisfy, catching and fixing one real drift
-  (`test-runbook.md`'s stale "only test" claim) and correctly flagging one it couldn't fix itself
-  (the daily-discovery-flow diagram). Keep doing this in Phase 2.
+  (ADR-016), `llama-3.2-3b-instruct` (ADR-017), PostgreSQL 18.4 (ADR-014), Angular 22 (ADR-012).
+- **Open items not touched this phase**: PM-001, PM-002, PM-003 remain deferred exactly as before.
+- **Docs are governed, not exempt** — this phase's Integration and Reviewer-Integration passes again
+  treated the PMBook/Architecture/test-cases/test-runbook as specs the code must satisfy, catching
+  and fixing the Phase 2 status drift and closing the test-cases/runbook gaps, while correctly
+  flagging the two drift items (diagram, Architecture version-history) it couldn't fix itself. Keep
+  doing this in Phase 3.

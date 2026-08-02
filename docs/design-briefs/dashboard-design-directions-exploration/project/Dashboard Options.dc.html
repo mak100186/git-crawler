@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/organic-4e86dc37-d617-4f2c-bf00-ccf08bc7b18d/styles.css">
+  <script src="_ds/organic-4e86dc37-d617-4f2c-bf00-ccf08bc7b18d/_ds_bundle.js"></script>
+  <style>
+    body { background: #ded2bd; margin: 0; }
+    a { color: var(--color-accent); } a:hover { color: var(--color-accent-600); }
+  </style>
+</helmet>
+<section data-screen-label="Turn 2 — Second-accent recolor" style="padding: 48px 56px 8px; display: flex; flex-direction: column; gap: 24px;">
+  <div style="display: flex; flex-direction: column; gap: 6px; max-width: 980px;">
+    <h1 style="font-size: 34px; margin: 0;">Turn 2 — replacing the sage/mint in 1c</h1>
+    <p style="font-size: 14px; margin: 0; color: var(--color-neutral-700);">Everywhere <a href="#1c">1c</a> used the sage ramp (language tags, growth chips, trend icons, score-breakdown bars, category tints) recolored three ways. Same Ink Header shell.</p>
+  </div>
+  <div style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap;">
+    <sc-for list="{{ recolors }}" as="v" hint-placeholder-count="3">
+      <div id="{{ v.id }}" style="display: flex; flex-direction: column; gap: 12px; width: 430px;">
+        <div style="display: flex; gap: 10px; align-items: baseline;">
+          <a href="{{ v.href }}" style="text-decoration: none; background: var(--color-neutral-900); color: var(--color-bg); font-family: var(--font-heading); font-size: 14px; padding: 3px 14px; border-radius: 999px;">{{ v.id }}</a>
+          <h3 style="margin: 0; font-size: 20px;">{{ v.name }}</h3>
+        </div>
+        <div style="font-size: 12.5px; color: var(--color-neutral-800); min-height: 54px;">{{ v.note }}</div>
+        <div style="display: flex; gap: 6px;">
+          <div style="width: 26px; height: 26px; border-radius: 50%; background: {{ v.sw1 }}; border: 1px solid var(--color-divider);"></div>
+          <div style="width: 26px; height: 26px; border-radius: 50%; background: {{ v.sw2 }}; border: 1px solid var(--color-divider);"></div>
+          <div style="width: 26px; height: 26px; border-radius: 50%; background: {{ v.sw3 }}; border: 1px solid var(--color-divider);"></div>
+        </div>
+        <div style="background: var(--color-bg); border: 1px solid var(--color-divider); border-radius: 20px; box-shadow: var(--shadow-md); padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+          <div class="card elev-sm" style="gap: 9px; padding: 16px 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 38px; height: 38px; border-radius: 50%; background: var(--color-accent-500); display: grid; place-items: center; font-family: var(--font-heading); font-size: 14px; color: var(--color-bg); flex: none;">C</div>
+              <div style="flex: 1;">
+                <div style="font-family: var(--font-heading); font-size: 15px;">cargo-lens</div>
+                <div style="font-size: 11px; color: var(--color-neutral-600);">ferrous-oss · 1 day ago</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div style="font-size: 12px; line-height: 1.5; color: var(--color-neutral-800);">Visualizes cargo dependency graphs and feature flags, and flags unused features that slow builds.</div>
+            <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--color-divider); padding-top: 8px;">
+              <span class="tag" style="background: {{ v.tagBg }}; color: {{ v.tagFg }};">Rust</span>
+              <span style="font-size: 11px; color: var(--color-neutral-700);">★ 1.3k</span>
+              <span class="tag tag-neutral">Apache-2.0</span>
+            </div>
+          </div>
+          <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 10px; padding: 12px 16px;">
+            <div style="width: 34px; height: 34px; border-radius: 50%; background: {{ v.circBg }}; display: grid; place-items: center; flex: none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{ v.circFg }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg></div>
+            <div style="font-family: var(--font-heading); font-size: 14px; flex: 1;">MCP servers &amp; tooling</div>
+            <span class="tag" style="background: {{ v.growBg }}; color: {{ v.growFg }}; font-weight: 700;">▲ +18%</span>
+          </div>
+          <div style="display: flex; gap: 14px; align-items: center; padding: 10px 16px; background: var(--color-neutral-900); color: var(--color-neutral-100); border-radius: 18px;">
+            <div style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-500); flex: none;">Score bars</div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+              <div style="height: 5px; background: var(--color-neutral-700); border-radius: 3px;"><div style="height: 100%; width: 84%; background: {{ v.bar }}; border-radius: 3px;"></div></div>
+              <div style="height: 5px; background: var(--color-neutral-700); border-radius: 3px;"><div style="height: 100%; width: 62%; background: {{ v.bar }}; border-radius: 3px;"></div></div>
+            </div>
+          </div>
+          <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 12px; padding: 12px 16px;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: {{ v.catBg }}; display: grid; place-items: center; flex: none;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="{{ v.catFg }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"></path></svg></div>
+            <div style="font-family: var(--font-heading); font-size: 14px; flex: 1;">CLI tools</div>
+            <span class="tag tag-neutral">33 repos</span>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+<section data-screen-label="Turn 1 — Options" style="padding: 48px 56px; display: flex; flex-direction: column; gap: 32px;">
+  <div style="max-width: 980px; display: flex; flex-direction: column; gap: 8px;">
+    <h1 style="font-size: 40px; margin: 0;">git-crawler dashboard — three directions</h1>
+    <p style="font-size: 15px; margin: 0; color: var(--color-neutral-700);">F-018 brief · four views per option (Discovery Feed, Hidden Gems, Trending, Categories) + narrow-viewport behavior. Dashed <span style="font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 1px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px;">mat-*</span> tags map every region to its Angular Material component. Ghosted, dashed elements are reserved placements for the Bookmarks view (F-012) and free-text search (v2) — out of v1 scope.</p>
+  </div>
+  <div style="display: flex; gap: 64px; align-items: flex-start;">
+
+    <!-- ═══════════ OPTION 1A ═══════════ -->
+    <div id="1a" style="display: flex; flex-direction: column; gap: 20px; width: 1300px; flex: none;">
+      <div style="display: flex; gap: 14px; align-items: baseline;">
+        <a href="#1a" style="text-decoration: none; background: var(--color-accent); color: var(--color-bg); font-family: var(--font-heading); font-size: 16px; padding: 4px 16px; border-radius: 999px;">1a</a>
+        <h2 style="margin: 0; font-size: 26px;">Tabs &amp; Toolbar</h2>
+      </div>
+      <div style="font-size: 13px; color: var(--color-neutral-800); display: flex; flex-direction: column; gap: 4px; max-width: 900px;">
+        <div><b>Shell</b> — top <span style="font-family: ui-monospace, monospace; font-size: 11px;">mat-toolbar</span> + <span style="font-family: ui-monospace, monospace; font-size: 11px;">mat-tab-nav-bar</span>; collapses to a bottom tab bar on mobile.</div>
+        <div><b>Filters</b> — always-visible persistent toolbar row; chips beneath.</div>
+        <div><b>Cards</b> — 4-across compact grid. <b>DS voice</b> — terracotta-forward, cream ground.</div>
+      </div>
+
+      <!-- 1a Discovery -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <span style="font-family: var(--font-heading); font-size: 15px;">Discovery Feed</span>
+          <span style="font-size: 12px; color: var(--color-neutral-600);">default route · sorted newest first</span>
+        </div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+          <div style="display: flex; align-items: center; gap: 20px; padding: 14px 28px;">
+            <div style="font-family: var(--font-heading); font-size: 20px;">git-crawler</div>
+            <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-toolbar</span>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 280px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-500); border-radius: 999px; opacity: 0.5; font-size: 13px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+              Search repos — reserved (v2)
+            </div>
+            <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--color-accent-2-300); display: grid; place-items: center; font-size: 13px; font-weight: 700;">M</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 0 28px; border-bottom: 1px solid var(--color-divider);">
+            <div style="padding: 9px 18px; font-family: var(--font-heading); font-size: 14px; color: var(--color-accent-700); border-bottom: 3px solid var(--color-accent); margin-bottom: -1px;">Discovery Feed</div>
+            <div style="padding: 9px 18px; font-size: 14px; color: var(--color-neutral-700);">Hidden Gems</div>
+            <div style="padding: 9px 18px; font-size: 14px; color: var(--color-neutral-700);">Trending</div>
+            <div style="padding: 9px 18px; font-size: 14px; color: var(--color-neutral-700);">Categories</div>
+            <div style="padding: 7px 14px; margin-left: 8px; font-size: 13px; color: var(--color-neutral-600); border: 1.5px dashed var(--color-neutral-500); border-radius: 999px; opacity: 0.5;">Bookmarks · F-012</div>
+            <span style="margin-left: auto; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-tab-nav-bar</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 12px 28px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 999px; font-size: 13px;">Language <b style="color: var(--color-accent-700);">2</b> <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 999px; font-size: 13px;">Stars
+              <div style="position: relative; width: 110px; height: 4px; background: var(--color-neutral-300); border-radius: 2px;">
+                <div style="position: absolute; left: 22%; right: 30%; top: 0; bottom: 0; background: var(--color-accent); border-radius: 2px;"></div>
+                <div style="position: absolute; left: 22%; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-accent); margin-left: -7px;"></div>
+                <div style="position: absolute; right: 30%; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-accent); margin-right: -7px;"></div>
+              </div>
+              <span style="color: var(--color-neutral-700); font-size: 12px;">500–5k</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 14px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 999px; font-size: 13px;">Topic
+              <span class="tag tag-accent">mcp ✕</span>
+              <span style="color: var(--color-neutral-500); font-size: 12px;">add…</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 999px; font-size: 13px;">License <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 999px; font-size: 13px;">Sort: <b>Newest</b> <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+              <div style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--color-divider); display: grid; place-items: center; background: var(--color-surface);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></div>
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><div style="width: 34px; height: 18px; border-radius: 999px; background: var(--color-neutral-300); position: relative;"><div style="position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-neutral-100);"></div></div>Bookmarked only</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 0 28px 10px;">
+            <span class="tag tag-accent">TypeScript ✕</span>
+            <span class="tag tag-accent">Rust ✕</span>
+            <span class="tag tag-accent">★ 500–5k ✕</span>
+            <span class="tag tag-accent">mcp ✕</span>
+            <button class="btn btn-ghost" style="font-size: 12px; padding: 2px 10px;">Clear all</button>
+            <div style="margin-left: auto; display: flex; gap: 6px;">
+              <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-select · mat-slider(range) · mat-chip-grid+autocomplete</span>
+              <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-chip-set</span>
+            </div>
+          </div>
+          <div style="height: 3px; margin: 0 28px; border-radius: 2px; background: linear-gradient(90deg, var(--color-accent) 30%, var(--color-accent-200) 30%);"></div>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 16px 28px;">
+            <sc-for list="{{ repos }}" as="r" hint-placeholder-count="6">
+              <div class="card elev-sm" style="gap: 8px; padding: 16px;">
+                <div>
+                  <div style="font-family: var(--font-heading); font-size: 15px;">{{ r.name }}</div>
+                  <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }} · {{ r.ago }}</div>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  <span class="tag tag-accent">{{ r.lang }}</span>
+                  <span style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--color-neutral-700);"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"></path></svg>{{ r.stars }}</span>
+                  <span class="tag tag-neutral">{{ r.lic }}</span>
+                </div>
+                <div style="font-size: 12px; line-height: 1.45; color: var(--color-neutral-800); max-height: 35px; overflow: hidden; flex: 1;">{{ r.sum }}</div>
+                <div style="display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--color-divider); padding-top: 8px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                  <div style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-accent-700); font-weight: 600;">GitHub <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 4px 28px 18px; font-size: 12px; color: var(--color-neutral-700);">
+            <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px;">mat-card ×N · mat-paginator</span>
+            Items per page: 24 <span>1–24 of 312</span>
+            <span style="display: inline-flex; gap: 12px; color: var(--color-neutral-500);">|◀ ◀ <b style="color: var(--color-accent-700);">▶</b> ▶|</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1a Hidden Gems -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Hidden Gems</span><span style="font-size: 12px; color: var(--color-neutral-600);">shell + filter bar identical — content region shown · sorted by score</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 16px 0;">
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 0 28px;">
+            <sc-for list="{{ gems }}" as="r" hint-placeholder-count="4">
+              <div class="card elev-sm" style="gap: 8px; padding: 16px;">
+                <div style="display: flex; align-items: flex-start; gap: 8px;">
+                  <div style="flex: 1;">
+                    <div style="font-family: var(--font-heading); font-size: 15px;">{{ r.name }}</div>
+                    <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div>
+                  </div>
+                  <span style="background: var(--color-accent-600); color: var(--color-accent-100); font-family: var(--font-heading); font-size: 15px; padding: 3px 12px; border-radius: 999px;">{{ r.score }}</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  <span class="tag tag-accent">{{ r.lang }}</span>
+                  <span style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--color-neutral-700);"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"></path></svg>{{ r.stars }}</span>
+                  <span class="tag tag-neutral">{{ r.lic }}</span>
+                </div>
+                <div style="font-size: 12px; line-height: 1.45; color: var(--color-neutral-800); max-height: 35px; overflow: hidden; flex: 1;">{{ r.sum }}</div>
+                <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--color-divider); padding-top: 8px; font-size: 12px; color: var(--color-accent-700); font-weight: 600;">
+                  Why this score?
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin: 14px 28px 0; padding: 16px 20px; background: var(--color-surface); border-radius: 24px; border: 1px solid var(--color-divider); display: flex; gap: 24px; align-items: center;">
+            <div style="flex: none; width: 190px;">
+              <div style="font-family: var(--font-heading); font-size: 15px;">cargo-lens <span style="background: var(--color-accent-600); color: var(--color-accent-100); font-size: 13px; padding: 2px 10px; border-radius: 999px; margin-left: 6px;">84</span></div>
+              <div style="font-size: 11px; color: var(--color-neutral-600); margin-top: 2px;">expanded — Why this score?</div>
+              <span style="display: inline-block; margin-top: 8px; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-expansion-panel</span>
+            </div>
+            <div style="flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+              <sc-for list="{{ signals }}" as="s" hint-placeholder-count="5">
+                <div>
+                  <div style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600);">{{ s.label }}</div>
+                  <div style="font-family: var(--font-heading); font-size: 16px; margin: 2px 0;">{{ s.value }}</div>
+                  <div style="height: 5px; background: var(--color-neutral-300); border-radius: 3px; overflow: hidden;"><div style="height: 100%; width: {{ s.pct }}; background: var(--color-accent-2-600); border-radius: 3px;"></div></div>
+                  <div style="font-size: 10px; color: var(--color-neutral-600); margin-top: 3px;">{{ s.weight }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1a Trending -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Trending</span><span style="font-size: 12px; color: var(--color-neutral-600);">no filter bar (§4.3) · API order preserved</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 20px 28px; display: flex; flex-direction: column; gap: 12px;">
+          <div class="card elev-sm" style="max-width: 860px; padding: 18px 22px; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="font-family: var(--font-heading); font-size: 18px; flex: 1;">MCP servers &amp; tooling</div>
+              <span class="tag tag-accent-2" style="font-weight: 700;">▲ +18% this week</span>
+              <span style="font-size: 12px; color: var(--color-neutral-600);">24 repos</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg>
+            </div>
+            <div style="border-top: 1px solid var(--color-divider); padding-top: 10px; display: flex; flex-direction: column;">
+              <sc-for list="{{ trendRepos }}" as="r" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent); font-size: 13px;">
+                  <b style="width: 150px;">{{ r.name }}</b>
+                  <span class="tag tag-accent">{{ r.lang }}</span>
+                  <span style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--color-neutral-700);"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"></path></svg>{{ r.stars }}</span>
+                  <span style="flex: 1; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.sum }}</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent); flex: none;"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <sc-for list="{{ trendRest }}" as="t" hint-placeholder-count="3">
+            <div class="card elev-sm" style="max-width: 860px; padding: 14px 22px; flex-direction: row; align-items: center; gap: 12px;">
+              <div style="font-family: var(--font-heading); font-size: 17px; flex: 1;">{{ t.label }}</div>
+              <span class="tag tag-accent-2" style="font-weight: 700;">▲ {{ t.growth }}</span>
+              <span style="font-size: 12px; color: var(--color-neutral-600);">{{ t.count }}</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+            </div>
+          </sc-for>
+          <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start;">mat-card + mat-chip (G2 text fallback) + mat-expansion-panel</span>
+        </div>
+      </div>
+
+      <!-- 1a Categories -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Categories</span><span style="font-size: 12px; color: var(--color-neutral-600);">tile click → drill-down reuses Discovery grid, topic chip pre-applied</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 20px 28px;">
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="8">
+              <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 14px; padding: 16px 18px; cursor: pointer;">
+                <div style="width: 42px; height: 42px; border-radius: 50%; background: var(--color-accent-200); display: grid; place-items: center; flex: none;">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.icon }}"></path></svg>
+                </div>
+                <div>
+                  <div style="font-family: var(--font-heading); font-size: 15px;">{{ c.label }}</div>
+                  <div style="font-size: 11px; color: var(--color-neutral-600);">{{ c.count }} repos</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <span style="display: inline-block; margin-top: 12px; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">clickable mat-card tiles + router link</span>
+        </div>
+      </div>
+
+      <!-- 1a Mobile -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Narrow viewport</span><span style="font-size: 12px; color: var(--color-neutral-600);">nav → bottom mat-tab-nav-bar · filters collapse to one button</span></div>
+        <div style="width: 390px; background: var(--color-bg); border-radius: 28px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); overflow: hidden; display: flex; flex-direction: column; height: 700px;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 14px 18px;">
+            <div style="font-family: var(--font-heading); font-size: 18px;">git-crawler</div>
+            <div style="margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: 1.5px dashed var(--color-neutral-500); opacity: 0.5; display: grid; place-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 0 18px 10px;">
+            <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"></path></svg> Filters · 3</button>
+            <span class="tag tag-accent">TypeScript ✕</span>
+            <span class="tag tag-accent">mcp ✕</span>
+          </div>
+          <div style="flex: 1; overflow: hidden; padding: 0 18px; display: flex; flex-direction: column; gap: 10px;">
+            <sc-for list="{{ reposMobile }}" as="r" hint-placeholder-count="3">
+              <div class="card elev-sm" style="gap: 6px; padding: 14px 16px;">
+                <div style="display: flex; align-items: center;">
+                  <div style="flex: 1;"><div style="font-family: var(--font-heading); font-size: 15px;">{{ r.name }}</div><div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }} · {{ r.ago }}</div></div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;"><span class="tag tag-accent">{{ r.lang }}</span><span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span><span class="tag tag-neutral">{{ r.lic }}</span></div>
+                <div style="font-size: 12px; line-height: 1.45; color: var(--color-neutral-800); max-height: 35px; overflow: hidden;">{{ r.sum }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; border-top: 1px solid var(--color-divider); background: var(--color-surface); padding: 8px 6px 14px;">
+            <div style="flex: 1; text-align: center; color: var(--color-accent-700);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"></path><path d="M5 10v10h14V10"></path></svg><div style="font-size: 10px; font-weight: 700;">Feed</div></div>
+            <div style="flex: 1; text-align: center; color: var(--color-neutral-600);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"></path></svg><div style="font-size: 10px;">Gems</div></div>
+            <div style="flex: 1; text-align: center; color: var(--color-neutral-600);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg><div style="font-size: 10px;">Trending</div></div>
+            <div style="flex: 1; text-align: center; color: var(--color-neutral-600);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg><div style="font-size: 10px;">Categories</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ OPTION 1B ═══════════ -->
+    <div id="1b" style="display: flex; flex-direction: column; gap: 20px; width: 1300px; flex: none;">
+      <div style="display: flex; gap: 14px; align-items: baseline;">
+        <a href="#1b" style="text-decoration: none; background: var(--color-accent-2-600); color: var(--color-bg); font-family: var(--font-heading); font-size: 16px; padding: 4px 16px; border-radius: 999px;">1b</a>
+        <h2 style="margin: 0; font-size: 26px;">Sidenav Ledger</h2>
+      </div>
+      <div style="font-size: 13px; color: var(--color-neutral-800); display: flex; flex-direction: column; gap: 4px; max-width: 900px;">
+        <div><b>Shell</b> — persistent left <span style="font-family: ui-monospace, monospace; font-size: 11px;">mat-sidenav</span> rail; collapses behind a hamburger on mobile.</div>
+        <div><b>Filters</b> — collapsible <span style="font-family: ui-monospace, monospace; font-size: 11px;">mat-expansion-panel</span>; active chips always visible in its header.</div>
+        <div><b>Cards</b> — full-width ledger rows, densest scan. <b>DS voice</b> — sage-forward rail, terracotta reserved for actions.</div>
+      </div>
+
+      <!-- 1b Discovery -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Discovery Feed</span><span style="font-size: 12px; color: var(--color-neutral-600);">filter panel shown expanded</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); display: flex;">
+          <div style="width: 218px; flex: none; background: var(--color-accent-2-100); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-family: var(--font-heading); font-size: 19px; padding: 0 10px 16px;">git-crawler</div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-accent-2-100); font-size: 13px; font-weight: 600;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"></path><path d="M5 10v10h14V10"></path></svg>Discovery Feed<span style="margin-left: auto; font-size: 11px; opacity: 0.8;">312</span></div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 999px; font-size: 13px; color: var(--color-accent-2-900);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"></path></svg>Hidden Gems<span style="margin-left: auto; font-size: 11px; opacity: 0.7;">57</span></div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 999px; font-size: 13px; color: var(--color-accent-2-900);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg>Trending<span style="margin-left: auto; font-size: 11px; opacity: 0.7;">8</span></div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 999px; font-size: 13px; color: var(--color-accent-2-900);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>Categories<span style="margin-left: auto; font-size: 11px; opacity: 0.7;">12</span></div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 999px; font-size: 13px; border: 1.5px dashed var(--color-accent-2-500); opacity: 0.5; margin-top: 6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>Bookmarks · F-012</div>
+            <div style="margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1.5px dashed var(--color-accent-2-500); border-radius: 999px; opacity: 0.5; font-size: 12px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+            <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; margin-top: 10px;">mat-sidenav</span>
+          </div>
+          <div style="flex: 1; padding: 18px 24px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; align-items: baseline; gap: 12px;">
+              <h3 style="margin: 0; font-size: 22px;">Discovery Feed</h3>
+              <span style="font-size: 12px; color: var(--color-neutral-600);">312 repositories · newest first</span>
+            </div>
+            <div style="background: var(--color-surface); border-radius: 22px; border: 1px solid var(--color-divider);">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 10px 18px; flex-wrap: wrap;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"></path></svg>
+                <b style="font-size: 13px;">Filters</b>
+                <span class="tag tag-accent">Rust ✕</span><span class="tag tag-accent">★ ≥ 500 ✕</span><span class="tag tag-accent">Apache-2.0 ✕</span>
+                <button class="btn btn-ghost" style="font-size: 12px; padding: 2px 10px;">Clear all</button>
+                <span style="margin-left: auto; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-expansion-panel + mat-chip-set</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1.3fr 1fr 1fr; gap: 14px; padding: 4px 18px 14px; border-top: 1px solid var(--color-divider);">
+                <div class="field"><label>Language</label><div class="input" style="display: flex; align-items: center; justify-content: space-between; font-size: 13px;">Rust +1 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+                <div class="field"><label>Star range</label><div style="display: flex; align-items: center; gap: 10px; height: 36px;"><div style="position: relative; flex: 1; height: 4px; background: var(--color-neutral-300); border-radius: 2px;"><div style="position: absolute; left: 15%; right: 0%; top: 0; bottom: 0; background: var(--color-accent-2-600); border-radius: 2px;"></div><div style="position: absolute; left: 15%; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-accent-2-600); margin-left: -7px;"></div><div style="position: absolute; right: 0; top: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-accent-2-600); margin-right: -7px;"></div></div><span style="font-size: 12px; color: var(--color-neutral-700);">500 – max</span></div></div>
+                <div class="field"><label>Topic</label><div class="input" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-neutral-500);">Type to add…</div></div>
+                <div class="field"><label>License</label><div class="input" style="display: flex; align-items: center; justify-content: space-between; font-size: 13px;">Apache-2.0 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div class="seg" style="background: var(--color-bg);"><label class="seg-opt" style="background: var(--color-accent-2-600); color: var(--color-bg);">Newest</label><label class="seg-opt">Score</label><label class="seg-opt">Stars</label><label class="seg-opt">Commits/wk</label></div>
+              <div style="width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--color-divider); display: grid; place-items: center;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></div>
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; margin-left: auto;"><div style="width: 34px; height: 18px; border-radius: 999px; background: var(--color-accent-2-600); position: relative;"><div style="position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-bg);"></div></div>Bookmarked only</div>
+              <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-button-toggle-group · mat-slide-toggle</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <sc-for list="{{ repos }}" as="r" hint-placeholder-count="6">
+                <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 20px;">
+                  <div style="width: 170px; flex: none;">
+                    <div style="font-family: var(--font-heading); font-size: 14px;">{{ r.name }}</div>
+                    <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div>
+                  </div>
+                  <span class="tag tag-accent-2" style="flex: none;">{{ r.lang }}</span>
+                  <span style="flex: 1; font-size: 12px; color: var(--color-neutral-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.sum }}</span>
+                  <span style="flex: none; font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+                  <span class="tag tag-neutral" style="flex: none;">{{ r.lic }}</span>
+                  <span style="flex: none; font-size: 11px; color: var(--color-neutral-600); width: 74px;">{{ r.ago }}</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent); flex: none;"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; font-size: 12px; color: var(--color-neutral-700);">Items per page: 50 <span>1–50 of 312</span><span style="display: inline-flex; gap: 12px; color: var(--color-neutral-500);">|◀ ◀ <b style="color: var(--color-accent-700);">▶</b> ▶|</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1b Hidden Gems -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Hidden Gems</span><span style="font-size: 12px; color: var(--color-neutral-600);">rail + filters identical (collapsed) — content region shown · score column leads</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+          <sc-for list="{{ gems }}" as="r" hint-placeholder-count="4">
+            <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 20px;">
+              <div style="width: 54px; flex: none; text-align: center;">
+                <div style="font-family: var(--font-heading); font-size: 24px; color: var(--color-accent-2-700); line-height: 1;">{{ r.score }}</div>
+                <div style="font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600);">score</div>
+              </div>
+              <div style="width: 170px; flex: none;">
+                <div style="font-family: var(--font-heading); font-size: 14px;">{{ r.name }}</div>
+                <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div>
+              </div>
+              <span class="tag tag-accent-2" style="flex: none;">{{ r.lang }}</span>
+              <span style="flex: 1; font-size: 12px; color: var(--color-neutral-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.sum }}</span>
+              <span style="flex: none; font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+              <span style="flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--color-accent-700); font-weight: 600;">Why? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent); flex: none;"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+          </sc-for>
+          <div style="margin-left: 68px; padding: 14px 20px; background: var(--color-accent-2-100); border-radius: 20px; display: flex; gap: 20px; align-items: center;">
+            <div style="flex: none; font-size: 12px; color: var(--color-accent-2-900); width: 150px;"><b>Why this score?</b><br>expanded row for cargo-lens<br><span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 1px 7px; border: 1px dashed var(--color-accent-2-600); border-radius: 999px;">mat-expansion-panel</span></div>
+            <div style="flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+              <sc-for list="{{ signals }}" as="s" hint-placeholder-count="5">
+                <div>
+                  <div style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-2-800);">{{ s.label }}</div>
+                  <div style="font-family: var(--font-heading); font-size: 15px; margin: 2px 0;">{{ s.value }}</div>
+                  <div style="height: 5px; background: var(--color-accent-2-200); border-radius: 3px; overflow: hidden;"><div style="height: 100%; width: {{ s.pct }}; background: var(--color-accent-2-700); border-radius: 3px;"></div></div>
+                  <div style="font-size: 10px; color: var(--color-accent-2-800); margin-top: 3px;">{{ s.weight }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1b Trending -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Trending</span><span style="font-size: 12px; color: var(--color-neutral-600);">content region · rows match the ledger voice</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+          <div class="card elev-sm" style="padding: 14px 20px; gap: 10px; border-radius: 20px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="font-family: var(--font-heading); font-size: 16px; flex: 1;">MCP servers &amp; tooling</div>
+              <span class="tag tag-accent-2" style="font-weight: 700;">▲ +18% this week</span>
+              <span style="font-size: 12px; color: var(--color-neutral-600);">24 repos</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg>
+            </div>
+            <div style="border-top: 1px solid var(--color-divider); padding-top: 6px;">
+              <sc-for list="{{ trendRepos }}" as="r" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 7px 4px; font-size: 13px; border-bottom: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);">
+                  <b style="width: 150px;">{{ r.name }}</b>
+                  <span class="tag tag-accent-2">{{ r.lang }}</span>
+                  <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+                  <span style="flex: 1; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.sum }}</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent); flex: none;"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <sc-for list="{{ trendRest }}" as="t" hint-placeholder-count="3">
+            <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 12px; padding: 12px 20px; border-radius: 20px;">
+              <div style="font-family: var(--font-heading); font-size: 15px; flex: 1;">{{ t.label }}</div>
+              <span class="tag tag-accent-2" style="font-weight: 700;">▲ {{ t.growth }}</span>
+              <span style="font-size: 12px; color: var(--color-neutral-600);">{{ t.count }}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 1b Categories -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Categories</span><span style="font-size: 12px; color: var(--color-neutral-600);">drill-down reuses ledger rows with topic chip pre-applied</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 18px 24px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="8">
+              <div class="card elev-sm" style="flex-direction: row; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 20px; cursor: pointer;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--color-accent-2-200); display: grid; place-items: center; flex: none;">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-800)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.icon }}"></path></svg>
+                </div>
+                <div style="flex: 1;">
+                  <div style="font-family: var(--font-heading); font-size: 14px;">{{ c.label }}</div>
+                </div>
+                <span class="tag tag-neutral">{{ c.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1b Mobile -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Narrow viewport</span><span style="font-size: 12px; color: var(--color-neutral-600);">rail → mat-sidenav drawer over content (BreakpointObserver)</span></div>
+        <div style="width: 390px; background: var(--color-bg); border-radius: 28px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); overflow: hidden; position: relative; height: 700px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
+            <div style="font-family: var(--font-heading); font-size: 18px;">git-crawler</div>
+          </div>
+          <div style="padding: 0 18px; display: flex; flex-direction: column; gap: 8px;">
+            <sc-for list="{{ reposMobile }}" as="r" hint-placeholder-count="3">
+              <div class="card elev-sm" style="gap: 6px; padding: 14px 16px; border-radius: 20px;">
+                <div style="display: flex; align-items: center;"><div style="flex: 1;"><div style="font-family: var(--font-heading); font-size: 15px;">{{ r.name }}</div><div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div></div><svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg></div>
+                <div style="display: flex; gap: 6px;"><span class="tag tag-accent-2">{{ r.lang }}</span><span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position: absolute; inset: 0; background: color-mix(in srgb, var(--color-neutral-900) 35%, transparent);"></div>
+          <div style="position: absolute; top: 0; bottom: 0; left: 0; width: 250px; background: var(--color-accent-2-100); border-radius: 0 28px 28px 0; box-shadow: var(--shadow-lg); padding: 22px 14px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-family: var(--font-heading); font-size: 19px; padding: 0 10px 16px;">git-crawler</div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 999px; background: var(--color-accent-2-600); color: var(--color-accent-2-100); font-size: 13px; font-weight: 600;">Discovery Feed</div>
+            <div style="padding: 10px 12px; font-size: 13px; color: var(--color-accent-2-900);">Hidden Gems</div>
+            <div style="padding: 10px 12px; font-size: 13px; color: var(--color-accent-2-900);">Trending</div>
+            <div style="padding: 10px 12px; font-size: 13px; color: var(--color-accent-2-900);">Categories</div>
+            <div style="padding: 8px 12px; font-size: 13px; border: 1.5px dashed var(--color-accent-2-500); border-radius: 999px; opacity: 0.5; margin-top: 6px;">Bookmarks · F-012</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ OPTION 1C ═══════════ -->
+    <div id="1c" style="display: flex; flex-direction: column; gap: 20px; width: 1300px; flex: none;">
+      <div style="display: flex; gap: 14px; align-items: baseline;">
+        <a href="#1c" style="text-decoration: none; background: var(--color-neutral-900); color: var(--color-bg); font-family: var(--font-heading); font-size: 16px; padding: 4px 16px; border-radius: 999px;">1c</a>
+        <h2 style="margin: 0; font-size: 26px;">Ink Header</h2>
+      </div>
+      <div style="font-size: 13px; color: var(--color-neutral-800); display: flex; flex-direction: column; gap: 4px; max-width: 900px;">
+        <div><b>Shell</b> — dark-ink <span style="font-family: ui-monospace, monospace; font-size: 11px;">mat-toolbar</span> with a button-row nav; floating pill nav on mobile.</div>
+        <div><b>Filters</b> — chips-first: each facet is a pill button opening its Material control; active chips live inline.</div>
+        <div><b>Cards</b> — 3-across with circular score badges. <b>DS voice</b> — highest contrast; deep-olive second voice (<a href="#2c">2c</a>) against ink, no mint tints.</div>
+      </div>
+
+      <!-- 1c Discovery -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Discovery Feed</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+          <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 16px 32px; display: flex; align-items: center; gap: 8px;">
+            <div style="font-family: var(--font-heading); font-size: 21px; margin-right: 20px;">git-crawler</div>
+            <div style="padding: 7px 16px; border-radius: 999px; background: var(--color-accent); color: var(--color-neutral-900); font-family: var(--font-heading); font-size: 14px;">Discovery Feed</div>
+            <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Hidden Gems</div>
+            <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Trending</div>
+            <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Categories</div>
+            <div style="padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--color-neutral-400); border: 1.5px dashed var(--color-neutral-600); opacity: 0.6;">Bookmarks · F-012</div>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 230px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-600); border-radius: 999px; opacity: 0.55; font-size: 13px; color: var(--color-neutral-300);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+            <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-600); border-radius: 999px; color: var(--color-neutral-400);">mat-toolbar + mat-button row</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 14px 32px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Language <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Stars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Topic +</button>
+            <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">License <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <span style="width: 1px; height: 22px; background: var(--color-divider); margin: 0 4px;"></span>
+            <span class="tag tag-accent">Python ✕</span>
+            <span class="tag tag-accent">agents ✕</span>
+            <button class="btn btn-ghost" style="font-size: 12px; padding: 2px 10px;">Clear all</button>
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+              <div class="seg"><label class="seg-opt" style="background: var(--color-accent); color: var(--color-bg);">Newest</label><label class="seg-opt">Score</label><label class="seg-opt">Stars</label><label class="seg-opt">Commits</label></div>
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;"><div style="width: 34px; height: 18px; border-radius: 999px; background: var(--color-neutral-300); position: relative;"><div style="position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-neutral-100);"></div></div>Bookmarked</div>
+            </div>
+          </div>
+          <div style="padding: 0 32px 6px; display: flex; gap: 6px;">
+            <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">facet buttons open mat-select / mat-slider / mat-autocomplete panels</span>
+            <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700);">mat-chip-set inline</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 12px 32px;">
+            <sc-for list="{{ reposSix }}" as="r" hint-placeholder-count="6">
+              <div class="card elev-sm" style="gap: 9px; padding: 18px 20px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 40px; height: 40px; border-radius: 50%; background: {{ r.dot }}; display: grid; place-items: center; font-family: var(--font-heading); font-size: 15px; color: var(--color-bg); flex: none;">{{ r.initial }}</div>
+                  <div style="flex: 1;">
+                    <div style="font-family: var(--font-heading); font-size: 16px;">{{ r.name }}</div>
+                    <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }} · {{ r.ago }}</div>
+                  </div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div style="font-size: 12.5px; line-height: 1.5; color: var(--color-neutral-800); max-height: 38px; overflow: hidden;">{{ r.sum }}</div>
+                <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--color-divider); padding-top: 9px;">
+                  <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+                  <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+                  <span class="tag tag-neutral">{{ r.lic }}</span>
+                  <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-accent-700); font-weight: 600;">GitHub <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg></span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 2px 32px 18px; font-size: 12px; color: var(--color-neutral-700);">Items per page: 24 <span>1–24 of 312</span><span style="display: inline-flex; gap: 12px; color: var(--color-neutral-500);">|◀ ◀ <b style="color: var(--color-accent-700);">▶</b> ▶|</span></div>
+        </div>
+      </div>
+
+      <!-- 1c Hidden Gems -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Hidden Gems</span><span style="font-size: 12px; color: var(--color-neutral-600);">shell identical — content region shown · circular score badge</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 18px 32px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+            <sc-for list="{{ gemsThree }}" as="r" hint-placeholder-count="3">
+              <div class="card elev-sm" style="gap: 9px; padding: 18px 20px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 52px; height: 52px; border-radius: 50%; background: var(--color-accent); color: var(--color-bg); display: grid; place-items: center; flex: none; font-family: var(--font-heading); font-size: 20px;">{{ r.score }}</div>
+                  <div style="flex: 1;">
+                    <div style="font-family: var(--font-heading); font-size: 16px;">{{ r.name }}</div>
+                    <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div>
+                  </div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div style="font-size: 12.5px; line-height: 1.5; color: var(--color-neutral-800); max-height: 38px; overflow: hidden;">{{ r.sum }}</div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+                  <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+                  <span class="tag tag-neutral">{{ r.lic }}</span>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--color-divider); padding-top: 9px; font-size: 12px; color: var(--color-accent-700); font-weight: 600;">Why this score? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top: 14px; padding: 16px 22px; background: var(--color-neutral-900); color: var(--color-neutral-100); border-radius: 24px; display: flex; gap: 24px; align-items: center;">
+            <div style="flex: none; width: 170px;">
+              <div style="font-family: var(--font-heading); font-size: 15px;">cargo-lens · 84</div>
+              <div style="font-size: 11px; color: var(--color-neutral-400); margin-top: 2px;">expanded — Why this score?</div>
+              <span style="display: inline-block; margin-top: 8px; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-600); border-radius: 999px; color: var(--color-neutral-400);">mat-expansion-panel</span>
+            </div>
+            <div style="flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+              <sc-for list="{{ signals }}" as="s" hint-placeholder-count="5">
+                <div>
+                  <div style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-500);">{{ s.label }}</div>
+                  <div style="font-family: var(--font-heading); font-size: 16px; margin: 2px 0;">{{ s.value }}</div>
+                  <div style="height: 5px; background: var(--color-neutral-700); border-radius: 3px; overflow: hidden;"><div style="height: 100%; width: {{ s.pct }}; background: var(--color-accent-2-500); border-radius: 3px;"></div></div>
+                  <div style="font-size: 10px; color: var(--color-neutral-500); margin-top: 3px;">{{ s.weight }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1c Trending -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Trending</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 18px 32px; display: flex; flex-direction: column; gap: 12px;">
+          <div class="card elev-sm" style="max-width: 880px; padding: 18px 22px; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--color-accent-2-800); display: grid; place-items: center; flex: none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-100)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg></div>
+              <div style="flex: 1;">
+                <div style="font-family: var(--font-heading); font-size: 18px;">MCP servers &amp; tooling</div>
+                <div style="font-size: 12px; color: var(--color-neutral-600);">24 repos in this trend</div>
+              </div>
+              <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100); font-weight: 700; font-size: 13px;">▲ +18% this week</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg>
+            </div>
+            <div style="border-top: 1px solid var(--color-divider); padding-top: 8px;">
+              <sc-for list="{{ trendRepos }}" as="r" hint-placeholder-count="3">
+                <div style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; font-size: 13px; border-bottom: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);">
+                  <b style="width: 150px;">{{ r.name }}</b>
+                  <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+                  <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+                  <span style="flex: 1; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.sum }}</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent); flex: none;"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <sc-for list="{{ trendRest }}" as="t" hint-placeholder-count="3">
+            <div class="card elev-sm" style="max-width: 880px; padding: 14px 22px; flex-direction: row; align-items: center; gap: 14px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-accent-2-800); display: grid; place-items: center; flex: none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-100)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg></div>
+              <div style="font-family: var(--font-heading); font-size: 17px; flex: 1;">{{ t.label }}</div>
+              <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100); font-weight: 700;">▲ {{ t.growth }}</span>
+              <span style="font-size: 12px; color: var(--color-neutral-600);">{{ t.count }}</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- 1c Categories -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Categories</span><span style="font-size: 12px; color: var(--color-neutral-600);">tile click → Discovery grid pre-filtered</span></div>
+        <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 22px 32px;">
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="8">
+              <div class="card elev-sm" style="align-items: center; text-align: center; gap: 10px; padding: 22px 16px; cursor: pointer;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: {{ c.solid }}; display: grid; place-items: center;">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-100)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.icon }}"></path></svg>
+                </div>
+                <div style="font-family: var(--font-heading); font-size: 15px;">{{ c.label }}</div>
+                <span class="tag tag-neutral">{{ c.count }} repos</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- 1c Mobile -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span style="font-family: var(--font-heading); font-size: 15px;">Narrow viewport</span><span style="font-size: 12px; color: var(--color-neutral-600);">floating pill nav (mat-tab-nav-bar styled)</span></div>
+        <div style="width: 390px; background: var(--color-bg); border-radius: 28px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); overflow: hidden; position: relative; height: 700px;">
+          <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 14px 18px; display: flex; align-items: center; gap: 10px;">
+            <div style="font-family: var(--font-heading); font-size: 18px;">git-crawler</div>
+            <div style="margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: 1.5px dashed var(--color-neutral-600); opacity: 0.55; display: grid; place-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg></div>
+          </div>
+          <div style="display: flex; gap: 8px; padding: 12px 18px;">
+            <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;">Filters · 2</button>
+            <span class="tag tag-accent">Python ✕</span><span class="tag tag-accent">agents ✕</span>
+          </div>
+          <div style="padding: 0 18px; display: flex; flex-direction: column; gap: 10px;">
+            <sc-for list="{{ reposMobile }}" as="r" hint-placeholder-count="3">
+              <div class="card elev-sm" style="gap: 7px; padding: 14px 16px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 34px; height: 34px; border-radius: 50%; background: {{ r.dot }}; display: grid; place-items: center; font-family: var(--font-heading); font-size: 13px; color: var(--color-bg); flex: none;">{{ r.initial }}</div>
+                  <div style="flex: 1;"><div style="font-family: var(--font-heading); font-size: 15px;">{{ r.name }}</div><div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div></div>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div style="display: flex; gap: 6px;"><span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span><span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: var(--color-neutral-900); border-radius: 999px; padding: 8px 14px; display: flex; gap: 18px; box-shadow: var(--shadow-lg);">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-400)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"></path><path d="M5 10v10h14V10"></path></svg>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"></path></svg>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const bm = (b) => ({ bmFill: b ? 'currentColor' : 'none', bmCol: b ? 'var(--color-accent)' : 'var(--color-neutral-600)' });
+    const dots = ['var(--color-accent-500)', 'var(--color-accent-2-600)', 'var(--color-neutral-700)'];
+    const raw = [
+      { name: 'mcp-router', owner: 'lattice-labs', lang: 'TypeScript', stars: '842', lic: 'MIT', ago: '2 hours ago', score: 78, b: true, sum: 'Routes MCP tool calls across multiple servers with health checks and per-tool rate limits. Zero-config for common hosts.' },
+      { name: 'cargo-lens', owner: 'ferrous-oss', lang: 'Rust', stars: '1.3k', lic: 'Apache-2.0', ago: '1 day ago', score: 84, b: false, sum: 'Visualizes cargo dependency graphs and feature flags, and flags unused features that slow builds.' },
+      { name: 'agentmesh', owner: 'plexworks', lang: 'Python', stars: '2.1k', lic: 'MIT', ago: '2 days ago', score: 87, b: false, sum: 'Composable agent orchestration with typed message contracts and replayable traces.' },
+      { name: 'tinyvec-db', owner: 'quietbyte', lang: 'Rust', stars: '640', lic: 'MPL-2.0', ago: '3 days ago', score: 81, b: false, sum: 'Embedded vector store in a single file — HNSW index, no server, a 4 MB static binary.' },
+      { name: 'hookline', owner: 'seam-tools', lang: 'Go', stars: '511', lic: 'MIT', ago: '4 days ago', score: 71, b: true, sum: 'Git webhook fanout with retries, filtering and dead-letter queues. Single static binary.' },
+      { name: 'promptforge', owner: 'kiln-ai', lang: 'TypeScript', stars: '977', lic: 'Apache-2.0', ago: '5 days ago', score: 74, b: false, sum: 'Versioned prompt registry with diff review and eval gates wired into CI.' },
+      { name: 'schema-scout', owner: 'lattice-labs', lang: 'Rust', stars: '705', lic: 'MIT', ago: '6 days ago', score: 69, b: false, sum: 'Diffs database schemas across branches and generates reversible migration plans.' },
+      { name: 'tracewell', owner: 'plexworks', lang: 'Go', stars: '1.1k', lic: 'Apache-2.0', ago: '1 week ago', score: 76, b: false, sum: 'Zero-instrumentation tracing for CLI tools — wraps any binary and emits OTLP spans.' }
+    ];
+    const repos = raw.map((r, i) => ({ ...r, ...bm(r.b), initial: r.name[0].toUpperCase(), dot: dots[i % 3] }));
+    const gems = [...repos].sort((a, b) => b.score - a.score).slice(0, 4);
+    const recolors = [
+      { id: '2a', href: '#2a', name: 'Warm sand & ink', note: 'Second voice becomes the warm neutral ramp; ink carries emphasis (growth chip). Terracotta stays the only true color — calmest, most editorial.', sw1: 'var(--color-neutral-300)', sw2: 'var(--color-neutral-900)', sw3: 'var(--color-accent-500)', tagBg: 'var(--color-neutral-200)', tagFg: 'var(--color-neutral-800)', circBg: 'var(--color-neutral-300)', circFg: 'var(--color-neutral-900)', growBg: 'var(--color-neutral-900)', growFg: 'var(--color-neutral-100)', bar: 'var(--color-neutral-400)', catBg: 'var(--color-neutral-300)', catFg: 'var(--color-neutral-900)' },
+      { id: '2b', href: '#2b', name: 'Terracotta tints', note: 'One accent, two temperatures: pale terracotta tints for informational chips/tiles, deep rust for emphasis. Warmest; growth vs language reads by depth, not hue.', sw1: 'var(--color-accent-200)', sw2: 'var(--color-accent-700)', sw3: 'var(--color-accent-400)', tagBg: 'var(--color-accent-100)', tagFg: 'var(--color-accent-800)', circBg: 'var(--color-accent-200)', circFg: 'var(--color-accent-800)', growBg: 'var(--color-accent-700)', growFg: 'var(--color-accent-100)', bar: 'var(--color-accent-400)', catBg: 'var(--color-accent-200)', catFg: 'var(--color-accent-800)' },
+      { id: '2c', href: '#2c', name: 'Deep olive', note: 'Keeps a green second voice but only the dark end of the ramp — solid olive fills with cream icons, no pale mint tints anywhere. Most contrast between the two accents.', sw1: 'var(--color-accent-2-800)', sw2: 'var(--color-accent-2-700)', sw3: 'var(--color-accent-500)', tagBg: 'var(--color-accent-2-800)', tagFg: 'var(--color-accent-2-100)', circBg: 'var(--color-accent-2-800)', circFg: 'var(--color-accent-2-100)', growBg: 'var(--color-accent-2-800)', growFg: 'var(--color-accent-2-100)', bar: 'var(--color-accent-2-500)', catBg: 'var(--color-accent-2-800)', catFg: 'var(--color-accent-2-100)' }
+    ];
+    return {
+      recolors,
+      repos, gems,
+      reposSix: repos.slice(0, 6),
+      gemsThree: gems.slice(0, 3),
+      reposMobile: repos.slice(0, 3),
+      trendRepos: repos.slice(0, 3),
+      trendRest: [
+        { label: 'Rust developer tooling', growth: '+11% this week', count: '17 repos' },
+        { label: 'Agent orchestration frameworks', growth: '+9% this week', count: '13 repos' },
+        { label: 'Local-first vector stores', growth: '+6% this week', count: '9 repos' }
+      ],
+      signals: [
+        { label: 'License', value: 'Apache-2.0', pct: '87%', weight: 'weight 0.15 · 13/15' },
+        { label: 'Commits / week', value: '14', pct: '84%', weight: 'weight 0.25 · 21/25' },
+        { label: 'Contributors', value: '22', pct: '80%', weight: 'weight 0.20 · 16/20' },
+        { label: 'Forks', value: '210', pct: '73%', weight: 'weight 0.15 · 11/15' },
+        { label: 'Stars', value: '1.3k', pct: '92%', weight: 'weight 0.25 · 23/25' }
+      ],
+      cats: [
+        { label: 'Rust', count: 46, icon: 'M4 17l6-6-6-6M12 19h8', tint: 'var(--color-accent-200)', solid: 'var(--color-accent-600)' },
+        { label: 'TypeScript', count: 61, icon: 'M4 17l6-6-6-6M12 19h8', tint: 'var(--color-accent-2-200)', solid: 'var(--color-accent-2-800)' },
+        { label: 'MCP servers', count: 24, icon: 'M22 12h-4l-3 9L9 3l-3 9H2', tint: 'var(--color-accent-200)', solid: 'var(--color-accent-600)' },
+        { label: 'Agent tooling', count: 19, icon: 'M12 2v4M8 10h.01M16 10h.01M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z', tint: 'var(--color-accent-2-200)', solid: 'var(--color-accent-2-800)' },
+        { label: 'CLI tools', count: 33, icon: 'M4 17l6-6-6-6M12 19h8', tint: 'var(--color-accent-2-200)', solid: 'var(--color-accent-2-800)' },
+        { label: 'Vector databases', count: 12, icon: 'M12 2a9 3 0 0 0-9 3v14a9 3 0 0 0 18 0V5a9 3 0 0 0-9-3zM3 12a9 3 0 0 0 18 0', tint: 'var(--color-accent-200)', solid: 'var(--color-accent-600)' },
+        { label: 'Testing & evals', count: 21, icon: 'M20 6L9 17l-5-5', tint: 'var(--color-accent-2-200)', solid: 'var(--color-accent-2-800)' },
+        { label: 'Observability', count: 15, icon: 'M22 12h-4l-3 9L9 3l-3 9H2', tint: 'var(--color-accent-200)', solid: 'var(--color-accent-600)' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

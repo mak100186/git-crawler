@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/organic-4e86dc37-d617-4f2c-bf00-ccf08bc7b18d/styles.css">
+  <script src="_ds/organic-4e86dc37-d617-4f2c-bf00-ccf08bc7b18d/_ds_bundle.js"></script>
+  <style>
+    body { background: #ded2bd; margin: 0; }
+    a { color: var(--color-accent); } a:hover { color: var(--color-accent-600); }
+  </style>
+</helmet>
+<div style="padding: 48px 56px; display: flex; flex-direction: column; gap: 40px;">
+  <div style="max-width: 980px; display: flex; flex-direction: column; gap: 8px;">
+    <h1 style="font-size: 38px; margin: 0;">git-crawler dashboard — final design</h1>
+    <p style="font-size: 15px; margin: 0; color: var(--color-neutral-700);">Direction 1c (Ink Header) with the deep-olive second voice (2c). Dashed <span style="font-family: ui-monospace, Menlo, monospace; font-size: 11px; padding: 1px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px;">mat-*</span> tags map each region to its Angular Material component (toggle via Tweaks). The written spec for Claude Code is in <b>handoff/dashboard-handoff.md</b>. Ghosted dashed elements are reserved placements: Bookmarks view (F-012) and free-text search (v2).</p>
+  </div>
+
+  <!-- ═══ 1. DISCOVERY FEED ═══ -->
+  <div data-screen-label="01 Discovery Feed" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">01 · Discovery Feed <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">default route · newest first (§4.1)</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+      <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 16px 32px; display: flex; align-items: center; gap: 8px;">
+        <div style="font-family: var(--font-heading); font-size: 21px; margin-right: 20px;">git-crawler</div>
+        <div style="padding: 7px 16px; border-radius: 999px; background: var(--color-accent); color: var(--color-neutral-900); font-family: var(--font-heading); font-size: 14px;">Discovery Feed</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Hidden Gems</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Trending</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Categories</div>
+        <div style="padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--color-neutral-400); border: 1.5px dashed var(--color-neutral-600); opacity: 0.6;">Bookmarks · F-012</div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 230px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-600); border-radius: 999px; opacity: 0.55; font-size: 13px; color: var(--color-neutral-300);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-600); border-radius: 999px; color: var(--color-neutral-400); display: {{ annD }};">mat-toolbar + mat-button row</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 14px 32px; flex-wrap: wrap;">
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Language <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Stars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Topic +</button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">License <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <span style="width: 1px; height: 22px; background: var(--color-divider); margin: 0 4px;"></span>
+        <span class="tag tag-accent">Python ✕</span>
+        <span class="tag tag-accent">agents ✕</span>
+        <button class="btn btn-ghost" style="font-size: 12px; padding: 2px 10px;">Clear all</button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <div class="seg"><label class="seg-opt" style="background: var(--color-accent); color: var(--color-bg);">Newest</label><label class="seg-opt">Score</label><label class="seg-opt">Stars</label><label class="seg-opt">Commits</label></div>
+          <div style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--color-divider); display: grid; place-items: center; background: var(--color-surface);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;"><div style="width: 34px; height: 18px; border-radius: 999px; background: var(--color-neutral-300); position: relative;"><div style="position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-neutral-100);"></div></div>Bookmarked</div>
+        </div>
+      </div>
+      <div style="padding: 0 32px 6px; display: flex; gap: 6px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); display: {{ annD }};">facet buttons open mat-select / mat-slider(range) / mat-chip-grid+mat-autocomplete panels</span>
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); display: {{ annD }};">mat-chip-set · mat-button-toggle-group · mat-icon-button · mat-slide-toggle</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 12px 32px;">
+        <sc-for list="{{ reposSix }}" as="r" hint-placeholder-count="6">
+          <div class="card elev-sm" style="gap: 9px; padding: 18px 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: {{ r.dot }}; display: grid; place-items: center; font-family: var(--font-heading); font-size: 15px; color: var(--color-bg); flex: none;">{{ r.initial }}</div>
+              <div style="flex: 1;">
+                <div style="font-family: var(--font-heading); font-size: 16px;">{{ r.name }}</div>
+                <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }} · {{ r.ago }}</div>
+              </div>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.5; color: var(--color-neutral-800); max-height: 38px; overflow: hidden;">{{ r.sum }}</div>
+            <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--color-divider); padding-top: 9px;">
+              <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+              <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+              <span class="tag tag-neutral">{{ r.lic }}</span>
+              <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-accent-700); font-weight: 600;">GitHub <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg></span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 2px 32px 18px; font-size: 12px; color: var(--color-neutral-700);">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; display: {{ annD }};">mat-card ×N · mat-paginator (G1)</span>
+        Items per page: 24 <span>1–24 of 312</span><span style="display: inline-flex; gap: 12px; color: var(--color-neutral-500);">|◀ ◀ <b style="color: var(--color-accent-700);">▶</b> ▶|</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 2. HIDDEN GEMS ═══ -->
+  <div data-screen-label="02 Hidden Gems" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">02 · Hidden Gems <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">sorted by score · per-signal breakdown (§4.2, FR-005)</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+      <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 16px 32px; display: flex; align-items: center; gap: 8px;">
+        <div style="font-family: var(--font-heading); font-size: 21px; margin-right: 20px;">git-crawler</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Discovery Feed</div>
+        <div style="padding: 7px 16px; border-radius: 999px; background: var(--color-accent); color: var(--color-neutral-900); font-family: var(--font-heading); font-size: 14px;">Hidden Gems</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Trending</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Categories</div>
+        <div style="padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--color-neutral-400); border: 1.5px dashed var(--color-neutral-600); opacity: 0.6;">Bookmarks · F-012</div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 230px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-600); border-radius: 999px; opacity: 0.55; font-size: 13px; color: var(--color-neutral-300);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 14px 32px; flex-wrap: wrap;">
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Language <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Stars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Topic +</button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">License <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <span style="width: 1px; height: 22px; background: var(--color-divider); margin: 0 4px;"></span>
+        <span style="font-size: 12px; color: var(--color-neutral-600);">No filters active</span>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <div class="seg"><label class="seg-opt">Newest</label><label class="seg-opt" style="background: var(--color-accent); color: var(--color-bg);">Score</label><label class="seg-opt">Stars</label><label class="seg-opt">Commits</label></div>
+          <div style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--color-divider); display: grid; place-items: center; background: var(--color-surface);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 13px;"><div style="width: 34px; height: 18px; border-radius: 999px; background: var(--color-neutral-300); position: relative;"><div style="position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-neutral-100);"></div></div>Bookmarked</div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 6px 32px 0;">
+        <sc-for list="{{ gemsThree }}" as="r" hint-placeholder-count="3">
+          <div class="card elev-sm" style="gap: 9px; padding: 18px 20px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 52px; height: 52px; border-radius: 50%; background: var(--color-accent); color: var(--color-bg); display: grid; place-items: center; flex: none; font-family: var(--font-heading); font-size: 20px;">{{ r.score }}</div>
+              <div style="flex: 1;">
+                <div style="font-family: var(--font-heading); font-size: 16px;">{{ r.name }}</div>
+                <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div>
+              </div>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.5; color: var(--color-neutral-800); max-height: 38px; overflow: hidden;">{{ r.sum }}</div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+              <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+              <span class="tag tag-neutral">{{ r.lic }}</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--color-divider); padding-top: 9px; font-size: 12px; color: var(--color-accent-700); font-weight: 600;">Why this score? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin: 14px 32px; padding: 16px 22px; background: var(--color-neutral-900); color: var(--color-neutral-100); border-radius: 24px; display: flex; gap: 24px; align-items: center;">
+        <div style="flex: none; width: 170px;">
+          <div style="font-family: var(--font-heading); font-size: 15px;">cargo-lens · 84</div>
+          <div style="font-size: 11px; color: var(--color-neutral-400); margin-top: 2px;">expanded — Why this score?</div>
+          <span style="margin-top: 8px; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-600); border-radius: 999px; color: var(--color-neutral-400); display: {{ annD }};">mat-expansion-panel</span>
+        </div>
+        <div style="flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+          <sc-for list="{{ signals }}" as="s" hint-placeholder-count="5">
+            <div>
+              <div style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-500);">{{ s.label }}</div>
+              <div style="font-family: var(--font-heading); font-size: 16px; margin: 2px 0;">{{ s.value }}</div>
+              <div style="height: 5px; background: var(--color-neutral-700); border-radius: 3px; overflow: hidden;"><div style="height: 100%; width: {{ s.pct }}; background: var(--color-accent-2-500); border-radius: 3px;"></div></div>
+              <div style="font-size: 10px; color: var(--color-neutral-500); margin-top: 3px;">{{ s.weight }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 3. TRENDING ═══ -->
+  <div data-screen-label="03 Trending" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">03 · Trending <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">no filter/sort bar · API order preserved (§4.3)</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+      <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 16px 32px; display: flex; align-items: center; gap: 8px;">
+        <div style="font-family: var(--font-heading); font-size: 21px; margin-right: 20px;">git-crawler</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Discovery Feed</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Hidden Gems</div>
+        <div style="padding: 7px 16px; border-radius: 999px; background: var(--color-accent); color: var(--color-neutral-900); font-family: var(--font-heading); font-size: 14px;">Trending</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Categories</div>
+        <div style="padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--color-neutral-400); border: 1.5px dashed var(--color-neutral-600); opacity: 0.6;">Bookmarks · F-012</div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 230px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-600); border-radius: 999px; opacity: 0.55; font-size: 13px; color: var(--color-neutral-300);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+      </div>
+      <div style="padding: 20px 32px; display: flex; flex-direction: column; gap: 12px;">
+        <div class="card elev-sm" style="max-width: 880px; padding: 18px 22px; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--color-accent-2-800); display: grid; place-items: center; flex: none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-100)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg></div>
+            <div style="flex: 1;">
+              <div style="font-family: var(--font-heading); font-size: 18px;">MCP servers &amp; tooling</div>
+              <div style="font-size: 12px; color: var(--color-neutral-600);">24 repos in this trend</div>
+            </div>
+            <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100); font-weight: 700; font-size: 13px;">▲ +18% this week</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(180deg);"><path d="M6 9l6 6 6-6"></path></svg>
+          </div>
+          <div style="border-top: 1px solid var(--color-divider); padding-top: 8px;">
+            <sc-for list="{{ trendRepos }}" as="r" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 12px; padding: 8px 4px; font-size: 13px; border-bottom: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);">
+                <b style="width: 150px;">{{ r.name }}</b>
+                <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+                <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+                <span style="flex: 1; color: var(--color-neutral-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.sum }}</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent); flex: none;"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-for list="{{ trendRest }}" as="t" hint-placeholder-count="3">
+          <div class="card elev-sm" style="max-width: 880px; padding: 14px 22px; flex-direction: row; align-items: center; gap: 14px;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--color-accent-2-800); display: grid; place-items: center; flex: none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-100)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg></div>
+            <div style="font-family: var(--font-heading); font-size: 17px; flex: 1;">{{ t.label }}</div>
+            <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100); font-weight: 700;">▲ {{ t.growth }}</span>
+            <span style="font-size: 12px; color: var(--color-neutral-600);">{{ t.count }}</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+          </div>
+        </sc-for>
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start; display: {{ annD }};">mat-card · mat-chip growth (G2 text fallback) · mat-expansion-panel repo list</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 4. CATEGORIES ═══ -->
+  <div data-screen-label="04 Categories" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">04 · Categories <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">tile grid (§4.4) — click drills into screen 05</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+      <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 16px 32px; display: flex; align-items: center; gap: 8px;">
+        <div style="font-family: var(--font-heading); font-size: 21px; margin-right: 20px;">git-crawler</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Discovery Feed</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Hidden Gems</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Trending</div>
+        <div style="padding: 7px 16px; border-radius: 999px; background: var(--color-accent); color: var(--color-neutral-900); font-family: var(--font-heading); font-size: 14px;">Categories</div>
+        <div style="padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--color-neutral-400); border: 1.5px dashed var(--color-neutral-600); opacity: 0.6;">Bookmarks · F-012</div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 230px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-600); border-radius: 999px; opacity: 0.55; font-size: 13px; color: var(--color-neutral-300);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+      </div>
+      <div style="padding: 22px 32px;">
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+          <sc-for list="{{ cats }}" as="c" hint-placeholder-count="8">
+            <div class="card elev-sm" style="align-items: center; text-align: center; gap: 10px; padding: 22px 16px; cursor: pointer;">
+              <div style="width: 56px; height: 56px; border-radius: 50%; background: {{ c.solid }}; display: grid; place-items: center;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-100)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.icon }}"></path></svg>
+              </div>
+              <div style="font-family: var(--font-heading); font-size: 15px;">{{ c.label }}</div>
+              <span class="tag tag-neutral">{{ c.count }} repos</span>
+            </div>
+          </sc-for>
+        </div>
+        <span style="margin-top: 12px; font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); display: {{ annD }};">clickable mat-card tiles wrapped in router links</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 5. CATEGORY DRILL-DOWN ═══ -->
+  <div data-screen-label="05 Category drill-down" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">05 · Category drill-down <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">reuses Discovery grid — topic chip pre-applied &amp; removable (§4.4)</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; overflow: hidden; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md);">
+      <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 16px 32px; display: flex; align-items: center; gap: 8px;">
+        <div style="font-family: var(--font-heading); font-size: 21px; margin-right: 20px;">git-crawler</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Discovery Feed</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Hidden Gems</div>
+        <div style="padding: 7px 16px; border-radius: 999px; font-size: 14px; color: var(--color-neutral-300);">Trending</div>
+        <div style="padding: 7px 16px; border-radius: 999px; background: var(--color-accent); color: var(--color-neutral-900); font-family: var(--font-heading); font-size: 14px;">Categories</div>
+        <div style="padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--color-neutral-400); border: 1.5px dashed var(--color-neutral-600); opacity: 0.6;">Bookmarks · F-012</div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px; width: 230px; padding: 7px 14px; border: 1.5px dashed var(--color-neutral-600); border-radius: 999px; opacity: 0.55; font-size: 13px; color: var(--color-neutral-300);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg>Search (v2)</div>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 12px; padding: 16px 32px 0;">
+        <span style="font-size: 12px; color: var(--color-neutral-600);">Categories /</span>
+        <h3 style="margin: 0; font-size: 22px;">MCP servers</h3>
+        <span style="font-size: 12px; color: var(--color-neutral-600);">24 repositories</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 32px; flex-wrap: wrap;">
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Language <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Stars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">Topic +</button>
+        <button class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">License <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+        <span style="width: 1px; height: 22px; background: var(--color-divider); margin: 0 4px;"></span>
+        <span class="tag tag-accent">topic: mcp-servers ✕</span>
+        <button class="btn btn-ghost" style="font-size: 12px; padding: 2px 10px;">Clear all</button>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <div class="seg"><label class="seg-opt" style="background: var(--color-accent); color: var(--color-bg);">Newest</label><label class="seg-opt">Score</label><label class="seg-opt">Stars</label><label class="seg-opt">Commits</label></div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 8px 32px;">
+        <sc-for list="{{ drillRepos }}" as="r" hint-placeholder-count="3">
+          <div class="card elev-sm" style="gap: 9px; padding: 18px 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: {{ r.dot }}; display: grid; place-items: center; font-family: var(--font-heading); font-size: 15px; color: var(--color-bg); flex: none;">{{ r.initial }}</div>
+              <div style="flex: 1;">
+                <div style="font-family: var(--font-heading); font-size: 16px;">{{ r.name }}</div>
+                <div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }} · {{ r.ago }}</div>
+              </div>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.5; color: var(--color-neutral-800); max-height: 38px; overflow: hidden;">{{ r.sum }}</div>
+            <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--color-divider); padding-top: 9px;">
+              <span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span>
+              <span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span>
+              <span class="tag tag-neutral">{{ r.lic }}</span>
+              <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-accent-700); font-weight: 600;">GitHub <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path></svg></span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding: 0 32px 18px; font-size: 12px; color: var(--color-neutral-700);">Items per page: 24 <span>1–24 of 24</span><span style="display: inline-flex; gap: 12px; color: var(--color-neutral-500);">|◀ ◀ ▶ ▶|</span></div>
+    </div>
+  </div>
+
+  <!-- ═══ 6. STATES & FEEDBACK ═══ -->
+  <div data-screen-label="06 States and feedback" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">06 · States &amp; feedback <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">cross-view (§3) + bookmark snack-bars (§6)</span></h4>
+    <div style="width: 1280px; background: var(--color-bg); border-radius: 20px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); padding: 24px 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start;">first load — mat-progress-spinner (G3)</span>
+        <div class="card elev-sm" style="align-items: center; justify-content: center; min-height: 180px; gap: 12px;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.75" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.56"></path></svg>
+          <div style="font-size: 12px; color: var(--color-neutral-600);">Loading repositories…</div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start;">refresh — mat-progress-bar under filter bar</span>
+        <div class="card elev-sm" style="min-height: 180px; gap: 10px;">
+          <div style="height: 4px; border-radius: 2px; background: var(--color-accent-200); overflow: hidden;"><div style="height: 100%; width: 40%; background: var(--color-accent); border-radius: 2px;"></div></div>
+          <div style="height: 12px; border-radius: 6px; background: var(--color-neutral-200); width: 70%;"></div>
+          <div style="height: 12px; border-radius: 6px; background: var(--color-neutral-200); width: 90%;"></div>
+          <div style="height: 12px; border-radius: 6px; background: var(--color-neutral-200); width: 55%;"></div>
+          <div style="font-size: 11px; color: var(--color-neutral-600); margin-top: auto;">Previous results stay visible, dimmed to 60%, while the query is in flight.</div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start;">empty — mat-card + mat-button</span>
+        <div class="card elev-sm" style="align-items: center; justify-content: center; text-align: center; min-height: 180px; gap: 10px;">
+          <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--color-neutral-200); display: grid; place-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg></div>
+          <div style="font-size: 13px;">No repositories match these filters</div>
+          <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 16px;">Clear all filters</button>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start;">error — mat-card + Retry mat-button</span>
+        <div class="card elev-sm" style="align-items: center; justify-content: center; text-align: center; min-height: 150px; gap: 10px;">
+          <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--color-accent-100); display: grid; place-items: center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round"><path d="M12 8v4M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle></svg></div>
+          <div style="font-size: 13px;">Couldn't load repositories</div>
+          <button class="btn btn-primary" style="font-size: 12px; padding: 6px 18px;">Retry</button>
+        </div>
+      </div>
+      <div style="grid-column: span 2; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-family: ui-monospace, monospace; font-size: 10px; padding: 2px 8px; border: 1px dashed var(--color-neutral-500); border-radius: 999px; color: var(--color-neutral-700); align-self: flex-start;">bookmark feedback — mat-snack-bar with Undo (§6.1)</span>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 16px; background: var(--color-neutral-900); color: var(--color-neutral-100); border-radius: 999px; padding: 12px 22px; width: 420px; box-shadow: var(--shadow-lg); font-size: 13px;">Added to bookmarks<span style="margin-left: auto; color: var(--color-accent-400); font-weight: 700;">UNDO</span></div>
+          <div style="display: flex; align-items: center; gap: 16px; background: var(--color-neutral-900); color: var(--color-neutral-100); border-radius: 999px; padding: 12px 22px; width: 420px; box-shadow: var(--shadow-lg); font-size: 13px;">Removed from bookmarks<span style="margin-left: auto; color: var(--color-accent-400); font-weight: 700;">UNDO</span></div>
+          <div style="display: flex; align-items: center; gap: 16px; background: var(--color-accent-800); color: var(--color-accent-100); border-radius: 999px; padding: 12px 22px; width: 420px; box-shadow: var(--shadow-lg); font-size: 13px;">Couldn't save bookmark — try again<span style="margin-left: auto; font-weight: 700;">RETRY</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 7. NARROW VIEWPORT ═══ -->
+  <div data-screen-label="07 Narrow viewport" style="display: flex; flex-direction: column; gap: 8px;">
+    <h4 style="margin: 0;">07 · Narrow viewport <span style="font-size: 12px; font-family: var(--font-body); color: var(--color-neutral-600);">BreakpointObserver &lt; 960px · floating pill nav · filters collapse to one button</span></h4>
+    <div style="width: 390px; background: var(--color-bg); border-radius: 28px; border: 1px solid var(--color-divider); box-shadow: var(--shadow-md); overflow: hidden; position: relative; height: 720px;">
+      <div style="background: var(--color-neutral-900); color: var(--color-neutral-100); padding: 14px 18px; display: flex; align-items: center; gap: 10px;">
+        <div style="font-family: var(--font-heading); font-size: 18px;">git-crawler</div>
+        <div style="margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: 1.5px dashed var(--color-neutral-600); opacity: 0.55; display: grid; place-items: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="M21 21l-4.35-4.35"></path></svg></div>
+      </div>
+      <div style="display: flex; gap: 8px; padding: 12px 18px;">
+        <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"></path></svg> Filters · 2</button>
+        <span class="tag tag-accent">Python ✕</span><span class="tag tag-accent">agents ✕</span>
+      </div>
+      <div style="padding: 0 18px; display: flex; flex-direction: column; gap: 10px;">
+        <sc-for list="{{ reposMobile }}" as="r" hint-placeholder-count="3">
+          <div class="card elev-sm" style="gap: 7px; padding: 14px 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 50%; background: {{ r.dot }}; display: grid; place-items: center; font-family: var(--font-heading); font-size: 13px; color: var(--color-bg); flex: none;">{{ r.initial }}</div>
+              <div style="flex: 1;"><div style="font-family: var(--font-heading); font-size: 15px;">{{ r.name }}</div><div style="font-size: 11px; color: var(--color-neutral-600);">{{ r.owner }}</div></div>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ r.bmFill }}" stroke="{{ r.bmCol }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-accent);"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div style="font-size: 12px; line-height: 1.5; color: var(--color-neutral-800); max-height: 36px; overflow: hidden;">{{ r.sum }}</div>
+            <div style="display: flex; gap: 6px;"><span class="tag" style="background: var(--color-accent-2-800); color: var(--color-accent-2-100);">{{ r.lang }}</span><span style="font-size: 11px; color: var(--color-neutral-700);">★ {{ r.stars }}</span></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); background: var(--color-neutral-900); border-radius: 999px; padding: 8px 14px; display: flex; gap: 18px; box-shadow: var(--shadow-lg);">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-400)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"></path><path d="M5 10v10h14V10"></path></svg>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"></path></svg>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-500)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showAnnotations&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Handoff&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const annD = (this.props.showAnnotations ?? true) ? 'inline-block' : 'none';
+    const bm = (b) => ({ bmFill: b ? 'currentColor' : 'none', bmCol: b ? 'var(--color-accent)' : 'var(--color-neutral-600)' });
+    const dots = ['var(--color-accent-500)', 'var(--color-accent-2-700)', 'var(--color-neutral-700)'];
+    const raw = [
+      { name: 'mcp-router', owner: 'lattice-labs', lang: 'TypeScript', stars: '842', lic: 'MIT', ago: '2 hours ago', score: 78, b: true, sum: 'Routes MCP tool calls across multiple servers with health checks and per-tool rate limits. Zero-config for common hosts.' },
+      { name: 'cargo-lens', owner: 'ferrous-oss', lang: 'Rust', stars: '1.3k', lic: 'Apache-2.0', ago: '1 day ago', score: 84, b: false, sum: 'Visualizes cargo dependency graphs and feature flags, and flags unused features that slow builds.' },
+      { name: 'agentmesh', owner: 'plexworks', lang: 'Python', stars: '2.1k', lic: 'MIT', ago: '2 days ago', score: 87, b: false, sum: 'Composable agent orchestration with typed message contracts and replayable traces.' },
+      { name: 'tinyvec-db', owner: 'quietbyte', lang: 'Rust', stars: '640', lic: 'MPL-2.0', ago: '3 days ago', score: 81, b: false, sum: 'Embedded vector store in a single file — HNSW index, no server, a 4 MB static binary.' },
+      { name: 'hookline', owner: 'seam-tools', lang: 'Go', stars: '511', lic: 'MIT', ago: '4 days ago', score: 71, b: true, sum: 'Git webhook fanout with retries, filtering and dead-letter queues. Single static binary.' },
+      { name: 'promptforge', owner: 'kiln-ai', lang: 'TypeScript', stars: '977', lic: 'Apache-2.0', ago: '5 days ago', score: 74, b: false, sum: 'Versioned prompt registry with diff review and eval gates wired into CI.' }
+    ];
+    const repos = raw.map((r, i) => ({ ...r, ...bm(r.b), initial: r.name[0].toUpperCase(), dot: dots[i % 3] }));
+    const gems = [...repos].sort((a, b) => b.score - a.score);
+    return {
+      annD,
+      reposSix: repos,
+      gemsThree: gems.slice(0, 3),
+      reposMobile: repos.slice(0, 3),
+      trendRepos: repos.slice(0, 3),
+      drillRepos: [repos[0], repos[5], repos[2]],
+      trendRest: [
+        { label: 'Rust developer tooling', growth: '+11% this week', count: '17 repos' },
+        { label: 'Agent orchestration frameworks', growth: '+9% this week', count: '13 repos' },
+        { label: 'Local-first vector stores', growth: '+6% this week', count: '9 repos' }
+      ],
+      signals: [
+        { label: 'License', value: 'Apache-2.0', pct: '87%', weight: 'weight 0.15 · 13/15' },
+        { label: 'Commits / week', value: '14', pct: '84%', weight: 'weight 0.25 · 21/25' },
+        { label: 'Contributors', value: '22', pct: '80%', weight: 'weight 0.20 · 16/20' },
+        { label: 'Forks', value: '210', pct: '73%', weight: 'weight 0.15 · 11/15' },
+        { label: 'Stars', value: '1.3k', pct: '92%', weight: 'weight 0.25 · 23/25' }
+      ],
+      cats: [
+        { label: 'Rust', count: 46, icon: 'M4 17l6-6-6-6M12 19h8', solid: 'var(--color-accent-600)' },
+        { label: 'TypeScript', count: 61, icon: 'M4 17l6-6-6-6M12 19h8', solid: 'var(--color-accent-2-800)' },
+        { label: 'MCP servers', count: 24, icon: 'M22 12h-4l-3 9L9 3l-3 9H2', solid: 'var(--color-accent-600)' },
+        { label: 'Agent tooling', count: 19, icon: 'M12 2v4M8 10h.01M16 10h.01M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z', solid: 'var(--color-accent-2-800)' },
+        { label: 'CLI tools', count: 33, icon: 'M4 17l6-6-6-6M12 19h8', solid: 'var(--color-accent-2-800)' },
+        { label: 'Vector databases', count: 12, icon: 'M12 2a9 3 0 0 0-9 3v14a9 3 0 0 0 18 0V5a9 3 0 0 0-9-3zM3 12a9 3 0 0 0 18 0', solid: 'var(--color-accent-600)' },
+        { label: 'Testing & evals', count: 21, icon: 'M20 6L9 17l-5-5', solid: 'var(--color-accent-2-800)' },
+        { label: 'Observability', count: 15, icon: 'M22 12h-4l-3 9L9 3l-3 9H2', solid: 'var(--color-accent-600)' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
