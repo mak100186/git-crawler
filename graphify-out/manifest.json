@@ -10,9 +10,9 @@
     "semantic_hash": "56910ca6995bc53b216d061b00f6e3bd"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Program.cs": {
-    "mtime": 1785644810.6321602,
-    "ast_hash": "aa98ba6a4cc3098ce1170cdaacf1796b",
-    "semantic_hash": "aa98ba6a4cc3098ce1170cdaacf1796b"
+    "mtime": 1785649973.3085668,
+    "ast_hash": "55b7f7084f3fd5d4d1328ed6b811eac6",
+    "semantic_hash": "55b7f7084f3fd5d4d1328ed6b811eac6"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Diagnostics\\Ping\\PingEndpoint.cs": {
     "mtime": 1785455816.8796787,
@@ -130,9 +130,9 @@
     "semantic_hash": "7d83d5683bd04af5f8cf8b008f71a25b"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Data\\Entities\\Repository.cs": {
-    "mtime": 1785626532.1143768,
-    "ast_hash": "8a53f1fae3adb4f89b9225f1e38d037f",
-    "semantic_hash": "8a53f1fae3adb4f89b9225f1e38d037f"
+    "mtime": 1785649400.8646078,
+    "ast_hash": "d20107bb6b3483f74a41f815e8ecb490",
+    "semantic_hash": "d20107bb6b3483f74a41f815e8ecb490"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Data\\Entities\\Score.cs": {
     "mtime": 1785630604.8999312,
@@ -180,14 +180,14 @@
     "semantic_hash": "adaa13f0d32834dce37f4f0c5e1c46c7"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Data\\Migrations\\GitCrawlerDbContextModelSnapshot.cs": {
-    "mtime": 1785630742.254094,
-    "ast_hash": "6dece271e37084e24b9b322953510003",
-    "semantic_hash": "6dece271e37084e24b9b322953510003"
+    "mtime": 1785649513.5483322,
+    "ast_hash": "baf9e9b96e0393405186618e212cf68f",
+    "semantic_hash": "baf9e9b96e0393405186618e212cf68f"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Crawling\\DiscoverRepositories\\DiscoverRepositoriesCommand.cs": {
-    "mtime": 1785644055.9873085,
-    "ast_hash": "c58a2086ad309b4ee3e337ecf1c5e4d4",
-    "semantic_hash": "c58a2086ad309b4ee3e337ecf1c5e4d4"
+    "mtime": 1785649446.0282612,
+    "ast_hash": "f5488d32c137f6d5fe67809e0e809340",
+    "semantic_hash": "f5488d32c137f6d5fe67809e0e809340"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Crawling\\DiscoverRepositories\\DiscoverRepositoriesJob.cs": {
     "mtime": 1785643717.26118,
@@ -195,14 +195,14 @@
     "semantic_hash": "074450958dbe9efca759568b0dd52854"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Crawling\\DiscoverRepositories\\GitHubDiscoveryClient.cs": {
-    "mtime": 1785644055.9873085,
-    "ast_hash": "f1ced864547410d42876c9f69e739d53",
-    "semantic_hash": "f1ced864547410d42876c9f69e739d53"
+    "mtime": 1785650179.8621595,
+    "ast_hash": "4a411c2155c7df1fea81f731aa2fcbc4",
+    "semantic_hash": "4a411c2155c7df1fea81f731aa2fcbc4"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Crawling\\DiscoverRepositories\\IGitHubDiscoveryClient.cs": {
-    "mtime": 1785637362.7917805,
-    "ast_hash": "b2ca17d237eb103a5851dcbb51c4052f",
-    "semantic_hash": "b2ca17d237eb103a5851dcbb51c4052f"
+    "mtime": 1785649414.122272,
+    "ast_hash": "e6cb5f1ba13b5f7d6a47ecd9d68d09ff",
+    "semantic_hash": "e6cb5f1ba13b5f7d6a47ecd9d68d09ff"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Scoring\\ComputeScores\\ComputeScoresCommand.cs": {
     "mtime": 1785631504.79226,
@@ -225,9 +225,9 @@
     "semantic_hash": "0212b88c7eedcc9b3d33d7a727ee45f9"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Crawling\\DiscoverRepositories\\DiscoverRepositoriesCommandHandlerTests.cs": {
-    "mtime": 1785637533.8774686,
-    "ast_hash": "2286927ddd06cb3a5a8b2885f11ae6a0",
-    "semantic_hash": "2286927ddd06cb3a5a8b2885f11ae6a0"
+    "mtime": 1785649480.405964,
+    "ast_hash": "df0438b6ce3e2f959fa6184eb961d3dd",
+    "semantic_hash": "df0438b6ce3e2f959fa6184eb961d3dd"
   },
   "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Crawling\\DiscoverRepositories\\DiscoverRepositoriesJobTests.cs": {
     "mtime": 1785645004.8261106,
@@ -318,5 +318,140 @@
     "mtime": 1785645018.21704,
     "ast_hash": "dc9271e62fd9d5069327e4bd7fc88b8c",
     "semantic_hash": "dc9271e62fd9d5069327e4bd7fc88b8c"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Data\\Migrations\\20260802054513_AddRepositoryTopicsAndFirstDiscoveredAt.cs": {
+    "mtime": 1785650179.8611596,
+    "ast_hash": "53e75d3a4cc0ea45510f9f7b7fc35a20",
+    "semantic_hash": "53e75d3a4cc0ea45510f9f7b7fc35a20"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Data\\Migrations\\20260802054513_AddRepositoryTopicsAndFirstDiscoveredAt.Designer.cs": {
+    "mtime": 1785649513.5483322,
+    "ast_hash": "c9d59b94b16b57fc29c65f4d45e2ecdb",
+    "semantic_hash": "c9d59b94b16b57fc29c65f4d45e2ecdb"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Bookmarks\\CreateBookmark\\CreateBookmarkCommand.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "1be73cd25068d7676372a966c46c9cf0",
+    "semantic_hash": "1be73cd25068d7676372a966c46c9cf0"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Bookmarks\\CreateBookmark\\CreateBookmarkEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "9a06dc03be85637933178dcebbfd84d7",
+    "semantic_hash": "9a06dc03be85637933178dcebbfd84d7"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Bookmarks\\DeleteBookmark\\DeleteBookmarkCommand.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "ed0aa5ddc28f0de470e4ccf588f380db",
+    "semantic_hash": "ed0aa5ddc28f0de470e4ccf588f380db"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Bookmarks\\DeleteBookmark\\DeleteBookmarkEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "c2b5fb9ebf8d599cb55ee833fb06ca98",
+    "semantic_hash": "c2b5fb9ebf8d599cb55ee833fb06ca98"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Bookmarks\\ListBookmarks\\ListBookmarksEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "f13112d3973c9952be102e3da6bcd185",
+    "semantic_hash": "f13112d3973c9952be102e3da6bcd185"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Bookmarks\\ListBookmarks\\ListBookmarksQuery.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "5f42b6ee613ed2d3ef0d13af549e1975",
+    "semantic_hash": "5f42b6ee613ed2d3ef0d13af549e1975"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Categories\\GetCategories\\GetCategoriesEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "e453d510c13895065304d9c0caf785ca",
+    "semantic_hash": "e453d510c13895065304d9c0caf785ca"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Categories\\GetCategories\\GetCategoriesQuery.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "68460f0437c1d07b71e468eddfba158b",
+    "semantic_hash": "68460f0437c1d07b71e468eddfba158b"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Categories\\GetCategoryRepositories\\GetCategoryRepositoriesEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "b2ad44afbbb016156ef92b971ede714b",
+    "semantic_hash": "b2ad44afbbb016156ef92b971ede714b"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Categories\\GetCategoryRepositories\\GetCategoryRepositoriesQuery.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "f63c1ff190996aef783c66e9c3a625c1",
+    "semantic_hash": "f63c1ff190996aef783c66e9c3a625c1"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Repositories\\RepositoryCardQuery.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "83fe06d47d0a4527b953a33ff23185b4",
+    "semantic_hash": "83fe06d47d0a4527b953a33ff23185b4"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Repositories\\GetDiscoveryFeed\\GetDiscoveryFeedEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "436a8ad9e1d55f3210c3d8f42c176fa1",
+    "semantic_hash": "436a8ad9e1d55f3210c3d8f42c176fa1"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Repositories\\GetDiscoveryFeed\\GetDiscoveryFeedQuery.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "76ea0f74adbcf5a6959738bd7c7dcf80",
+    "semantic_hash": "76ea0f74adbcf5a6959738bd7c7dcf80"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Repositories\\GetHiddenGems\\GetHiddenGemsEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "ea10634b169a6bb369dd5f8e79186b10",
+    "semantic_hash": "ea10634b169a6bb369dd5f8e79186b10"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Repositories\\GetHiddenGems\\GetHiddenGemsQuery.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "9a28cfebd3896c2a033558384accbb61",
+    "semantic_hash": "9a28cfebd3896c2a033558384accbb61"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Trends\\GetTrending\\GetTrendingEndpoint.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "9d0fd8cf9e2b22971d1eacf1c1e2f6e8",
+    "semantic_hash": "9d0fd8cf9e2b22971d1eacf1c1e2f6e8"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\GitCrawler.Api\\Features\\Trends\\GetTrending\\GetTrendingQuery.cs": {
+    "mtime": 1785650281.8799467,
+    "ast_hash": "d3f90c702cb40557500b65a8b7b3e6a1",
+    "semantic_hash": "d3f90c702cb40557500b65a8b7b3e6a1"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Bookmarks\\CreateBookmark\\CreateBookmarkCommandHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "f9be0ef5eb541763152ce0b8b5934db0",
+    "semantic_hash": "f9be0ef5eb541763152ce0b8b5934db0"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Bookmarks\\DeleteBookmark\\DeleteBookmarkCommandHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "2fc7b9794e5ffde66c59cda738c82b7a",
+    "semantic_hash": "2fc7b9794e5ffde66c59cda738c82b7a"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Bookmarks\\ListBookmarks\\ListBookmarksQueryHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "7405d40024e0b0650734c2ec7e0f3bc4",
+    "semantic_hash": "7405d40024e0b0650734c2ec7e0f3bc4"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Categories\\GetCategories\\GetCategoriesQueryHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "ae9f3dad2fd8b0b57a9ac76ac921a9ff",
+    "semantic_hash": "ae9f3dad2fd8b0b57a9ac76ac921a9ff"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Categories\\GetCategoryRepositories\\GetCategoryRepositoriesQueryHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "4390cdad164be028ad4d3d24ef2fe995",
+    "semantic_hash": "4390cdad164be028ad4d3d24ef2fe995"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Repositories\\GetDiscoveryFeed\\GetDiscoveryFeedQueryHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "5fbd691a1de02126e3a9dfca66b5b88b",
+    "semantic_hash": "5fbd691a1de02126e3a9dfca66b5b88b"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Repositories\\GetHiddenGems\\GetHiddenGemsQueryHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "21f906a942e15f0c053dd017f6fc16b4",
+    "semantic_hash": "21f906a942e15f0c053dd017f6fc16b4"
+  },
+  "C:\\Users\\makof\\source\\repos\\mak100186\\products\\git-crawler\\src\\backend\\tests\\GitCrawler.Api.Tests\\Features\\Trends\\GetTrending\\GetTrendingQueryHandlerTests.cs": {
+    "mtime": 1785650179.8621595,
+    "ast_hash": "b7d25442b3c58565f455b984d9ce8a1b",
+    "semantic_hash": "b7d25442b3c58565f455b984d9ce8a1b"
   }
 }
