@@ -1,12 +1,21 @@
 <ng-template #facetsContent>
   @if (showLanguageFilter() && !forcedCategory()) {
     <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__facet-select">
+      <!-- mat-select's own panelWidth default is the string 'auto', but its actual implementation
+           (MatSelect._getOverlayWidth) reads that as "match the trigger element's width", not
+           "size to content" - since .filter-bar__facet-select deliberately shrinks the trigger to
+           fit its short closed-state label ("Language"/"License"), the panel inherited that same
+           narrow width, wrapping/scrolling every option longer than the trigger itself. [panelWidth]
+           ="null" is the documented way to opt out of that and let the panel size to its own
+           content instead (MatSelect returns '' - no overlay width constraint - when panelWidth is
+           null). -->
       <mat-select
         multiple
         placeholder="Language"
         [value]="selectedLanguages()"
         (selectionChange)="onLanguageSelectionChange($event.value)"
         panelClass="filter-bar__select-panel"
+        [panelWidth]="null"
       >
         <mat-select-trigger>Language</mat-select-trigger>
         @for (language of languageOptions(); track language) {
@@ -115,7 +124,17 @@
             (matChipInputTokenEnd)="onTopicTokenEnd($event)"
           />
         </mat-chip-grid>
-        <mat-autocomplete #topicAuto="matAutocomplete" (optionSelected)="onTopicSelected($event)">
+        <!-- Same root cause as the Language/License mat-selects: mat-autocomplete's own default
+             panel width (MatAutocomplete._getPanelWidth) is the connected input's own width, not
+             its content's - and the "Add topic…" input is far narrower than a typical topic label,
+             so the panel was forced to the input's width and overflowed horizontally instead of
+             wrapping/growing. Pinned to 270px = .filter-bar__facet-panel--topic's 290px minus its
+             own 2x10px padding, so the dropdown lines up flush with the panel it opens inside. -->
+        <mat-autocomplete
+          #topicAuto="matAutocomplete"
+          [panelWidth]="270"
+          (optionSelected)="onTopicSelected($event)"
+        >
           @for (option of filteredTopicOptions(); track option) {
             <mat-option [value]="option">{{ option }}</mat-option>
           }
@@ -131,6 +150,7 @@
       [value]="selectedLicenses()"
       (selectionChange)="onLicenseSelectionChange($event.value)"
       panelClass="filter-bar__select-panel"
+      [panelWidth]="null"
     >
       <mat-select-trigger>License</mat-select-trigger>
       @for (license of licenseOptions(); track license) {
