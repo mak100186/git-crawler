@@ -174,26 +174,42 @@
 
   // Design: 32px circle, 1px divider-colored ring, surface-colored fill (Dashboard Design.dc.html
   // §1) - not the neutral-100/400 guess an earlier round used before this file was read directly.
+  // Two token-based attempts came before this: plain width/height (left the icon off-center, since
+  // .mat-mdc-icon-button's padding is calc((state-layer-size - icon-size) / 2) and only the box was
+  // resized, not the token that calc reads), then --mat-icon-button-state-layer-size/-icon-size
+  // directly (still came out wrong - matches a confirmed open Angular Material issue, #30448,
+  // reporting the icon-size token producing "unexpected results"; separately, icon-size is a `base`
+  // token that doesn't scale with Material's own density system at all, so there's no supported
+  // token path to a proportionally-smaller icon here). Same fix as __bookmarked-toggle below:
+  // leave the button at its correct default 40px/24px-icon proportions (guaranteed correctly laid
+  // out) and scale the whole thing down visually instead - unlike the toggle, there's no adjacent
+  // label text to accidentally shrink, so scaling the host button itself is safe. 0.8 = 32/40
+  // lands exactly on the design's 32px circle, with the icon scaling down proportionally with it.
   &__direction-toggle {
-    width: 32px;
-    height: 32px;
     border: 1px solid var(--color-divider);
     border-radius: 50%;
     background: var(--color-surface);
+    transform: scale(0.8);
   }
 
-  // Design's toggle is a plain hand-styled switch, not MDC's default proportions: a 34x18 track
-  // (border-radius 999px, solid neutral-300 when off, no border, no icon) with a 14px circular
-  // handle. An earlier attempt at compacting this toggle scaled every MDC default (32/52/24/16/28px)
-  // down by an arbitrary 50%, which came out visually broken and was reverted - these numbers
-  // instead come directly from the design's own inline styles, not a guessed ratio.
+  // Design's toggle is a plain hand-styled switch, not MDC's default proportions: a compact ~34x18
+  // track (border-radius 999px, solid neutral-300 when off, no border, no icon) with a small
+  // circular handle. Two earlier attempts tried getting there by overriding MDC's individual size
+  // tokens (track-height/width, handle-size, then handle-horizontal-margin) - both came out visibly
+  // broken, the second one even breaking the handle's selected/unselected slide entirely, because
+  // the handle's resting position is computed from a *pair* of tokens (handle-track width, itself
+  // derived from --mat-slide-toggle-handle-width - a value Angular sets at runtime per state - and
+  // the handle's own horizontal-margin) whose relationship isn't documented and isn't safe to
+  // partially override. The supported fix for a compact slide-toggle (Angular Material's own docs
+  // don't expose a "just make it smaller" token) is to leave every MDC size token at its default -
+  // guaranteeing correct, unbroken handle geometry in both states - and scale the rendered switch
+  // down visually instead. `.mdc-switch` is the track+handle assembly specifically (not the
+  // "Bookmarked" label, which lives alongside it in .mdc-form-field), so only the control shrinks;
+  // 0.65 ≈ 34/52 matches the design's target track width off the stock 52px one, landing height at
+  // ~21px (vs. the design's exact 18px) - a small, acceptable gap given every internal position stays
+  // exactly where MDC computes it, rather than a pixel-exact size bought by fighting that math again.
   &__bookmarked-toggle {
     margin-left: auto;
-    --mat-slide-toggle-track-height: 18px;
-    --mat-slide-toggle-track-width: 34px;
-    --mat-slide-toggle-selected-handle-size: 14px;
-    --mat-slide-toggle-unselected-handle-size: 14px;
-    --mat-slide-toggle-pressed-handle-size: 14px;
     --mat-slide-toggle-track-outline-width: 0;
     --mat-slide-toggle-selected-track-outline-width: 0;
     --mat-slide-toggle-unselected-track-color: var(--color-neutral-300);
@@ -204,6 +220,11 @@
     --mat-slide-toggle-unselected-hover-handle-color: var(--color-neutral-100);
     --mat-slide-toggle-unselected-focus-handle-color: var(--color-neutral-100);
     --mat-slide-toggle-unselected-pressed-handle-color: var(--color-neutral-100);
+
+    ::ng-deep .mdc-switch {
+      transform: scale(0.65);
+      transform-origin: left center;
+    }
 
     ::ng-deep .mdc-form-field {
       font-size: 13px;
