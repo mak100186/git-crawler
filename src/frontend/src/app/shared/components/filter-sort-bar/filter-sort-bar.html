@@ -40,7 +40,18 @@
       role="presentation"
       (click)="$event.stopPropagation()"
     >
-      <mat-slider class="filter-bar__slider" [min]="0" [max]="starRangeMax" [step]="50" discrete>
+      <div class="filter-bar__stars-header">
+        <span>Star range</span>
+        <strong>{{ starRangeDisplay() }}</strong>
+      </div>
+      <mat-slider
+        class="filter-bar__slider"
+        [min]="0"
+        [max]="starRangeMax"
+        [step]="50"
+        [displayWith]="formatStarThumbLabel"
+        discrete
+      >
         <input
           matSliderStartThumb
           [value]="minStars() ?? 0"
@@ -52,6 +63,10 @@
           (valueChange)="onStarRangeChange(minStars(), $event)"
         />
       </mat-slider>
+      <div class="filter-bar__stars-bounds">
+        <span>0</span>
+        <span>25k+</span>
+      </div>
       <div class="filter-bar__star-inputs">
         <mat-form-field
           appearance="outline"
@@ -116,6 +131,7 @@
             </mat-chip-row>
           }
           <input
+            #topicInputEl
             placeholder="Add topic…"
             [matChipInputFor]="topicGrid"
             [matAutocomplete]="topicAuto"
@@ -132,6 +148,7 @@
              own 2x10px padding, so the dropdown lines up flush with the panel it opens inside. -->
         <mat-autocomplete
           #topicAuto="matAutocomplete"
+          class="filter-bar__autocomplete-panel"
           [panelWidth]="270"
           (optionSelected)="onTopicSelected($event)"
         >

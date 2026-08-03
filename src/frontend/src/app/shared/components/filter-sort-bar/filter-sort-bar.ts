@@ -1,6 +1,16 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
@@ -108,6 +118,14 @@ export class FilterSortBar {
   protected readonly sortOptions = SORT_OPTIONS;
   protected readonly starRangeMax = STAR_RANGE_MAX;
 
+  // mat-slider's discrete-mode thumb tooltip (bound via [displayWith] in the .html) shows this
+  // instead of the raw value - "22850" doesn't fit the tooltip's compact 22px bubble at this
+  // panel's scale, and reads as effectively unreadable at that size anyway. Arrow field (not a
+  // method) since it's passed by reference into MatSlider's own displayWith input, which calls it
+  // unbound - it doesn't touch `this` so that's safe either way, but this avoids relying on it.
+  protected readonly formatStarThumbLabel = (value: number): string =>
+    value >= 1000 ? `${Math.round(value / 1000)}k` : `${value}`;
+
   // linkedSignal seeds from the per-view default input once and is then freely mutable locally -
   // the defaults (Discovery Feed = Newest/Desc, Hidden Gems = Score/Desc, Category drill-down =
   // Newest/Desc) never change after a view is routed to, so this behaves as "initialize once".
@@ -124,6 +142,17 @@ export class FilterSortBar {
   protected readonly bookmarkedOnly = signal(false);
   protected readonly topicInput = signal('');
 
+  // MatAutocompleteTrigger writes the selected option's value straight into the input's native DOM
+  // value synchronously on selection (MatAutocompleteTrigger.selectionChange calls
+  // `_assignOptionValue` before the (optionSelected) output we listen to below even fires) - our
+  // own topicInput.set('') only updates the signal, and pushing that back out through
+  // NgModel -> MatAutocompleteTrigger.writeValue() is itself deferred a microtask
+  // (`Promise.resolve(null).then(...)`), which loses the race and leaves the just-selected topic's
+  // text stuck in the field, blocking further typing. A direct reference to the native element lets
+  // resetTopicInput() clear the real DOM value synchronously, immediately after our own handler
+  // runs, so it reliably wins.
+  private readonly topicInputEl = viewChild<ElementRef<HTMLInputElement>>('topicInputEl');
+
   protected readonly filteredTopicOptions = computed(() => {
     const typed = this.topicInput().toLowerCase();
     const selected = new Set(this.selectedTopics());
@@ -135,6 +164,15 @@ export class FilterSortBar {
   protected readonly starRangeActive = computed(
     () => this.minStars() !== null || this.maxStars() !== null,
   );
+
+  // Header readout inside the Stars panel itself (Dashboard Design.dc.html §8: "Star range" label
+  // + bold current value, e.g. "500 – 5,000") - distinct from the "N stars" chip in activeChips
+  // below, which uses a "+" suffix at the ceiling; this one always shows the plain current bounds.
+  protected readonly starRangeDisplay = computed(() => {
+    const min = this.minStars() ?? 0;
+    const max = this.maxStars() ?? STAR_RANGE_MAX;
+    return `${min.toLocaleString()} – ${max.toLocaleString()}`;
+  });
 
   protected readonly activeChips = computed<ActiveChip[]>(() => {
     const chips: ActiveChip[] = [];
@@ -232,7 +270,7 @@ export class FilterSortBar {
 
   protected onTopicSelected(event: MatAutocompleteSelectedEvent): void {
     this.addTopic(event.option.value as string);
-    this.topicInput.set('');
+    this.resetTopicInput();
   }
 
   protected onTopicTokenEnd(event: MatChipInputEvent): void {
@@ -241,13 +279,22 @@ export class FilterSortBar {
       this.addTopic(value);
     }
     event.chipInput.clear();
-    this.topicInput.set('');
+    this.resetTopicInput();
   }
 
   private addTopic(topic: string): void {
     if (!this.selectedTopics().includes(topic)) {
       this.selectedTopics.update((current) => [...current, topic]);
       this.emitChange();
+    }
+  }
+
+  // See topicInputEl's own comment for why the signal alone isn't enough here.
+  private resetTopicInput(): void {
+    this.topicInput.set('');
+    const inputEl = this.topicInputEl()?.nativeElement;
+    if (inputEl) {
+      inputEl.value = '';
     }
   }
 

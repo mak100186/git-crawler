@@ -78,6 +78,7 @@ html {
   --mat-sys-on-surface: var(--color-ink);
   --mat-sys-surface-container: var(--color-surface);
   --mat-sys-surface-container-high: var(--color-surface);
+  --mat-expansion-header-text-color: var(--color-neutral-500);
 }
 
 body {
@@ -132,12 +133,22 @@ body {
 // appearance="outline" fields, the VISIBLE border is drawn separately by the notched-outline
 // leading/trailing pieces, themed via --mat-form-field-outlined-container-shape (defaults to a
 // small ~4px corner, i.e. still a rounded rectangle even with the override above in place).
+// This must NOT be --radius-pill (999px): Material's compiled CSS for the leading notch piece is
+// `width: max(12px, var(--mat-form-field-outlined-container-shape))` - it reuses this token as a
+// literal pixel WIDTH, not just a border-radius. Feeding it 999px made the leading piece demand
+// 999px of a ~100px-wide field; flexbox has to shrink it to fit, which starves its flex-grow: 1
+// sibling (.mdc-notched-outline__trailing) down to ~1px - and that sliver, still carrying a 999px
+// border-radius it has no room to render, is what showed up as a thin vertical seam on the right
+// edge of every outlined field (Language/License selects, the Topic chip input). border-radius
+// already auto-clamps to half the box's own height, so a plain 20px reads as a full pill on any
+// field up to 40px tall (this app's tallest outlined field) without tripping the width bug - the
+// same visual result via a value in the range the notch math actually expects.
 // --mat-form-field-outlined-outline-color shares the same --color-divider the outlined button uses
 // above, instead of falling back to Material's own auto-generated --mat-sys-outline tone (which
 // was rendering visibly darker/bolder than the button border, despite both being meant to look
 // like the same pill chrome).
 .mat-mdc-form-field {
-  --mat-form-field-outlined-container-shape: var(--radius-pill);
+  --mat-form-field-outlined-container-shape: 20px;
   --mat-form-field-outlined-outline-color: var(--color-divider);
 }
 

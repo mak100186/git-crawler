@@ -36,11 +36,24 @@
   // boundary without needing ::ng-deep. 13px/height 30px match .btn-secondary's own computed size
   // exactly (13px font, 6px/14px padding, ~1.2 line-height -> ~30px total), not an arbitrary shared
   // guess - Stars/Topic (mat-stroked-button, below) target the same 30px via a different token.
+  // --mat-select-placeholder-text-color: mat-select's own compiled CSS colors ITS
+  // .mat-mdc-select-placeholder element via `color: var(--mat-select-placeholder-text-color,
+  // var(--mat-sys-on-surface-variant))` - a muted gray fallback, and (per the closed-state
+  // <mat-select-trigger> comment above) that placeholder element is what actually renders
+  // "Language"/"License" here, not a real empty-state placeholder. An earlier attempt fought this
+  // by setting `color: inherit` directly on .mat-mdc-select-placeholder - same specificity as
+  // Material's own rule, so it only won when our stylesheet happened to be the later of the two
+  // in the DOM (Angular injects component styles like mat-select's own at runtime, so that's not
+  // guaranteed). Supplying the custom property itself instead - the same technique
+  // .mat-mdc-outlined-button above already uses for Stars/Topic's matching ink color - sidesteps
+  // the tie entirely: Material's own `var(--mat-select-placeholder-text-color, ...)` just reads
+  // whatever this cascades down as, regardless of which stylesheet loaded last.
   &__facet-select {
     width: auto;
     flex: none;
     --mat-select-trigger-text-font: var(--font-display);
     --mat-select-trigger-text-size: 13px;
+    --mat-select-placeholder-text-color: var(--color-ink);
 
     ::ng-deep .mat-mdc-form-field-infix {
       width: auto;
@@ -65,11 +78,26 @@
   // Neutral ink/border color is a global default (styles.scss's .mat-mdc-outlined-button rule) -
   // only this button's own size and layout are component-local, matching .btn-secondary's own
   // computed ~30px height/13px font exactly (same target __facet-select above aims for).
+  // Material's own hover feedback for outlined buttons is a translucent state-layer fill inside
+  // the pill (a ripple <span>'s ::before, opacity driven by --mat-button-outlined-hover-state-
+  // layer-opacity, color defaulting to --mat-sys-primary i.e. our accent orange) - a visibly
+  // different hover language than Language/License (mat-select outlined fields), which only
+  // darken their border to ink on hover (--mat-form-field-outlined-hover-outline-color, no fill;
+  // see .mat-mdc-form-field's own hover CSS - it falls back to --mat-sys-on-surface = ink since
+  // we don't override that token). Zeroing the hover opacity here removes the fill without
+  // touching the focus/press ripple states (kept - keyboard-focus and click feedback are still
+  // useful, this is specifically about matching the border-only *hover* language), and the
+  // explicit :hover border-color below reproduces the fields' ink-darken behavior on the button.
   &__facet-trigger {
     flex: none;
     --mat-button-outlined-container-height: 30px;
     --mat-button-outlined-label-text-size: 13px;
     --mat-button-outlined-horizontal-padding: 14px;
+    --mat-button-outlined-hover-state-layer-opacity: 0;
+
+    &:hover {
+      border-color: var(--color-ink);
+    }
   }
 
   // Matches mat-select's native caret (Language/License) so Stars reads as a dropdown too, not a
@@ -82,8 +110,58 @@
     height: 12px;
   }
 
+  // Deliberately no width override here. mat-slider's own compiled CSS already ships `width: auto;
+  // margin: 0 8px;` - the 8px side margins are Material's own accommodation for the thumb's 48px
+  // touch-target hit area (it extends ~24px past the visible track ends), and `width: auto` lets
+  // the flex column's default `align-items: stretch` fill the panel's content width *inside* those
+  // margins. An earlier `width: 100%` here fought that: percentage widths resolve against the
+  // container regardless of margin, so the slider's own box ended up 16px (2x8px margin) wider
+  // than its container, on top of the thumb's own hit-area overflow - together forcing the whole
+  // Stars panel into a horizontal scrollbar.
+  // margin-top pushes the track down from the "Star range" header so the discrete-mode value
+  // tooltip (rendered `bottom: 44px` above the thumb by Material's own compiled CSS - not a
+  // token, so not overridable there) has room to appear without overlapping the header text.
+  // The tooltip's own size (--mat-slider-value-indicator-*) is also scaled down below - Material's
+  // stock 28px/label-medium sizing was oversized against this panel's compact 13px-scale chrome.
+  // Side margins bumped from Material's own default 8px to 10px (this class is the same element
+  // as .mat-mdc-slider, not a wrapper - .mat-mdc-slider's compiled CSS ships plain `margin: 0
+  // 8px`, not a custom property, so overriding it directly here is the only way). Top stays
+  // separately controlled (see above) for tooltip clearance, hence the 3-value shorthand rather
+  // than a single `margin: 14px 10px`.
   &__slider {
-    width: 100%;
+    display: block;
+    margin: 14px 10px 0;
+    --mat-slider-value-indicator-width: 22px;
+    --mat-slider-value-indicator-height: 22px;
+    --mat-slider-label-label-text-size: 10px;
+  }
+
+  // Dashboard Design.dc.html §8: "Star range" label + bold current value ("500 – 5,000") above the
+  // slider - was missing from the initial build entirely, not just unstyled.
+  &__stars-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 12px;
+    color: var(--color-neutral-700);
+
+    strong {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-ink);
+    }
+  }
+
+  // Same reference (§8): static "0" / "25k+" axis bounds below the track - also missing entirely.
+  // Negative margin-top tightens the gap against the slider's own bottom edge, which (per the
+  // __slider comment above) already carries its own built-in spacing via mat-slider's internal
+  // layout, not a margin we control here.
+  &__stars-bounds {
+    display: flex;
+    justify-content: space-between;
+    margin-top: -8px;
+    font-size: 10px;
+    color: var(--color-neutral-600);
   }
 
   &__star-inputs {
@@ -91,8 +169,44 @@
     gap: 8px;
   }
 
+  // A fixed 90px was narrower than the panel's own available content width (300px panel - 2x10px
+  // padding = 280px, minus the 8px gap between the two fields = 136px each) and was clipping
+  // longer values (e.g. "25000") past the field's right edge. flex: 1 splits the actual available
+  // width evenly instead of guessing a fixed px figure.
   &__star-input {
-    width: 90px;
+    flex: 1;
+
+    // The star range already has a dedicated dual-thumb slider for adjusting min/max - the
+    // native number spinner is redundant and (being unstyled browser chrome, not a `--mat-*`
+    // token) was eating into the value text's own width and visually colliding with the
+    // floating "Min"/"Max" label above it. type="number" is kept (numeric keyboard on mobile,
+    // native min/max validation) - only the spin buttons themselves are suppressed.
+    input[type='number'] {
+      appearance: textfield;
+      -moz-appearance: textfield;
+
+      &::-webkit-inner-spin-button,
+      &::-webkit-outer-spin-button {
+        appearance: none;
+        -webkit-appearance: none;
+        margin: 0;
+      }
+    }
+
+    // styles.scss's global `.mdc-text-field--outlined { height: 40px !important; overflow: hidden
+    // !important; }` (needed there to stop Material's own hardcoded 56px height from leaking a
+    // stray border line past the compact 40px box) works fine for every OTHER outlined field in
+    // this bar because none of them use a real floating <mat-label> - they're static triggers
+    // (Language/License) or a plain placeholder (Topic). Min/Max are the only fields with an
+    // actual floating label, and its floated position (translateY(-34.75px) scale(0.75), measured
+    // via computed style) lands ~7px above that wrapper's own top edge - overflow: hidden then
+    // clips the top of "Min"/"Max" off. Restoring overflow: visible here, scoped to just this
+    // field, fixes the clipped label without touching the global rule (and isn't reintroducing
+    // the original stray-line bug: that was rooted in the same oversized notch-outline-shape
+    // value already fixed globally in styles.scss, not in this height override itself).
+    ::ng-deep .mdc-text-field--outlined {
+      overflow: visible !important;
+    }
   }
 
   // Narrow-mode only now (see .html) - the desktop row merges chips inline via __row instead.
@@ -237,14 +351,88 @@
   }
 }
 
+// Real catalog data (many more languages/licenses/topics than the design mock's short
+// hint-placeholder-count lists) makes every scrollable facet panel overflow in practice, which
+// otherwise falls back to each browser/OS's native scrollbar (a chunky gray Windows-style bar with
+// up/down arrow buttons on this app's dev platform) - visibly clashing with the flat, pill-radius
+// design language used everywhere else. scrollbar-width/-color is the standard-track (Firefox +
+// current Chromium/Edge) way to theme it; the ::-webkit-scrollbar-* rules are the same theming for
+// engines that don't yet read those properties. Shared as a mixin since three separate overlay
+// surfaces below (mat-select panel, mat-menu content, mat-autocomplete panel) each need it applied
+// to their own scrolling element.
+@mixin filter-bar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-400) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-neutral-400);
+    border-radius: var(--radius-pill);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-500);
+  }
+}
+
 // Stars/Topic panels (dashboard-handoff.md §3, "Opened-panel internals... see screen 08": surface
 // bg, radius 20px, shadow-lg, 8-10px padding). mat-menu's overlay is portaled outside this
 // component's own DOM subtree, so these target the panelClass passed to <mat-menu> rather than a
 // component-local selector - the standard pattern for styling Material overlay content
 // (::ng-deep still reaches it because Angular tags overlay-created elements with the emitting
-// component's own content attribute).
+// component's own content attribute). filter-bar__facet-panel-menu lands directly on
+// .mat-mdc-menu-panel (confirmed via computed styles, not just .mat-mdc-menu-content), which is
+// where Material's own compiled CSS hardcodes `max-width: 280px` - narrower than the
+// --stars/--topic inner panels' own 300px/290px content width (§ below), so that content was
+// being clipped and forced into a horizontal scrollbar. There's no supported token for this (it's
+// a plain hardcoded value, not a custom property), so !important is the only way to lift it here.
+// .mat-mdc-menu-panel carries its own default chrome (Material's ~4px corner-extra-small radius,
+// surface-container background, and MDC's own drop shadow) - and .filter-bar__facet-panel below
+// (an inner div WE add inside the menu, styled with the actual design chrome: 20px radius,
+// --color-surface bg, --elevation-lg shadow) duplicates all three, so the two nested boxes read as
+// a visibly mismatched rectangle-inside-a-rectangle (Material's smaller-radius outer box peeking
+// out from behind the inner one's own shadow). The outer .mat-mdc-menu-panel is stripped down to
+// an invisible pass-through container so only the inner div's single rounded rectangle is visible.
+//
+// overflow is deliberately forced to visible on both this element AND .mat-mdc-menu-content below
+// (an earlier version left Material's own default `overflow: auto` in place here, reasoning that
+// with no actual scrollable overflow it wouldn't clip anything - true only inconsistently: once
+// something pushes this box's content even 1-2px past its own edge - e.g. a focused field's
+// outline going from 1px to 2px, or the number input's spin-button box - "auto" flips into
+// actively clipping, and that DOES clip ink overflow (box-shadow) too, not just scrollable
+// content. This element and .filter-bar__facet-panel below are the exact same size with zero
+// margin between them, so any such clipping cut the inner div's --elevation-lg shadow off
+// entirely on whichever edge triggered it. Forcing visible here removes that dependency on
+// content happening to fit exactly. The thumb touch-target overflow (the original reason
+// something needed to clip here) is instead contained by .filter-bar__facet-panel's own
+// `overflow: hidden` below - an element's own overflow never clips its own box-shadow, only its
+// descendants, so that's the only safe place to do this clipping.
+// mat-menu opens flush against its trigger by default (0px gap) - margin-top matches the 4px gap
+// used for every other facet panel (Language/License's mat-select panel, Topic's autocomplete
+// panel below).
+::ng-deep .filter-bar__facet-panel-menu {
+  max-width: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  margin-top: 4px !important;
+}
+
+// .mat-mdc-menu-content is mat-menu's own scrolling element (it, not .mat-mdc-menu-panel, is what
+// actually gets overflow-y: auto from Material's compiled CSS) - same reasoning as above applies
+// to it too, so it also gets forced to visible (no scrollbar mixin needed here as a result -
+// nothing scrolls in this element anymore).
 ::ng-deep .filter-bar__facet-panel-menu .mat-mdc-menu-content {
   padding: 0;
+  overflow: visible !important;
 }
 
 .filter-bar__facet-panel {
@@ -252,9 +440,14 @@
   flex-direction: column;
   gap: 10px;
   background: var(--color-surface);
+  border: 1px solid var(--color-divider);
   border-radius: 20px;
   box-shadow: var(--elevation-lg);
   padding: 10px;
+  // Contains mat-slider's invisible thumb touch-target overflow (see .filter-bar__slider above) -
+  // an element's own overflow doesn't clip its own box-shadow (only descendants), so this is safe
+  // to set directly here, unlike on the outer .mat-mdc-menu-panel wrapper (see comment there).
+  overflow: hidden;
 
   &--stars {
     width: 300px;
@@ -267,12 +460,64 @@
 
 .filter-bar__topic-field {
   width: 100%;
+
+  // Same root cause/fix as .filter-bar__facet-select's own infix override above: the default
+  // .mat-mdc-form-field-infix padding (16px top/bottom) reserves vertical space for a floating
+  // <mat-label> to move into on focus - this field has no <mat-label> (just a plain placeholder
+  // on the chip-grid's input), so that space is pure unused height, and the chip row was
+  // rendering vertically centered within it rather than filling the field's visible box.
+  ::ng-deep .mat-mdc-form-field-infix {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    min-height: 0;
+  }
+
+  // mat-chip-grid's own chip-wrapping flex row defaults to align-items: normal (effectively
+  // stretch), which lets mat-chip-row (a 32px pill, vertically centered via its own 4px top/bottom
+  // margin) and the plain chip-input <input> (no margin, so its box fills the row's full stretched
+  // height instead) settle at visibly different vertical centers even inside the same flex line.
+  // Forcing center alignment here makes both track the same center regardless of that margin vs.
+  // stretch mismatch.
+  ::ng-deep mat-chip-grid,
+  ::ng-deep .mdc-evolution-chip-set__chips {
+    align-items: center;
+  }
 }
 
 // mat-select's own overlay panel (Language/License) - same panel chrome as the Stars/Topic
-// mat-menu panels above, for visual consistency across all four facet panels.
+// mat-menu panels above, for visual consistency across all four facet panels. This IS the
+// scrolling element itself (mat-select applies its own overflow-y: auto + max-height directly to
+// the panel, unlike mat-menu's separate .mat-mdc-menu-content), so the scrollbar theming applies
+// straight to the panelClass selector.
 ::ng-deep .filter-bar__select-panel {
   border-radius: 20px !important;
+  // mat-select's own default connected-position gap measured out to 3px, 1px short of the 4px
+  // used everywhere else - bumped the remaining 1px here rather than guessing a replacement value
+  // (this margin adds to whatever gap Material's own position strategy already computed, it
+  // doesn't replace it).
+  margin-top: 1px !important;
+  @include filter-bar-scrollbar;
+}
+
+// Topic's search-suggestions overlay (mat-autocomplete) had no panelClass at all, so it fell back
+// to Material's stock dropdown chrome (square-ish corners, default MDC shadow, ungrounded surface
+// color) instead of matching the other three facet panels' surface bg / radius-20 / shadow-lg -
+// same root cause as the scrollbar issue: an unstyled Material overlay surface. classList is
+// MatAutocomplete's supported input for this (aliased from the plain `class` attribute set on
+// <mat-autocomplete> in the .html), analogous to panelClass on mat-select/mat-menu above.
+::ng-deep .filter-bar__autocomplete-panel {
+  border-radius: 20px !important;
+  background: var(--color-surface) !important;
+  box-shadow: var(--elevation-lg) !important;
+  padding: 6px !important;
+  margin-top: 18px !important;
+  font-family: var(--font-body);
+  @include filter-bar-scrollbar;
+
+  .mat-mdc-option {
+    border-radius: var(--radius-pill);
+    font-size: 13px;
+  }
 }
 
 // Below the 960px breakpoint, the facets/sort-row above collapse and this full-height sidenav
