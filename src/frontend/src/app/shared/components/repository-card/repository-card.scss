@@ -7,36 +7,15 @@
   background: var(--color-surface);
   box-shadow: var(--elevation-sm);
   height: 100%;
+  // Whole card opens the detail pane (design brief §09) - interactive children (bookmark toggle,
+  // "Why this score?" panel, "Open on GitHub" link) stop propagation in the template so a click on
+  // any of those doesn't also trigger it.
+  cursor: pointer;
 
   &__header {
     display: flex;
     align-items: flex-start;
     gap: 12px;
-  }
-
-  &__avatar {
-    flex: none;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-size: 15px;
-    // Design uses one text color (--color-bg) across all three avatar dot colors, not a
-    // per-palette shade (dashboard-design-directions-exploration §1's `bm`/dots rotation).
-    color: var(--color-bg);
-
-    &--terracotta {
-      background: var(--color-accent);
-    }
-    &--olive {
-      background: var(--color-olive-800);
-    }
-    &--neutral {
-      background: var(--color-neutral-500);
-    }
   }
 
   &__score-badge {
@@ -87,14 +66,14 @@
     font-size: 12.5px;
     line-height: 1.5;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    min-height: calc(12.5px * 1.5 * 2);
+    min-height: calc(12.5px * 1.5 * 3);
   }
 
   &__summary-pending {
-    height: 38px;
+    height: calc(12.5px * 1.5 * 3);
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -166,10 +145,11 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    // padding-top 9px + a Material .mat-mdc-card-actions padding: 8px rule of equal specificity
-    // tying on source order - !important guarantees this component's own spacing always wins,
-    // matching the precedent already set for the same class of fight in app.scss/styles.scss.
-    padding: 9px 0 0 !important;
+    // padding-top pushes the chip row down from the divider a bit more than Material's own
+    // .mat-mdc-card-actions padding: 8px default (equal specificity, ties on source order) -
+    // !important guarantees this component's own spacing always wins, matching the precedent
+    // already set for the same class of fight in app.scss/styles.scss.
+    padding: 16px 0 0 !important;
     margin: 0;
     border-top: 1px solid var(--color-divider);
     flex-wrap: wrap;
@@ -197,6 +177,17 @@
   &__stars {
     font-size: 11px;
     color: var(--color-neutral-700);
+  }
+
+  // Same visual language as the old standalone Trending view's own growth chip (removed
+  // trending.scss's .trend-card__growth-chip) - Hidden Gems only, via the trendGrowth input.
+  &__trend-chip {
+    background: var(--color-olive-800);
+    color: var(--color-olive-100);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 12px;
+    white-space: nowrap;
   }
 
   &__github-link {

@@ -1,7 +1,237 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 8
+> Revision: 13
 > Last updated: 2026-08-03
+
+## Revision 13 — 2026-08-03 — Bookmarks tab decommissioned
+
+**Changes:**
+- **Bookmarks tab removed** — the dedicated `/bookmarks` view (`src/frontend/src/app/features/
+  bookmarks/`, F-012's entire delta) and its live nav entry are gone, along with the backend
+  `ListBookmarks` endpoint/query/tests it alone existed to serve (fully removed, unlike
+  `GetCategories`, since nothing else consumed it). The primary nav is now a single "Hidden Gems"
+  entry.
+- **Not a capability regression**: Hidden Gems' existing "Bookmarked only" filter
+  (`FilterSortBar.showBookmarkedToggle`, already `true` there) surfaces the identical set of
+  bookmarked repos FR-007 requires a user be able to revisit — the dedicated view was a second,
+  redundant path to the same data, not a distinct one. Bookmark create/delete (the toggle itself)
+  are completely unaffected.
+- **Dead plumbing removed alongside the tab**: `BookmarkApiService.listBookmarks()`,
+  `RepositoryCardQuery.ToCardDto` (the bare-`RepositoryCardDto` factory `ListBookmarksQueryHandler`
+  alone called — genuinely dead now, unlike the two prior removals where it stayed alive via this
+  exact caller), and the component-scoped `BookmarkChangeApiService` DI-override pattern that lived
+  entirely inside `bookmarks.ts`.
+- **Docs updated**: `docs/architecture.md` (v18), `docs/project-management.md` (v27 — F-010/F-011/
+  F-012 rows all amended in place), `docs/test-cases.md` (v13 — TC-012-01/02/03/04/06 marked Removed,
+  TC-012-05 retargeted in place to Hidden Gems' filter), `docs/test-runbook.md` (F-012 section
+  rewritten around the surviving filter-only scenario, F-011 nav step narrowed to one entry).
+  `docs/prd.md` unchanged — FR-007 itself is still satisfied, just via a different UI path.
+- **Verification**: backend 86/86 (was 89), frontend 47/47 (was 51), `npm run lint` clean. Not run
+  through `orchestrator-development-pattern` — implemented directly via Claude Code at the operator's
+  explicit direction, same as Revisions 9-12.
+
+**Files changed:**
+- `src/backend/GitCrawler.Api/Features/Bookmarks/ListBookmarks/` — deleted.
+- `src/backend/GitCrawler.Api/Program.cs` — `MapListBookmarksEndpoint()` call and its `using` removed.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Bookmarks/ListBookmarks/` — deleted.
+- `src/backend/GitCrawler.Api/Features/Repositories/RepositoryCardQuery.cs` — `ToCardDto` removed
+  (dead), comments corrected.
+- `src/frontend/src/app/features/bookmarks/` — deleted.
+- `src/frontend/src/app/app.routes.ts`, `app.ts`, `app.html`, `app.scss` — Bookmarks route/nav entry
+  removed; `NAV_ENTRIES` down to a single "Hidden Gems" entry.
+- `src/frontend/src/app/core/api/bookmark-api.service.ts` — `listBookmarks()` removed.
+- `src/frontend/src/app/{app.spec.ts}` — updated for the single-entry nav.
+- `docs/architecture.md`, `docs/project-management.md`, `docs/test-cases.md`, `docs/test-runbook.md`
+  — updated per above.
+
+---
+
+## Revision 12 — 2026-08-03 — Repo card polish + click-to-open detail pane
+
+**Changes:**
+- **Repo card summary/footer spacing adjusted, per operator feedback**: `.repo-card__summary` now
+  clamps to 3 lines instead of 2 (matching "Summary pending" min-height so the placeholder still
+  never causes a layout jump when the real summary arrives), and the footer chip row's `padding-top`
+  increased from 9px to 16px so it sits further below its divider line.
+- **New: clicking a card opens a right-side repository detail pane** — fulfills the dashboard UX
+  design brief's own §09 mockup ("card click → right-side mat-drawer over the current view · list
+  keeps its scroll position"), which F-011's original implementation never built. Shows the repo's
+  full untruncated AI summary, its topics as a chip list (not shown on the compact card at all), the
+  same language/license/star/fork/trend chips as the card plus an "Open on GitHub" button, and — only
+  when the item carries a `scoreBreakdown` (Hidden Gems, not Bookmarks) — an always-expanded
+  five-signal score breakdown identical in content to the card's own "Why this score?" panel. The
+  card's own interactive controls (bookmark toggle, score panel, GitHub link) each stop click
+  propagation so clicking them doesn't also trigger the pane.
+- **New shared `shared/utils/score-breakdown.util.ts`**: the five-signal display math (log-normalized
+  progress-bar ratios against `ScoringWeights`' caps) was extracted out of `RepositoryCard` so the
+  card's "Why this score?" panel and the new detail pane's score footer can't drift apart on the same
+  computation — not a speculative abstraction, a real risk given the two now render the identical
+  data independently.
+- **Scope note**: no Functional Requirement in `docs/prd.md` ever committed to a detail pane — the
+  design brief drew one anyway (F-018), and it simply hadn't been built. Implementing it now is UX
+  polish drawing on already-approved design, not new product scope, so `docs/prd.md` is unchanged;
+  `docs/architecture.md` (v17) and `docs/project-management.md` (v26 — F-011 row amended a fourth
+  time) note it for completeness.
+- **Docs updated**: `docs/architecture.md` (v17), `docs/project-management.md` (v26), `docs/test-
+  cases.md` (v12 — new TC-011-14/TC-011-15), `docs/test-runbook.md` (new F-011 manual steps + spec
+  count corrections).
+- **Verification**: backend unaffected (frontend-only change; still 89/89). Frontend 51/51 (was 42; 6
+  new: 2 `RepositoryCard` click-propagation cases, 2 new `RepositoryDetailPane` cases, 2 new
+  `RepositoryGrid` drawer-wiring cases), `npm run lint` clean.
+
+**Files changed:**
+- `src/frontend/src/app/shared/utils/score-breakdown.util.ts` — new.
+- `src/frontend/src/app/shared/components/repository-card/` — `cardClick` output added; avatar-era
+  scoring-math duplication removed in favor of the new shared util; summary/footer CSS spacing.
+- `src/frontend/src/app/shared/components/repository-detail-pane/` — new component (`.ts`/`.html`/
+  `.scss`/`.spec.ts`).
+- `src/frontend/src/app/shared/components/repository-grid/` — `mat-drawer-container`/`mat-drawer`
+  wired around the existing grid content; `selectedItem` state; card-click → open, close/backdrop →
+  close.
+- `docs/architecture.md`, `docs/project-management.md`, `docs/test-cases.md`, `docs/test-runbook.md`
+  — updated per above.
+
+---
+
+## Revision 11 — 2026-08-03 — Discovery Feed tab decommissioned
+
+**Changes:**
+- **Discovery Feed tab removed** — the standalone Discovery Feed view
+  (`src/frontend/src/app/features/discovery-feed/`, the default/landing route) and its route/nav
+  entry are gone, along with the backend `GetDiscoveryFeed` endpoint/query/tests it alone existed to
+  serve (fully removed, unlike `GetCategories`, since `GetHiddenGems` already covers the same shared
+  D4 filter/sort/paginate contract as a full superset). The default route now lands on Hidden Gems;
+  nav order is now Hidden Gems → Bookmarks (two entries).
+- **Not a capability regression**: once Categories and Trending had already folded into Hidden Gems
+  (Revisions 9/10), Discovery Feed offered no browsing capability distinct from Hidden Gems — same
+  filter/sort contract, same card grid, same layout — so nothing is lost by consolidating onto one
+  view. The one visible difference (Hidden Gems' score badge/breakdown/trend chip) was already true
+  before this change; Discovery Feed's own base-card variant simply had no distinct value left.
+- **Repo card avatar removed, per operator feedback in the same request** ("remove the avatar", "keep
+  the score card"): `RepositoryCard`'s avatar-initial circle (and its terracotta/olive/neutral
+  rotation) is gone from the header — the score badge is now Hidden Gems' sole header visual anchor.
+  Bookmarks cards (which carry no score breakdown) now render no header circle at all; this was not
+  called out as a concern by the operator and no replacement was requested.
+- **Docs updated**: `docs/prd.md` (v7), `docs/architecture.md` (v16 — including the Web API surface
+  change, since `/api/discovery-feed` is fully removed unlike `/api/categories`), `docs/project-
+  management.md` (v25 — F-010/F-011 rows amended in place a third time), `docs/test-cases.md` (v11),
+  `docs/test-runbook.md`, `docs/handoff.md`. Two pre-existing stale mentions of the already-removed
+  Trending/Categories tabs, missed by Revisions 9/10, were also fixed while in these files anyway:
+  `Makefile`'s `make help`/`make up` output text, and three explanatory code comments in
+  `RepositoryCardQuery.cs` that still referenced the long-gone Category drill-down.
+- **Verification**: backend 89/89 (was 114), frontend 42/42 (was 47), `npm run lint` clean. Not run
+  through `orchestrator-development-pattern` — implemented directly via Claude Code at the operator's
+  explicit direction, same as Revisions 9/10.
+
+**Files changed:**
+- `src/backend/GitCrawler.Api/Features/Repositories/GetDiscoveryFeed/` — deleted.
+- `src/backend/GitCrawler.Api/Program.cs` — `MapGetDiscoveryFeedEndpoint()` call and its `using`
+  removed.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Repositories/GetDiscoveryFeed/` — deleted.
+- `src/backend/GitCrawler.Api/Features/Repositories/RepositoryCardQuery.cs`,
+  `Features/Repositories/GetHiddenGems/GetHiddenGemsQuery.cs` — stale Discovery-Feed/Category-
+  drill-down comments corrected.
+- `src/backend/GitCrawler.Api/Data/Entities/Repository.cs`,
+  `Features/Crawling/DiscoverRepositories/DiscoverRepositoriesCommand.cs` — comments referencing
+  "Discovery Feed's Newest sort" generalized to "the dashboard's Newest sort".
+- `src/frontend/src/app/features/discovery-feed/` — deleted.
+- `src/frontend/src/app/app.routes.ts`, `app.ts`, `app.html` — Discovery Feed route/nav entry
+  removed; default route now `hidden-gems`.
+- `src/frontend/src/app/core/api/repository-api.service.ts` — `getDiscoveryFeed()` removed.
+- `src/frontend/src/app/shared/components/repository-card/` — avatar markup/computed
+  properties/styles removed.
+- `src/frontend/src/app/{app.spec.ts,app.routes.spec.ts}` — updated for the two-entry nav and
+  Hidden-Gems-default route.
+- `Makefile` — stale "Discovery Feed, Hidden Gems, Trending, Categories" dashboard-description text
+  (missed by Revisions 9/10) corrected to "Hidden Gems, Bookmarks".
+- `docs/prd.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/test-cases.md`,
+  `docs/test-runbook.md`, `docs/handoff.md` — updated per above.
+
+---
+
+## Revision 10 — 2026-08-03 — Trending tab decommissioned, merged into Hidden Gems
+
+**Changes:**
+- **Trending tab removed, merged into Hidden Gems** — the standalone Trending view
+  (`src/frontend/src/app/features/trending/`, per-category trend cards with an expandable
+  contributing-repos panel) and its route/nav entry are gone, along with the backend `GetTrending`
+  endpoint/query/tests it alone existed to serve (fully removed, unlike `GetCategories`, since nothing
+  else consumed it). Nav order is now Discovery Feed → Hidden Gems → Bookmarks.
+- **Not a capability regression**: the underlying trend data (`TrendAggregate`, computed nightly by
+  F-009's `AggregateTrendsCommand`) is unchanged. Each Hidden Gems card now shows its own category's
+  trend growth directly — a new `HiddenGemCardDto.TrendGrowth` field, computed server-side in
+  `GetHiddenGemsQueryHandler` using the exact same current/previous-period formula the old Trending
+  view computed client-side per trend card, rendered as a chip on `RepositoryCard`.
+- **Scope decision confirmed with the operator**: trends are per-category, not per-repo, so "the
+  trending score" on a card was ambiguous (growth chip vs. raw average score vs. both) — asked
+  directly; operator chose the growth chip, reusing the old view's exact text/format.
+- **Dead plumbing removed alongside the tab**: `TrendingApiService`, `trend.model.ts`, and the
+  now-unused `trending-up` SVG icon.
+- **Docs updated**: `docs/prd.md` (v6), `docs/architecture.md` (v15 — including the Web API surface
+  change, since `/api/trending` is fully removed unlike `/api/categories`), `docs/project-management.md`
+  (v24 — F-010/F-011 rows amended in place a second time), `docs/test-cases.md`, `docs/test-runbook.md`,
+  `docs/handoff.md`.
+- **Verification**: backend 114/114 (was 116), frontend 47/47 (was 51), `npm run lint` clean. Not run
+  through `orchestrator-development-pattern` — implemented directly via Claude Code at the operator's
+  explicit direction, same as Revision 9.
+
+**Files changed:**
+- `src/backend/GitCrawler.Api/Features/Trends/GetTrending/` — deleted.
+- `src/backend/GitCrawler.Api/Program.cs` — `MapGetTrendingEndpoint()` call and its `using` removed.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Trends/GetTrending/` — deleted.
+- `src/backend/GitCrawler.Api/Features/Repositories/GetHiddenGems/GetHiddenGemsQuery.cs` — added
+  `HiddenGemCardDto.TrendGrowth` + server-side growth-label computation from `TrendAggregate`.
+- `src/backend/tests/.../GetHiddenGems/GetHiddenGemsQueryHandlerTests.cs` — 4 new `TrendGrowth` cases.
+- `src/frontend/src/app/features/trending/` — deleted.
+- `src/frontend/src/app/core/api/trending-api.service.ts`, `core/models/trend.model.ts` — deleted.
+- `src/frontend/src/app/app.routes.ts`, `app.ts`, `app.html` — Trending route/nav entry removed.
+- `src/frontend/src/app/core/models/repository.model.ts` — `HiddenGemCardDto.trendGrowth` added.
+- `src/frontend/src/app/shared/components/repository-card/`,
+  `shared/components/repository-grid/` — `trendGrowth` input wired through, chip rendered/styled.
+- `src/frontend/src/app/core/icons/icon-registry.service.ts` — unused `trending-up` icon removed.
+- `docs/prd.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/test-cases.md`,
+  `docs/test-runbook.md`, `docs/handoff.md` — updated per above.
+
+## Revision 9 — 2026-08-03 — Categories tab decommissioned
+
+**Changes:**
+- **Categories tab removed** — the standalone Categories view (`src/frontend/src/app/features/categories/`,
+  a grid of category tiles) and its Category drill-down route (`categories/:category`) are gone, along
+  with the "Categories" nav entry and the backend `GetCategoryRepositories` endpoint/query/tests that
+  existed only to serve the drill-down. `GetCategories` itself is unchanged — it still backs the
+  Language filter's option list (`FacetOptionsService`). Nav order is now Discovery Feed → Hidden Gems
+  → Trending → Bookmarks.
+- **Not a capability regression**: Category is, and always has been, `Repository.PrimaryLanguage`
+  (F-009 D2) — the exact value the existing Language `mat-select` filter on Discovery Feed/Hidden Gems
+  already narrows by. The tab was a redundant second path to the same filter, not a distinct one.
+- **Dead plumbing removed alongside the tab**: `FilterSortBar`'s `forcedCategory` input and pinned-
+  chip logic (only the drill-down page used it), `RepositoryApiService.getCategoryRepositories()`,
+  `buildRepositoryQueryParams`'s `omitLanguage` option, and the now-unused `layers` SVG icon.
+- **Docs updated**: `docs/prd.md` (v5), `docs/architecture.md` (v14), `docs/project-management.md`
+  (v23 — F-010/F-011 rows amended in place), `docs/test-cases.md`, `docs/test-runbook.md`,
+  `docs/handoff.md`.
+- **Verification**: backend 116/116 (was 121), frontend 51/51 (was 61), `npm run lint` clean. Not run
+  through `orchestrator-development-pattern` — implemented directly via Claude Code at the operator's
+  explicit direction.
+- **Pre-existing, unrelated issue noted, not fixed here**: `npm run build`'s production configuration
+  fails an 8kB per-component style budget on `filter-sort-bar.scss` — confirmed via `git log` to
+  predate this change (last touched by the `ui fixes` commits before this session); this change never
+  touched that file's `.scss`.
+
+**Files changed:**
+- `src/backend/GitCrawler.Api/Features/Categories/GetCategoryRepositories/` — deleted.
+- `src/backend/GitCrawler.Api/Program.cs` — `MapGetCategoryRepositoriesEndpoint()` call and its
+  `using` removed.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Categories/GetCategoryRepositories/` — deleted.
+- `src/frontend/src/app/features/categories/` — deleted (both `categories.*` and `category-detail/`).
+- `src/frontend/src/app/app.routes.ts`, `app.ts`, `app.html` — Categories route/nav entry removed.
+- `src/frontend/src/app/shared/components/filter-sort-bar/` — `forcedCategory` input and pinned-chip
+  logic removed.
+- `src/frontend/src/app/core/api/repository-api.service.ts`, `query-params.util.ts` — dead
+  drill-down-only methods/options removed.
+- `src/frontend/src/app/core/icons/icon-registry.service.ts` — unused `layers` icon removed.
+- `docs/prd.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/test-cases.md`,
+  `docs/test-runbook.md`, `docs/handoff.md` — updated per above.
 
 ## Revision 8 — 2026-08-03 — F-012 (Bookmarking), run as a standalone slice of Phase 3; Phase 3 complete
 

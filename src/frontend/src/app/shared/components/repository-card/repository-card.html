@@ -1,9 +1,5 @@
-<mat-card class="repo-card" appearance="outlined">
+<mat-card class="repo-card" appearance="outlined" (click)="cardClick.emit()">
   <div class="repo-card__header">
-    <div class="repo-card__avatar" [class]="'repo-card__avatar--' + avatarPalette()">
-      {{ avatarInitial() }}
-    </div>
-
     @if (scoreRounded() !== null) {
       <div class="repo-card__score-badge" title="Hidden gem score">{{ scoreRounded() }}</div>
     }
@@ -19,6 +15,7 @@
       class="repo-card__bookmark"
       [repositoryId]="repository().id"
       [initialBookmarked]="repository().isBookmarked"
+      (click)="$event.stopPropagation()"
     />
   </div>
 
@@ -42,7 +39,11 @@
   </mat-card-content>
 
   @if (scoreBreakdown(); as breakdown) {
-    <mat-expansion-panel class="repo-card__score-panel" [hideToggle]="false">
+    <mat-expansion-panel
+      class="repo-card__score-panel"
+      [hideToggle]="false"
+      (click)="$event.stopPropagation()"
+    >
       <mat-expansion-panel-header>
         <mat-panel-title>Why this score?</mat-panel-title>
       </mat-expansion-panel-header>
@@ -70,12 +71,18 @@
     @if (repository().licenseIdentifier; as license) {
       <span class="repo-card__license-chip">{{ license }}</span>
     }
+    @if (trendGrowth(); as growth) {
+      <span class="repo-card__trend-chip" title="Trend for this repository's category">{{
+        growth
+      }}</span>
+    }
     <a
       mat-button
       class="repo-card__github-link"
       [href]="repository().url"
       target="_blank"
       rel="noopener noreferrer"
+      (click)="$event.stopPropagation()"
     >
       <mat-icon svgIcon="external-link" />
       GitHub

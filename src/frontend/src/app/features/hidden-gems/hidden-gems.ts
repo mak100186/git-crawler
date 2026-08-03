@@ -15,8 +15,11 @@ import {
 import { RepositoryGrid } from '../../shared/components/repository-grid/repository-grid';
 
 // Hidden Gems (dashboard-ux-brief.md §4.2) - the scored subset, ranked by hidden-gem score by
-// default. Same card-grid + filter-bar structure as Discovery Feed; the only content differences are
-// the default sort and the score-breakdown data the grid passes down to each card.
+// default, and now the dashboard's only repository-list view (Discovery Feed shared the same
+// card-grid + filter-bar structure before it was removed as a standalone view - see the changelog
+// entry for that removal). The score-breakdown/trend-growth data the grid passes down to each card
+// is what's Hidden-Gems-specific (trendGrowth added when the standalone Trending tab was merged into
+// Hidden Gems - see the changelog entry for that removal too).
 @Component({
   selector: 'app-hidden-gems',
   imports: [AsyncPipe, FilterSortBar, RepositoryGrid],

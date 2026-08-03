@@ -59,7 +59,7 @@ public class Repository
     public List<string> Topics { get; set; } = [];
 
     // Set once, on first insert only (F-010 D1) - never updated on re-crawl, unlike
-    // LastCrawledAtUtc which changes every run. This is what Discovery Feed's "Newest" sort orders
+    // LastCrawledAtUtc which changes every run. This is what the dashboard's "Newest" sort orders
     // by, so a frequently re-crawled old repo can't look newer than a genuinely new discovery.
     public DateTimeOffset FirstDiscoveredAtUtc { get; set; }
 

@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { of } from 'rxjs';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
 import { HiddenGemCardDto, RepositoryCardDto } from '../../../core/models/repository.model';
@@ -32,9 +33,12 @@ describe('RepositoryCard', () => {
         provideNoopAnimations(),
         {
           provide: BookmarkApiService,
-          useValue: { addBookmark: vi.fn(), removeBookmark: vi.fn() },
+          useValue: {
+            addBookmark: vi.fn(() => of({})),
+            removeBookmark: vi.fn(() => of(undefined)),
+          },
         },
-        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: MatSnackBar, useValue: { open: vi.fn(() => ({ onAction: () => of(undefined) })) } },
       ],
     }).compileComponents();
 
@@ -66,6 +70,7 @@ describe('RepositoryCard', () => {
   it('renders the hidden-gem score badge and "Why this score?" panel when scoreBreakdown is set', () => {
     const hiddenGem: HiddenGemCardDto = {
       ...baseRepository,
+      trendGrowth: null,
       scoreBreakdown: {
         hasLicense: true,
         licenseType: 'MIT',
@@ -90,5 +95,54 @@ describe('RepositoryCard', () => {
     expect(el.querySelector('.repo-card__score-badge')?.textContent?.trim()).toBe('61');
     expect(el.textContent).toContain('Why this score?');
     expect(el.textContent).toContain('Commits/week');
+  });
+
+  it('renders the trend-growth chip when trendGrowth is set, and omits it when null', () => {
+    fixture.componentRef.setInput('repository', baseRepository);
+    fixture.componentRef.setInput('trendGrowth', '▲ +18% vs. last period');
+    fixture.detectChanges();
+
+    let el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.repo-card__trend-chip')?.textContent?.trim()).toBe(
+      '▲ +18% vs. last period',
+    );
+
+    fixture.componentRef.setInput('trendGrowth', null);
+    fixture.detectChanges();
+
+    el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.repo-card__trend-chip')).toBeNull();
+  });
+
+  it('emits cardClick when the card body is clicked, opening the detail pane (design brief §09)', () => {
+    fixture.componentRef.setInput('repository', baseRepository);
+    fixture.detectChanges();
+
+    const emitted = vi.fn();
+    fixture.componentInstance.cardClick.subscribe(emitted);
+
+    (fixture.nativeElement as HTMLElement).querySelector('mat-card')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+
+    expect(emitted).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not emit cardClick when the bookmark toggle or GitHub link is clicked', () => {
+    fixture.componentRef.setInput('repository', baseRepository);
+    fixture.detectChanges();
+
+    const emitted = vi.fn();
+    fixture.componentInstance.cardClick.subscribe(emitted);
+
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector('app-bookmark-toggle button')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    el.querySelector('.repo-card__github-link')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+
+    expect(emitted).not.toHaveBeenCalled();
   });
 });

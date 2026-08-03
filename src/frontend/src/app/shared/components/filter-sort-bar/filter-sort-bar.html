@@ -1,5 +1,5 @@
 <ng-template #facetsContent>
-  @if (showLanguageFilter() && !forcedCategory()) {
+  @if (showLanguageFilter()) {
     <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-bar__facet-select">
       <!-- mat-select's own panelWidth default is the string 'auto', but its actual implementation
            (MatSelect._getOverlayWidth) reads that as "match the trigger element's width", not

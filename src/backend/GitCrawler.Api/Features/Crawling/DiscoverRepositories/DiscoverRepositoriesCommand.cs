@@ -77,7 +77,7 @@ public class DiscoverRepositoriesCommandHandler(
                 if (existing is null)
                 {
                     // FirstDiscoveredAtUtc (F-010 D1) is set once, here, and never touched again -
-                    // it backs Discovery Feed's "Newest" sort, which must reflect genuine discovery
+                    // it backs the dashboard's "Newest" sort, which must reflect genuine discovery
                     // order rather than LastCrawledAtUtc's re-crawl churn.
                     existing = new Repository { GitHubId = discovered.GitHubId, FirstDiscoveredAtUtc = timeProvider.GetUtcNow() };
                     dbContext.Repositories.Add(existing);

@@ -1,7 +1,7 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v7
+> Version: v13
 > Last updated: 2026-08-03
 > Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
@@ -392,14 +392,20 @@ No running system to verify — this is a documentation output (`docs/design-bri
 
 ## F-010 — Web API
 
-### TC-010-01 (Happy path) — Discovery Feed filters, sorts, and paginates
-1. Seed repositories with varied `PrimaryLanguage`, `StarCount`, `Topics`, `LicenseIdentifier`, and
-   `FirstDiscoveredAtUtc`. Call the Discovery Feed endpoint with a combination of `language`,
-   `minStars`/`maxStars`, `topic`, and `license` filters plus `sort=Newest&direction=Desc`.
+### TC-010-01 (Happy path) — Hidden Gems filters, sorts, and paginates
+Originally exercised via the Discovery Feed endpoint; Discovery Feed was decommissioned 2026-08-03
+(see TC-011-01/TC-011-02) since `GetHiddenGems` already covers the same shared D4 filter/sort/paginate
+contract as a superset — retargeted to Hidden Gems rather than removed, since the underlying
+capability itself didn't go away.
+1. Seed *scored* repositories (Hidden Gems requires at least one `Score` row) with varied
+   `PrimaryLanguage`, `StarCount`, `Topics`, `LicenseIdentifier`, and `FirstDiscoveredAtUtc`. Call the
+   Hidden Gems endpoint with a combination of `language`, `minStars`/`maxStars`, `topic`, and `license`
+   filters plus `sort=Newest&direction=Desc` (overriding its own `Score desc` default).
 2. **Expect:** only repositories matching all supplied facets (AND across facets, OR within a
    multi-value facet) are returned, ordered by `FirstDiscoveredAtUtc` descending, `page`/`pageSize`
    honored (default `pageSize` 24) — satisfies FR-004 and D4 of F-010's Task Packet.
-3. Omit all filters. **Expect:** every repository is returned in default order (`Newest desc`).
+3. Omit all filters, omit `sort`. **Expect:** every repository is returned in Hidden Gems' own default
+   order (`Score desc`).
 
 ### TC-010-02 (Happy path) — Hidden Gems exposes the FR-005 weighted signal breakdown
 1. Seed a scored repository, call the Hidden Gems endpoint.
@@ -408,27 +414,26 @@ No running system to verify — this is a documentation output (`docs/design-bri
    `ScoringWeights` constants (0.18/0.27/0.225/0.225/0.10) and the `TotalScore` — not just a single
    aggregate number. Default sort is `Score desc`.
 
-### TC-010-03 (Happy path) — Trending's contributing repos mirror F-009's own membership rule
-1. Seed repositories matching `AggregateTrendsCommandHandler`'s criteria (scored + summarized,
-   non-null `PrimaryLanguage`) for one category, plus a repo that is scored but not summarized in
-   the same category. Call the Trending endpoint and expand that trend's contributing-repos list.
-2. **Expect:** the scored-but-not-summarized repo is excluded — the read-side membership check is
-   byte-for-byte identical to F-009's own write-side rollup criteria (D3).
+### TC-010-03 (Removed 2026-08-03) — Trending's contributing repos mirror F-009's own membership rule
+This scenario covered `/api/trending`'s contributing-repos membership check, removed along with the
+dashboard's Trending view (see TC-011-04) — nothing else consumed that endpoint, so it was deleted
+entirely rather than kept (unlike `/api/categories`, see TC-010-04). Kept as a removed placeholder
+(ID not reused), same precedent as TC-011-11.
 
-### TC-010-04 (Happy path) — Categories list and drill-down
+### TC-010-04 (Happy path) — Categories list
 1. Seed `TrendAggregate` rows for two categories, call the Categories endpoint.
 2. **Expect:** one entry per distinct category reflecting the latest period's `RepositoryCount`/
-   `AverageScore`.
-3. Call the drill-down endpoint for one category. **Expect:** it returns the same shape as Discovery
-   Feed, scoped to `PrimaryLanguage == category`, with the full D4 filter/sort contract still usable
-   within that scope (D2).
+   `AverageScore`. (This scenario originally also covered a per-category drill-down endpoint; that
+   endpoint, and the dashboard's dedicated Categories tab it backed, were both removed 2026-08-03 —
+   browsing by category is done via Hidden Gems' existing Language filter instead, since Category ≡
+   `Repository.PrimaryLanguage`. Step 3's drill-down assertion is removed accordingly; this endpoint's
+   list behavior is unchanged and still covered above.)
 
 ### TC-010-05 (Happy path) — Bookmark create/list/delete round-trip
 1. Call create-bookmark for a repository, then list-bookmarks, then delete-bookmark for the same
    repository, then list-bookmarks again.
 2. **Expect:** the repository appears in the list after create and is absent after delete; a repo
-   card's `IsBookmarked` flag flips accordingly on the Discovery Feed/Hidden Gems endpoints in
-   between (FR-007).
+   card's `IsBookmarked` flag flips accordingly on the Hidden Gems endpoint in between (FR-007).
 
 ### TC-010-06 (Edge case) — Bookmark idempotency
 1. Call create-bookmark twice in a row for the same repository.
@@ -438,15 +443,15 @@ No running system to verify — this is a documentation output (`docs/design-bri
 4. **Expect:** no error — a defined, documented idempotent response either way.
 
 ### TC-010-07 (Edge case) — Topic filter and repos with no topics
-1. Seed one repository with `Topics` containing a known value and one with an empty `Topics` list.
-   Filter Discovery Feed by that topic value.
+1. Seed one *scored* repository with `Topics` containing a known value and one (also scored) with an
+   empty `Topics` list. Filter Hidden Gems by that topic value.
 2. **Expect:** only the matching repository is returned; the empty-`Topics` repository never matches
    any topic filter and never errors when `Topics` is empty.
 
 ### TC-010-08 (Regression-sensitive) — Score/Commits sort uses the latest score, not the highest ever
 1. Seed a repository with two `Score` rows: an earlier high `TotalScore`/`CommitsPerWeek` and a
-   chronologically later (by `ComputedAtUtc`) lower one. Call Hidden Gems sorted by `Score desc` and
-   Discovery Feed sorted by `Commits desc`.
+   chronologically later (by `ComputedAtUtc`) lower one. Call Hidden Gems sorted by `Score desc`, then
+   again sorted by `Commits desc`.
 2. **Expect:** both use the repository's latest score, not its historical peak — same class of bug
    F-008's `GenerateSummariesCommandHandler` had before its first-round fix (`docs/handoff.md`
    "Important context").
@@ -463,32 +468,51 @@ No running system to verify — this is a documentation output (`docs/design-bri
 2. **Expect:** page 1 returns a full page, page 2 returns exactly one result, and the out-of-range
    page returns an empty result set — never an error.
 
+### TC-010-11 (Happy path) — Hidden Gems card exposes its own category's trend growth
+1. Seed two `TrendAggregate` periods for a category (previous period 50, current period 60), and a
+   scored repository in that category. Call the Hidden Gems endpoint.
+2. **Expect:** the card's `TrendGrowth` is `"▲ +20% vs. last period"` — the same current/previous-
+   period growth formula the old standalone Trending view used to compute per trend card, now
+   computed server-side per repo card instead (added when Trending was merged into Hidden Gems, see
+   TC-011-04's removal note).
+3. Repeat with only one `TrendAggregate` period seeded for the category. **Expect:** `TrendGrowth`
+   falls back to `"{avg} avg score"` (no prior period to diff against).
+4. Repeat with no `TrendAggregate` row at all for the repo's category. **Expect:** `TrendGrowth` is
+   `null` — not a fabricated value.
+
 ---
 
 ## F-011 — Web Dashboard
 
-### TC-011-01 (Happy path) — Four required views render and navigate
-1. Load the dashboard. **Expect:** the default route lands on Discovery Feed; the primary nav has
-   exactly four entries in order (Discovery Feed → Hidden Gems → Trending → Categories); each entry
-   navigates to its own view, all composed from Angular Material components (AC1, FR-009).
+### TC-011-01 (Happy path) — Required view renders, is the default route, and is the whole primary nav
+1. Load the dashboard. **Expect:** the default route lands on Hidden Gems — the dashboard's sole view
+   — composed from Angular Material components (AC1, FR-009); the primary nav has exactly one entry
+   ("Hidden Gems"). (Originally four view entries plus a separate F-012 "Bookmarks" entry: Categories
+   and Trending were removed 2026-08-03, see TC-011-05 and TC-011-04 respectively; Discovery Feed was
+   removed the same day, once Categories/Trending had already folded into Hidden Gems leaving it no
+   meaningfully distinct browsing experience; Bookmarks was removed last, once its dedicated view
+   turned out to be redundant with Hidden Gems' own "Bookmarked only" filter — see TC-012-01.)
 
-### TC-011-02 (Happy path) — Filter/sort controls work end-to-end (Discovery Feed / Hidden Gems)
-1. On Discovery Feed, select a language via the Language facet (`mat-select multiple`), narrow the
-   Star range slider, add a topic via the autocomplete, select a license.
+### TC-011-02 (Happy path) — Filter/sort controls work end-to-end (Hidden Gems)
+Originally exercised on both Discovery Feed and Hidden Gems (steps 1-4 on Discovery Feed, then
+repeated on Hidden Gems); narrowed to Hidden Gems alone now that Discovery Feed is gone (2026-08-03) —
+the filter/sort capability itself is unaffected, only the view exercising it changed.
+1. On Hidden Gems, select a language via the Language facet (`mat-select multiple`), narrow the Star
+   range slider, add a topic via the autocomplete, select a license.
 2. **Expect:** each selection renders as a removable chip in the active-filter `mat-chip-set`; the
-   grid re-fetches from `GET /api/discovery-feed` with the matching `language[]`/`minStars`/
-   `maxStars`/`topic[]`/`license[]` query params (AC2, FR-004).
+   grid re-fetches from `GET /api/hidden-gems` with the matching `language[]`/`minStars`/`maxStars`/
+   `topic[]`/`license[]` query params (AC2, FR-004).
 3. Change the sort control (`mat-button-toggle-group`) and flip the direction icon button.
-   **Expect:** the request's `sort`/`direction` params update and results re-order accordingly.
+   **Expect:** the request's `sort`/`direction` params update and results re-order accordingly
+   (default sort is `Score desc`).
 4. Click "Clear all". **Expect:** all chips disappear and the grid returns to the unfiltered,
-   default-sorted (Newest desc) result set.
-5. Repeat steps 1-4 on Hidden Gems. **Expect:** identical facet/sort behavior, default sort is Score
-   desc, and each card additionally shows the score badge and an expandable "Why this score?"
-   breakdown panel (five signals + weights, sourced from `HiddenGemCardDto.scoreBreakdown`).
+   default-sorted result set. **Expect also:** every card shows the score badge, an expandable "Why
+   this score?" breakdown panel (five signals + weights, sourced from
+   `HiddenGemCardDto.scoreBreakdown`), and a trend-growth chip sourced from
+   `HiddenGemCardDto.trendGrowth` where non-null (see TC-011-13).
 
 ### TC-011-03 (Happy path) — Bookmark toggle, optimistic UI, undo/retry
-1. On any card (Discovery Feed, Hidden Gems, a Category drill-down, or a Trending card's expanded
-   contributing-repo row), click the bookmark toggle.
+1. On any Hidden Gems card, click the bookmark toggle.
 2. **Expect:** the icon flips immediately (optimistic), a `mat-snack-bar` confirms ("Added to
    bookmarks") with an "Undo" action, and `POST /api/repositories/{id}/bookmark` fires.
 3. Click "Undo" on the snack-bar. **Expect:** the icon flips back and `DELETE
@@ -497,19 +521,20 @@ No running system to verify — this is a documentation output (`docs/design-bri
    reverts to its prior state and the snack-bar shows the error variant ("Couldn't save bookmark —
    try again") with a "Retry" action (FR-007).
 
-### TC-011-04 (Happy path) — Trending view renders server order, no client-side re-sort
-1. Seed `TrendAggregate` rows so `/api/trending` returns trends in a specific `AverageScore`-descending
-   order. Load the Trending view.
-2. **Expect:** trends render in exactly the order the API returned (no filter/sort bar present on
-   this view); expanding a trend's `mat-expansion-panel` lists its `contributingRepositories` as
-   rows (name, language, stars, bookmark toggle), matching F-009's own membership rule.
+### TC-011-04 (Removed 2026-08-03) — Trending view renders server order, no client-side re-sort
+This scenario covered the standalone Trending view (per-category trend cards, server-order rendering,
+expandable contributing-repos panel), decommissioned per the operator's direction to merge Trending
+into Hidden Gems — see TC-010-11/TC-011-13 for its replacement (each Hidden Gems card now shows its
+own category's trend growth directly). Kept as a removed placeholder (ID not reused), same precedent
+as TC-011-11.
 
-### TC-011-05 (Happy path) — Categories grid and drill-down
-1. Load Categories. **Expect:** one clickable `mat-card` tile per category (label + repo count).
-2. Click a tile. **Expect:** navigation to `/categories/{category}` renders Discovery Feed's exact
-   card-grid + `mat-paginator` layout, with the category pre-applied as a filter chip and the
-   filter/sort bar otherwise fully usable (additional language/star/topic/license narrowing composes
-   with the pinned category, per D2/D4).
+### TC-011-05 (Removed 2026-08-03) — Categories grid and drill-down
+This scenario covered the standalone Categories tile grid and its Category drill-down route, both
+decommissioned per the operator's direction to remove the Categories tab — Category ≡
+`Repository.PrimaryLanguage`, and that value remains fully filterable via the existing Language
+facet on Hidden Gems (TC-011-02), so no distinct browsing capability was lost. Kept
+as a removed placeholder (ID not reused) rather than deleted outright, matching TC-011-11's own
+precedent for a superseded scenario in this document.
 
 ### TC-011-06 (Edge case) — Empty, loading, and error states
 1. Request a filter combination with zero matches. **Expect:** the centered empty-state `mat-card`
@@ -537,7 +562,7 @@ No running system to verify — this is a documentation output (`docs/design-bri
    change/layout shift.
 
 ### TC-011-09 (Edge case) — Responsive collapse at the 960px breakpoint
-1. Resize the viewport below 960px on Discovery Feed or Hidden Gems.
+1. Resize the viewport below 960px on Hidden Gems.
 2. **Expect:** the primary nav collapses to a bottom floating pill nav (brand-only toolbar); the
    filter/sort bar collapses to a single "Filters · N" button (N = active filter count) that opens a
    `mat-sidenav` containing the same controls the desktop layout shows inline; active filter chips
@@ -545,11 +570,10 @@ No running system to verify — this is a documentation output (`docs/design-bri
 3. Resize back above 960px. **Expect:** both the nav and filter bar return to their desktop layout
    with selection state preserved.
 
-### TC-011-10 (Edge case) — Category name requiring URL encoding
-1. Drill into a category whose name contains characters needing URL encoding (e.g. a space or `+`,
-   such as a `C++`-derived `PrimaryLanguage` value).
-2. **Expect:** the `/categories/{category}/repositories` request encodes the segment correctly and
-   the drill-down resolves to the matching category, not a 404 or a mismatched filter.
+### TC-011-10 (Removed 2026-08-03) — Category name requiring URL encoding
+This scenario covered URL-encoding for the Category drill-down route, removed alongside the rest of
+the Categories tab (see TC-011-05). Kept as a removed placeholder (ID not reused), same precedent as
+TC-011-11.
 
 ### TC-011-11 (Regression-sensitive) — Reserved v2 placeholder is inert
 1. Inspect the primary nav and the filter-bar area.
@@ -575,48 +599,82 @@ No running system to verify — this is a documentation output (`docs/design-bri
    and Node toolchain in the same execution context — same category of gap Phase 1/2/F-010's own
    Integration passes disclosed for their own live-infrastructure checks (`docs/handoff.md`).
 
+### TC-011-13 (Happy path) — Hidden Gems card renders the trend-growth chip
+1. Load Hidden Gems with a card whose `trendGrowth` is non-null (see TC-010-11 for how the API
+   computes it). **Expect:** the card renders a chip with that exact text, styled the same as the old
+   standalone Trending view's own growth chip (added when Trending was merged into Hidden Gems, see
+   TC-011-04's removal note).
+2. Load a card whose `trendGrowth` is `null` (no `TrendAggregate` for its category yet). **Expect:**
+   no chip renders for that card — not an empty/placeholder chip.
+
+### TC-011-14 (Happy path) — Card click opens the repository detail pane (design brief §09)
+1. On Hidden Gems, click a card anywhere except the bookmark toggle, the "Why this score?" panel, or
+   the "Open on GitHub" link.
+2. **Expect:** a right-side drawer opens over the current grid (list keeps its scroll position, per
+   the design brief) showing that repo's full, untruncated AI summary (not clamped to 3 lines like
+   the card), its topics as a chip list (not shown on the compact card at all), its language/license/
+   star/fork chips and trend-growth chip (when present), an "Open on GitHub" link, and an
+   always-expanded five-signal score breakdown identical in content to the card's own "Why this
+   score?" panel (every Hidden Gems item carries a `scoreBreakdown`, so this always renders here).
+3. Click the drawer's close button, or click the dimmed backdrop behind it. **Expect:** the drawer
+   closes and the underlying grid is fully interactive again.
+
+### TC-011-15 (Edge case) — Card's own interactive controls don't also open the detail pane
+1. Click the bookmark toggle on a card. **Expect:** it toggles as usual (TC-011-03) and the detail
+   pane does **not** open.
+2. Expand a Hidden Gems card's "Why this score?" panel. **Expect:** it expands in place and the
+   detail pane does **not** open.
+3. Click a card's "Open on GitHub" link. **Expect:** it navigates (new tab) and the detail pane does
+   **not** open.
+
 ---
 
-## F-012 — Bookmarking (dedicated Bookmarks view)
+## F-012 — Bookmarking
 
-### TC-012-01 (Happy path) — Dedicated Bookmarks view lists bookmarked repos
-1. Bookmark two or three repos from any of the four existing views (Discovery Feed, Hidden Gems,
-   Trending, Categories), then navigate to the new `/bookmarks` route.
-2. **Expect:** the same card-grid layout used elsewhere in the dashboard renders exactly the
-   bookmarked repos, most-recently-bookmarked first (matching `GET /api/bookmarks`'s server-side
-   ordering — `ListBookmarksQueryHandler` orders by each repo's max `Bookmark.CreatedAtUtc` desc).
+Originally titled "Bookmarking (dedicated Bookmarks view)" - that dedicated view was decommissioned
+2026-08-03 (see TC-012-01/02/03/04/06 below), leaving only the bookmark toggle itself (still F-011's
+own feature, TC-011-03) and the "Bookmarked only" filter (TC-011-02, TC-012-05) as F-012's live
+surface.
 
-### TC-012-02 (Happy path) — Nav pill is live, not a ghost
-1. Inspect the primary nav (desktop) and bottom pill nav (narrow viewport).
-2. **Expect:** the "Bookmarks · F-012" dashed, disabled placeholder pill from F-011 (TC-011-11) is
-   gone, replaced by a real "Bookmarks" nav entry that routes to `/bookmarks` and highlights active
-   like the other four entries.
+### TC-012-01 (Removed 2026-08-03) — Dedicated Bookmarks view lists bookmarked repos
+This scenario covered the standalone `/bookmarks` route's own card-grid listing, decommissioned per
+the operator's direction ("i dont think we need the bookmarks tab either since its a filter on the
+hidden gems tab") — accurate: Hidden Gems' existing "Bookmarked only" filter (TC-012-05) surfaces the
+identical set. Kept as a removed placeholder (ID not reused), same precedent as TC-011-11.
 
-### TC-012-03 (Edge case) — Empty bookmarks state
-1. Navigate to `/bookmarks` with zero bookmarks saved.
-2. **Expect:** the shared empty-state treatment (per TC-011-06) renders with bookmarks-specific
-   copy, not the generic "No repositories match these filters" filter-oriented text (there is no
-   filter bar on this view to clear).
+### TC-012-02 (Removed 2026-08-03) — Nav pill is live, not a ghost
+This scenario covered the "Bookmarks" nav entry itself, gone along with the view it routed to. Kept
+as a removed placeholder (ID not reused), same precedent as TC-011-11.
 
-### TC-012-04 (Happy path) — Un-bookmarking from the Bookmarks view removes it immediately
-1. From `/bookmarks`, toggle a card's bookmark off via the existing `BookmarkToggle` control.
-2. **Expect:** the same optimistic toggle + snack-bar Undo/Retry behavior as elsewhere
-   (TC-011-03) — but specific to this view, the card also leaves the grid once the toggle reaches
-   its "off" state (it has no other reason to be listed here), and clicking Undo restores the card
-   to the grid rather than just flipping the toggle's own visual state.
+### TC-012-03 (Removed 2026-08-03) — Empty bookmarks state
+This scenario covered the dedicated view's own bookmarks-specific empty-state copy; with the view
+gone, an empty "Bookmarked only" filter on Hidden Gems now renders the ordinary, already-covered
+TC-011-06 filter-empty state instead (a behavior change, not a gap — there's no longer a
+filter-bar-less view to need different copy for). Kept as a removed placeholder (ID not reused), same
+precedent as TC-011-11.
 
-### TC-012-05 (Regression-sensitive) — Bookmark state stays in sync across views
-1. Bookmark a repo from Discovery Feed, then navigate to `/bookmarks` and confirm it appears.
-2. Remove the bookmark from `/bookmarks`, then navigate back to Discovery Feed (or Hidden Gems /
-   Trending / a Category) and locate the same repo's card.
-3. **Expect:** the card's bookmark toggle reflects the removed state (each view refetches or
-   otherwise reflects current server state on navigation — no stale "still bookmarked" toggle from
-   a cached prior fetch).
+### TC-012-04 (Removed 2026-08-03) — Un-bookmarking from the Bookmarks view removes it immediately
+This scenario covered a behavior specific to the dedicated view (a card leaving the grid on
+un-bookmark, since that view had no other reason to list it). On Hidden Gems, un-bookmarking a card
+while "Bookmarked only" is active removes it from view the same way, via the same underlying
+optimistic-toggle mechanism (TC-011-03) filtered by the existing `bookmarkedOnly` facet - not a
+distinct behavior needing its own scenario. Kept as a removed placeholder (ID not reused), same
+precedent as TC-011-11.
 
-### TC-012-06 (Edge case) — List-fetch error state
-1. Simulate the `GET /api/bookmarks` request failing.
-2. **Expect:** the shared error-state treatment (per TC-011-06) renders with a "Retry" button that
-   re-issues the request — same pattern as the other views, no unhandled exception or blank page.
+### TC-012-05 (Regression-sensitive) — "Bookmarked only" filter reflects current bookmark state
+Originally covered cross-view sync between Hidden Gems and the now-removed dedicated Bookmarks view;
+retargeted in place to the single remaining view now that there's only one (capability persists, only
+the vehicle changed — not marked Removed, same precedent as TC-010-01's Discovery Feed retargeting).
+1. On Hidden Gems, bookmark a repo, then toggle "Bookmarked only" on. **Expect:** the repo appears.
+2. Un-bookmark it from within the filtered view. **Expect:** it disappears from the current result
+   set (its `IsBookmarked` flag flipped, so it no longer matches `bookmarkedOnly=true` on the next
+   fetch) — no stale "still bookmarked" toggle or lingering card from a cached prior fetch.
+
+### TC-012-06 (Removed 2026-08-03) — List-fetch error state
+This scenario covered `GET /api/bookmarks` specifically, an endpoint fully removed along with the
+dedicated view it alone served — Hidden Gems' own request-failure handling (TC-011-06) already covers
+the "Bookmarked only" filter, since it's just another facet on the same endpoint. Kept as a removed
+placeholder (ID not reused), same precedent as TC-011-11.
 
 ---
 
@@ -631,3 +689,8 @@ No running system to verify — this is a documentation output (`docs/design-bri
 | v6 | 2026-08-02 | Added F-011 scenarios (TC-011): four-view navigation, filter/sort end-to-end, bookmark toggle optimistic/undo/retry, Trending server-order rendering, Categories grid/drill-down, loading/empty/error states, pagination-beyond-last-page, "Summary pending" no-layout-jump, 960px responsive collapse (filter bar → sidenav, nav → bottom pills), category-name URL-encoding, reserved F-012/v2 placeholder inertness, and a Manual live-publish smoke test for FR-009 AC3 | Orchestrator drafted this section directly, before dispatching the Integration Agent, per this skill's own Step 0.0 gap-closure pattern (same as v2/v4/v5) — stated explicitly to both the Integration and Reviewer-Integration Agents in their prompts to avoid the misattribution the F-010 run's Reviewer-Integration initially made (`docs/handoff.md` "Important context") |
 | v7 | 2026-08-03 | Added F-012 scenarios (TC-012): dedicated `/bookmarks` view lists bookmarks server-ordered, live nav pill replacing the F-011 ghost placeholder, bookmarks-specific empty state, un-bookmark-removes-card-from-this-view behavior (distinct from the generic toggle check), cross-view bookmark-state sync, and list-fetch error state | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-012 coverage before this feature's Task Packet was generated (same pattern as v2/v4/v5/v6), drafted before dispatching the Developer Agent this time (F-012's Task Packet references these scenarios directly) |
 | v8 | 2026-08-03 | TC-011-11 updated: removed its now-contradicted assertion that the "Bookmarks · F-012" nav pill is present/disabled (F-012 replaced it with a live nav entry — TC-012-02), retitled to "Reserved v2 placeholder is inert", and kept the still-accurate "Search (v2)" inert-placeholder assertion | F-012 Integration pass, retry after Reviewer-Integration flagged the internal TC-011-11/TC-012-02 contradiction |
+| v9 | 2026-08-03 | Categories tab decommissioned: TC-010-04 narrowed to the still-live Categories list endpoint only (drill-down step removed); TC-011-01 narrowed to three required views; TC-011-03/TC-012-01/TC-012-05 no longer mention Categories/a Category drill-down as a card source; TC-011-05 and TC-011-10 marked Removed (IDs kept, not reused, same precedent as TC-011-11) | Operator: "make category a filter and get rid of the category tab" — implemented directly via Claude Code, not an orchestrated run |
+| v10 | 2026-08-03 | Trending tab decommissioned and merged into Hidden Gems: TC-010-03 and TC-011-04 marked Removed (same precedent as TC-011-11/TC-011-05/TC-011-10) — `/api/trending` is fully removed, unlike `/api/categories`; TC-011-01 narrowed to two required views; TC-011-02/TC-011-03/TC-012-01/TC-012-05 no longer mention Trending as a card source or view. New TC-010-11 (backend: `HiddenGemCardDto.TrendGrowth` computation — growth percentage, single-period fallback, null-when-no-data) and TC-011-13 (frontend: the trend-growth chip renders/omits correctly) cover the replacement functionality | Operator: "merge trending, add the trending score to the repo card on the hidden gems and then remove the trending tab as well" — implemented directly via Claude Code, not an orchestrated run |
+| v11 | 2026-08-03 | Discovery Feed tab decommissioned: `/api/discovery-feed` is fully removed, like Trending, since `GetHiddenGems` already covers the same shared D4 contract as a superset. TC-010-01 retargeted from Discovery Feed to Hidden Gems in place (capability persists, only the vehicle changed — not marked Removed, unlike Trending/Categories' own dedicated scenarios which covered feature-specific behavior that's genuinely gone); TC-010-04/05/07/08 no longer mention Discovery Feed. TC-011-01 narrowed to Hidden Gems as the sole required view (Bookmarks called out as a separate, non-FR-009 nav entry); TC-011-02 narrowed to Hidden Gems alone (was: Discovery Feed then repeated on Hidden Gems); TC-011-03/09/TC-012-01/05 no longer mention Discovery Feed as a card source or view | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." — implemented directly via Claude Code, not an orchestrated run |
+| v12 | 2026-08-03 | New TC-011-14 (card click opens the repository detail pane per design brief §09 — full summary, topics, score breakdown) and TC-011-15 (a card's own interactive controls — bookmark toggle, score panel, GitHub link — don't also trigger it) | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" — implemented directly via Claude Code, not an orchestrated run |
+| v13 | 2026-08-03 | F-012's dedicated Bookmarks view decommissioned: TC-012-01/02/03/04/06 marked Removed (same precedent as TC-011-11/05/10/TC-010-03) — the view is gone, its "Bookmarked only" filter equivalent already existed on Hidden Gems; TC-012-05 retargeted in place to that filter (capability persists, same precedent as TC-010-01's Discovery Feed retargeting) rather than marked Removed. TC-011-01 updated: primary nav is now exactly one entry ("Hidden Gems"), not a separate FR-009-views-vs-Bookmarks-nav-entry distinction. TC-011-03/14 no longer mention Bookmarks as a second card source | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" — implemented directly via Claude Code, not an orchestrated run |

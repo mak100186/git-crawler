@@ -10,7 +10,7 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
     // F-010's endpoints are called via HttpClient from RepositoryApiService/CategoryApiService/
-    // TrendingApiService/BookmarkApiService (core/api).
+    // BookmarkApiService (core/api).
     provideHttpClient(),
     // Several approved-design components rely on Angular Material's animation module (mat-select,
     // mat-expansion-panel, mat-slide-toggle, mat-snack-bar, mat-menu overlays) - the async provider

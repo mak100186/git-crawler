@@ -190,4 +190,76 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
         Assert.Empty(result.Items);
         Assert.Equal(1, result.TotalCount);
     }
+
+    [Fact]
+    public async Task Handle_NoTrendAggregateForCategory_TrendGrowthIsNull()
+    {
+        var repository = await AddRepositoryAsync(1, language: "C#");
+        await AddScoreAsync(repository.Id);
+
+        var handler = CreateHandler();
+        var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
+
+        Assert.Null(result.Items.Single().TrendGrowth);
+    }
+
+    [Fact]
+    public async Task Handle_SinglePeriodTrendAggregate_TrendGrowthFallsBackToAverageScore()
+    {
+        var repository = await AddRepositoryAsync(1, language: "C#");
+        await AddScoreAsync(repository.Id);
+        await AddTrendAggregateAsync("C#", periodStart: DateOnly.FromDateTime(DateTime.UtcNow), averageScore: 72.4);
+
+        var handler = CreateHandler();
+        var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
+
+        Assert.Equal("72 avg score", result.Items.Single().TrendGrowth);
+    }
+
+    [Fact]
+    public async Task Handle_TwoPeriodTrendAggregate_TrendGrowthIsPercentChangeVsPreviousPeriod()
+    {
+        var repository = await AddRepositoryAsync(1, language: "C#");
+        await AddScoreAsync(repository.Id);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // Previous period 50, current period 60 - a +20% increase (regression-shaped: the repo's own
+        // category, not some other category, must be the one matched).
+        await AddTrendAggregateAsync("C#", periodStart: today.AddDays(-1), averageScore: 50.0);
+        await AddTrendAggregateAsync("C#", periodStart: today, averageScore: 60.0);
+        await AddTrendAggregateAsync("Go", periodStart: today, averageScore: 10.0);
+
+        var handler = CreateHandler();
+        var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
+
+        Assert.Equal("▲ +20% vs. last period", result.Items.Single().TrendGrowth);
+    }
+
+    [Fact]
+    public async Task Handle_TwoPeriodTrendAggregate_DecliningScore_ShowsDownArrow()
+    {
+        var repository = await AddRepositoryAsync(1, language: "C#");
+        await AddScoreAsync(repository.Id);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        await AddTrendAggregateAsync("C#", periodStart: today.AddDays(-1), averageScore: 80.0);
+        await AddTrendAggregateAsync("C#", periodStart: today, averageScore: 60.0);
+
+        var handler = CreateHandler();
+        var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
+
+        Assert.Equal("▼ -25% vs. last period", result.Items.Single().TrendGrowth);
+    }
+
+    private async Task AddTrendAggregateAsync(string category, DateOnly periodStart, double averageScore, int repositoryCount = 1)
+    {
+        _dbContext.TrendAggregates.Add(new TrendAggregate
+        {
+            Category = category,
+            PeriodStart = periodStart,
+            PeriodEnd = periodStart,
+            RepositoryCount = repositoryCount,
+            AverageScore = averageScore,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await _dbContext.SaveChangesAsync();
+    }
 }

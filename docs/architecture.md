@@ -1,9 +1,9 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v13
-> Last updated: 2026-08-01
-> PRD: docs/prd.md (built against v4)
+> Version: v18
+> Last updated: 2026-08-03
+> PRD: docs/prd.md (built against v6)
 
 ## 1. System Context
 
@@ -98,9 +98,15 @@ read/write shared state, which keeps each stage independently testable and resta
   command/handler slice (ADR-015).
 
 ### Web API
-- **Responsibility:** Serve the Dashboard's queries (feed, hidden gems, trending, categories,
-  filter/sort) and handle bookmark writes, as a self-contained JSON API with no server-rendered
-  view dependencies.
+- **Responsibility:** Serve the Dashboard's queries (hidden gems — including each card's trend
+  growth, computed from TrendAggregate — categories, filter/sort) and handle bookmark writes, as a
+  self-contained JSON API with no server-rendered view dependencies. (Dedicated `/api/trending`,
+  `/api/discovery-feed`, and `/api/bookmarks` GET endpoints existed through 2026-08-03; all three
+  removed the same day their dashboard views were decommissioned — `/api/trending` and
+  `/api/bookmarks`'s list endpoint since nothing else consumed them, `/api/discovery-feed` since
+  Hidden Gems offered no meaningfully distinct browsing experience once Categories and Trending had
+  already folded into it. Bookmark create/delete endpoints stay mapped — the bookmark toggle on every
+  card still needs them.)
 - **Inputs:** HTTP requests from the Dashboard.
 - **Outputs:** JSON responses; bookmark writes to the Data Store.
 - **Dependencies:** Data Store.
@@ -109,8 +115,21 @@ read/write shared state, which keeps each stage independently testable and resta
   (ADR-015).
 
 ### Web Dashboard
-- **Responsibility:** Present the Discovery Feed, Hidden Gems, Trending, and Categories views;
-  filter/sort by language, star range, topic, license; bookmark management.
+- **Responsibility:** Present the Hidden Gems view (the dashboard's sole view); filter/sort by
+  language, star range, topic, license; bookmark management. (The standalone Categories view and its
+  drill-down were removed 2026-08-03 — Repository.PrimaryLanguage, the value Category is defined as,
+  remains fully filterable via the existing Language facet on Hidden Gems, so no browsing capability
+  was lost. The standalone Trending view was likewise removed the same day and merged into Hidden
+  Gems — each card now shows its own category's trend growth directly, computed server-side from
+  TrendAggregate, so a separate view is no longer needed to see the same information. The standalone
+  Discovery Feed view was removed the same way too, later the same day — once Categories and Trending
+  had already folded into Hidden Gems, Discovery Feed no longer offered a meaningfully distinct
+  browsing experience over it. F-012's dedicated Bookmarks view was removed last, the same way again —
+  Hidden Gems' existing "Bookmarked only" filter already surfaces the same repos, so revisiting a
+  bookmarked repo (FR-007) is done from Hidden Gems now, not a separate view. Clicking a card also
+  opens a right-side detail pane — full summary, topics, and score breakdown — fulfilling the
+  dashboard UX design brief's own §09 mockup, which F-011's original
+  implementation had not yet built.)
 - **Inputs:** User interaction; JSON data from the Web API.
 - **Outputs:** Rendered UI; bookmark/filter HTTP requests to the Web API.
 - **Dependencies:** Web API (same-origin HTTP, static files served from the same process).
@@ -157,7 +176,7 @@ the dashboard and receiving the digest.
 | FR-006 | Compose and send a daily email digest of top hidden gems and trends | US-5 | Should |
 | FR-007 | Allow a user to save/bookmark a repository and revisit it later | US-6 | Must |
 | FR-008 | Aggregate discoveries into technology/framework/ecosystem trend summaries | US-7 | Must |
-| FR-009 | Present Discovery Feed, Hidden Gems, Trending, and Categories as distinct dashboard views | US-8 | Must |
+| FR-009 | Present Hidden Gems as the dashboard's repository-browsing view | US-8 | Must |
 
 ## 6. Non-Functional Requirements
 
@@ -216,3 +235,8 @@ the dashboard and receiving the digest.
 | v12 | 2026-08-02 | Crawler's GitHub retry/resilience pathways (rate-limit, generic-transient, and a new permanent-failure case) now expressed via Polly `ResiliencePipeline` instead of a hand-rolled loop (ADR-018, new); Technology Decisions table updated | Live-crawl verification surfaced a permanent GitHub 403 (`torvalds/linux` contributor count) the old catch-all retry loop misclassified as transient |
 | v12 | 2026-08-01 | Risk A2 marked Resolved (§8) — live benchmark run against `google/gemma-4-e4b`, 2.57-2.82s p95 per repo vs. NFR-001's target, see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9 | F-002 spike executed live |
 | v13 | 2026-08-01 | Summarization model changed from Gemma 4 E4B to Llama 3.2 3B Instruct (ADR-017, new, supersedes ADR-013) — the original pin passed throughput but truncated output on reasoning-token overhead; §3 Summarizer, §7 Technology Decisions, and §8 risk A2 updated | Live model comparison, operator decision: "use llama-3.2-3b-instruct" |
+| v14 | 2026-08-03 | Categories removed as a distinct dashboard view: §3 Web Dashboard responsibility and FR-009 now list Discovery Feed, Hidden Gems, and Trending only. Browsing by category is unaffected in substance — Category ≡ Repository.PrimaryLanguage (F-009/F-010), and that value remains fully filterable via the existing Language facet already shared by Discovery Feed/Hidden Gems — only the dedicated tab + drill-down route were decommissioned as redundant. Web API's `/api/categories` endpoint is unchanged (still backs the Language filter's option list) | Operator: "make category a filter and get rid of the category tab on UI and under the hood plumbing" |
+| v15 | 2026-08-03 | Trending removed as a distinct dashboard view: §3 Web Dashboard responsibility and FR-009 now list Discovery Feed and Hidden Gems only. Unlike Categories (v14), this one did change the Web API surface — `/api/trending` is fully removed, not kept — since nothing besides the Trending view ever consumed it; each Hidden Gems card now carries its own category's trend growth computed server-side from the same TrendAggregate data | Operator: "merge trending, add the trending score to the repo card on the hidden gems and then remove the trending tab as well" |
+| v16 | 2026-08-03 | Discovery Feed removed as a distinct dashboard view: §3 Web Dashboard responsibility and FR-009 now name Hidden Gems as the dashboard's sole repository-browsing view (Bookmarks remains a separate, dedicated view per F-012). Like Trending (v15), this changed the Web API surface — `/api/discovery-feed` is fully removed, since `GetHiddenGems` was already the full-featured superset of the shared D4 filter/sort/paginate contract once Categories/Trending had folded away, leaving no distinct capability for Discovery Feed to keep offering | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." |
+| v17 | 2026-08-03 | §3 Web Dashboard responsibility noted a new click-to-open repository detail pane — fulfills the dashboard UX design brief's own §09 mockup (full summary, topics, score breakdown in a right-side drawer), which F-011's original implementation never built; no FR/NFR change, since no Functional Requirement committed to a detail pane in the first place — this is UX polish drawing on an already-approved design element, not new product scope | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" |
+| v18 | 2026-08-03 | F-012's dedicated Bookmarks view removed: §3 Web Dashboard responsibility now names Hidden Gems as the dashboard's sole view; §3 Web API responsibility notes `/api/bookmarks`'s GET (list) endpoint is fully removed too, same as `/api/discovery-feed`/`/api/trending`, since nothing else consumed it — create/delete stay mapped for the bookmark toggle. FR-007 itself is unaffected (still satisfied, now via Hidden Gems' existing "Bookmarked only" filter instead of a dedicated view) | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" |

@@ -16,20 +16,23 @@ interface NavEntry {
   icon: string;
 }
 
-// FR-009's four required views, fixed order (dashboard-ux-brief.md §3 / dashboard-handoff.md §2),
-// plus F-012's "Bookmarks" entry appended last - dashboard-handoff.md fixed the first four's order,
-// this one is new and doesn't reorder them.
-const NAV_ENTRIES: NavEntry[] = [
-  { label: 'Discovery Feed', path: '/discovery-feed', icon: 'home' },
-  { label: 'Hidden Gems', path: '/hidden-gems', icon: 'gem' },
-  { label: 'Trending', path: '/trending', icon: 'trending-up' },
-  { label: 'Categories', path: '/categories', icon: 'layers' },
-  { label: 'Bookmarks', path: '/bookmarks', icon: 'bookmark' },
-];
+// FR-009's required view. The "Categories" entry was removed - browsing by category is done via
+// Hidden Gems' existing Language filter instead (see the changelog entry for this removal). The
+// "Trending" entry was also removed and merged into Hidden Gems - each card there now shows its own
+// category's trend growth directly, so a separate Trending view is no longer needed to see the same
+// information (see the changelog entry for this removal too). The "Discovery Feed" entry was removed
+// as well - it offered no meaningfully distinct browsing experience over Hidden Gems once
+// Categories/Trending had already folded into it (see the changelog entry for this removal). F-012's
+// "Bookmarks" entry was removed last - Hidden Gems' existing "Bookmarked only" filter already
+// surfaces the same repos, so a separate view/nav entry added nothing (see the changelog entry for
+// this removal). A single-entry nav array reads oddly, but keeping the same NAV_ENTRIES-driven
+// rendering rather than special-casing "just show the brand" avoids two code paths for what's really
+// the same shell.
+const NAV_ENTRIES: NavEntry[] = [{ label: 'Hidden Gems', path: '/hidden-gems', icon: 'gem' }];
 
-// App shell (dashboard-handoff.md §2): ink-900 mat-toolbar with the five-entry primary nav, plus an
-// inert reserved slot for the v2 "Search" field so the shell doesn't reflow when that lands (F-012's
-// own "Bookmarks · F-012" reserved slot is gone now that this is a live nav entry, per F-012's own
+// App shell (dashboard-handoff.md §2): ink-900 mat-toolbar with the primary nav, plus an inert
+// reserved slot for the v2 "Search" field so the shell doesn't reflow when that lands (F-012's own
+// "Bookmarks · F-012" reserved slot is gone now that this is a live nav entry, per F-012's own
 // scope). Collapses to a floating bottom pill nav below the 960px breakpoint via CDK
 // BreakpointObserver.
 @Component({

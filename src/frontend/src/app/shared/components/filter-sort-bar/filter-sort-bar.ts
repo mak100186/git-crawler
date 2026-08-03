@@ -61,14 +61,6 @@ interface ActiveChip {
 const STAR_RANGE_MAX = 25000;
 const SORT_OPTIONS: RepositorySortField[] = ['Newest', 'Score', 'Stars', 'Commits'];
 
-// The pinned category chip (Category drill-down) has no remove action by design (Constraints:
-// "non-removable"/"your call, but test whichever behavior you implement" - this feature keeps the
-// category fixed for the lifetime of the drill-down view rather than clearing back to the
-// ungated list). A named no-op instead of an inline `() => {}` at each call site.
-function noRemoveAction(): void {
-  // Intentionally does nothing - see comment above.
-}
-
 // Material's default scroll strategy for mat-select/mat-menu/mat-autocomplete panels is
 // "reposition" - the panel follows its trigger as the page scrolls, rather than closing. That's
 // fine on an ordinary page, but this app's toolbar is `position: sticky`, which only changes
@@ -87,8 +79,9 @@ function closeOnScrollStrategyFactory(): () => ReturnType<typeof createCloseScro
 // Constraints mandate the literal component per facet: Language/License = `mat-select multiple`,
 // Star range = dual-thumb `mat-slider` + synced min/max `mat-form-field` inputs, Topic =
 // `mat-chip-grid` + `mat-autocomplete`, Sort = `mat-button-toggle-group` + a direction
-// `mat-icon-button`, "Bookmarked only" = `mat-slide-toggle`. Shown on Discovery Feed, Hidden Gems,
-// and the Category drill-down; never on Trending (§3/Constraints).
+// `mat-icon-button`, "Bookmarked only" = `mat-slide-toggle`. Shown on Hidden Gems (previously also
+// Discovery Feed, before that standalone view was removed - see the changelog entry for that
+// removal).
 @Component({
   selector: 'app-filter-sort-bar',
   imports: [
@@ -128,9 +121,6 @@ export class FilterSortBar {
   readonly defaultDirection = input.required<SortDirection>();
   readonly showLanguageFilter = input(true);
   readonly showBookmarkedToggle = input(false);
-  // When set (Category drill-down), the category is a forced, non-removable Language facet value -
-  // the language mat-select is hidden and this renders as a pinned chip instead (Constraints).
-  readonly forcedCategory = input<string | null>(null);
   readonly languageOptions = input<string[]>([]);
   readonly licenseOptions = input<string[]>([]);
   readonly topicOptions = input<string[]>([]);
@@ -149,13 +139,11 @@ export class FilterSortBar {
     value >= 1000 ? `${Math.round(value / 1000)}k` : `${value}`;
 
   // linkedSignal seeds from the per-view default input once and is then freely mutable locally -
-  // the defaults (Discovery Feed = Newest/Desc, Hidden Gems = Score/Desc, Category drill-down =
-  // Newest/Desc) never change after a view is routed to, so this behaves as "initialize once".
+  // the default (Hidden Gems = Score/Desc) never changes after a view is routed to, so this
+  // behaves as "initialize once".
   protected readonly sort = linkedSignal(() => this.defaultSort());
   protected readonly direction = linkedSignal(() => this.defaultDirection());
-  protected readonly selectedLanguages = linkedSignal<string[]>(() =>
-    this.forcedCategory() ? [this.forcedCategory()!] : [],
-  );
+  protected readonly selectedLanguages = signal<string[]>([]);
 
   protected readonly selectedLicenses = signal<string[]>([]);
   protected readonly selectedTopics = signal<string[]>([]);
@@ -198,24 +186,14 @@ export class FilterSortBar {
 
   protected readonly activeChips = computed<ActiveChip[]>(() => {
     const chips: ActiveChip[] = [];
-    const category = this.forcedCategory();
 
-    if (category) {
+    for (const language of this.selectedLanguages()) {
       chips.push({
-        key: 'category',
-        label: `category: ${category}`,
-        removable: false,
-        remove: noRemoveAction,
+        key: `lang:${language}`,
+        label: language,
+        removable: true,
+        remove: () => this.toggleLanguage(language),
       });
-    } else {
-      for (const language of this.selectedLanguages()) {
-        chips.push({
-          key: `lang:${language}`,
-          label: language,
-          removable: true,
-          remove: () => this.toggleLanguage(language),
-        });
-      }
     }
 
     if (this.starRangeActive()) {
@@ -346,9 +324,7 @@ export class FilterSortBar {
   // exactly the recovery case that button exists for (Test Expectations: "bookmarkedOnly toggled
   // with zero bookmarks - empty state, not an error").
   clearAll(): void {
-    if (!this.forcedCategory()) {
-      this.selectedLanguages.set([]);
-    }
+    this.selectedLanguages.set([]);
     this.selectedLicenses.set([]);
     this.selectedTopics.set([]);
     this.minStars.set(null);

@@ -12,9 +12,11 @@ import { CategoryApiService } from '../api/category-api.service';
 //    server-side (F-010 D2) - the categories list already is the catalog's distinct-language set.
 //  - License and topic options have no equivalent existing endpoint to piggyback on, so they're
 //    accumulated client-side from every repository card the app has already fetched this session
-//    (discovery feed / hidden gems / category drill-down responses all call recordRepositories()).
-//    This means the option list only grows to cover what's been seen, not the full catalog upfront -
-//    an accepted approximation, called out as a deviation in the Task Packet output.
+//    (hidden gems responses call recordRepositories(); discovery feed and category drill-down did
+//    too before both were removed as standalone views - see the changelog entries for those
+//    removals). This means the option list only grows to cover what's been seen, not the full
+//    catalog upfront - an accepted approximation, called out as a deviation in the Task Packet
+//    output.
 @Injectable({ providedIn: 'root' })
 export class FacetOptionsService {
   private readonly categoryApi = inject(CategoryApiService);

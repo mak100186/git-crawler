@@ -1,38 +1,66 @@
-@if (error()) {
-  <mat-card class="grid-state grid-state--error" appearance="outlined">
-    <mat-icon class="grid-state__icon" svgIcon="alert-circle" />
-    <p class="grid-state__message">Something went wrong loading repositories.</p>
-    <button mat-flat-button color="primary" (click)="retry.emit()">Retry</button>
-  </mat-card>
-} @else if (isFirstLoad()) {
-  <div class="grid-state grid-state--loading">
-    <mat-progress-spinner mode="indeterminate" diameter="48" />
-    <p class="grid-state__message">Loading repositories…</p>
-  </div>
-} @else if (isEmpty()) {
-  <mat-card class="grid-state grid-state--empty" appearance="outlined">
-    <mat-icon class="grid-state__icon" svgIcon="inbox-empty" />
-    <p class="grid-state__message">No repositories match these filters</p>
-    <button mat-stroked-button (click)="clearFilters.emit()">Clear all filters</button>
-  </mat-card>
-} @else {
-  @if (isRefreshing()) {
-    <mat-progress-bar mode="indeterminate" class="repository-grid__refresh-bar" />
-  }
+<mat-drawer-container
+  class="repository-grid-container"
+  hasBackdrop="true"
+  (backdropClick)="closeDetail()"
+>
+  <mat-drawer-content>
+    @if (error()) {
+      <mat-card class="grid-state grid-state--error" appearance="outlined">
+        <mat-icon class="grid-state__icon" svgIcon="alert-circle" />
+        <p class="grid-state__message">Something went wrong loading repositories.</p>
+        <button mat-flat-button color="primary" (click)="retry.emit()">Retry</button>
+      </mat-card>
+    } @else if (isFirstLoad()) {
+      <div class="grid-state grid-state--loading">
+        <mat-progress-spinner mode="indeterminate" diameter="48" />
+        <p class="grid-state__message">Loading repositories…</p>
+      </div>
+    } @else if (isEmpty()) {
+      <mat-card class="grid-state grid-state--empty" appearance="outlined">
+        <mat-icon class="grid-state__icon" svgIcon="inbox-empty" />
+        <p class="grid-state__message">No repositories match these filters</p>
+        <button mat-stroked-button (click)="clearFilters.emit()">Clear all filters</button>
+      </mat-card>
+    } @else {
+      @if (isRefreshing()) {
+        <mat-progress-bar mode="indeterminate" class="repository-grid__refresh-bar" />
+      }
 
-  <div class="repository-grid" [class.repository-grid--refreshing]="isRefreshing()">
-    @for (item of items(); track item.id) {
-      <app-repository-card [repository]="item" [scoreBreakdown]="scoreBreakdownOf(item)" />
+      <div class="repository-grid" [class.repository-grid--refreshing]="isRefreshing()">
+        @for (item of items(); track item.id) {
+          <app-repository-card
+            [repository]="item"
+            [scoreBreakdown]="scoreBreakdownOf(item)"
+            [trendGrowth]="trendGrowthOf(item)"
+            (cardClick)="openDetail(item)"
+          />
+        }
+      </div>
+
+      <mat-paginator
+        class="repository-grid__paginator"
+        [length]="totalCount()"
+        [pageSize]="pageSize()"
+        [pageIndex]="page() - 1"
+        [pageSizeOptions]="[pageSize()]"
+        [showFirstLastButtons]="true"
+        (page)="onPage($event)"
+      />
     }
-  </div>
+  </mat-drawer-content>
 
-  <mat-paginator
-    class="repository-grid__paginator"
-    [length]="totalCount()"
-    [pageSize]="pageSize()"
-    [pageIndex]="page() - 1"
-    [pageSizeOptions]="[pageSize()]"
-    [showFirstLastButtons]="true"
-    (page)="onPage($event)"
-  />
-}
+  <mat-drawer
+    class="repository-grid__detail-drawer"
+    mode="over"
+    position="end"
+    [opened]="selectedItem() !== null"
+    (closedStart)="closeDetail()"
+  >
+    <app-repository-detail-pane
+      [item]="selectedItem()"
+      [scoreBreakdown]="scoreBreakdownOf(selectedItem())"
+      [trendGrowth]="trendGrowthOf(selectedItem())"
+      (closed)="closeDetail()"
+    />
+  </mat-drawer>
+</mat-drawer-container>

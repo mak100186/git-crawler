@@ -57,8 +57,13 @@ export interface ScoreBreakdownDto {
   totalScore: number;
 }
 
+// trendGrowth mirrors the old standalone Trending view's growth chip text for this card's own
+// category ("▲ +18% vs. last period", or "{avg} avg score" when there's no prior period to diff
+// against) - null when the category has no TrendAggregate row yet. Added when the Trending tab was
+// merged into Hidden Gems (see the changelog entry for that removal).
 export interface HiddenGemCardDto extends RepositoryCardDto {
   scoreBreakdown: ScoreBreakdownDto;
+  trendGrowth: string | null;
 }
 
 // Default page size mirrors RepositoryCardQuery.DefaultPageSize (backend) - the Task Packet

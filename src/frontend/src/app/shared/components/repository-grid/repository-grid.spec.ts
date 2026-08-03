@@ -88,4 +88,40 @@ describe('RepositoryGrid', () => {
     });
     expect(emitted).toEqual({ page: 2, pageSize: 24 });
   });
+
+  it("opens the detail drawer with the clicked card's data (design brief §09)", () => {
+    fixture.componentRef.setInput('items', [repo]);
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector('app-repository-card mat-card')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    fixture.detectChanges();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('app-repository-detail-pane')
+        ?.textContent,
+    ).toContain('hello-world');
+  });
+
+  it('closes the drawer when the detail pane emits closed', () => {
+    fixture.componentRef.setInput('items', [repo]);
+    fixture.detectChanges();
+
+    let el = fixture.nativeElement as HTMLElement;
+    el.querySelector('app-repository-card mat-card')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    fixture.detectChanges();
+
+    el = fixture.nativeElement as HTMLElement;
+    el
+      .querySelector('.repo-detail__close')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('app-repository-detail-pane .repo-detail')).toBeNull();
+  });
 });

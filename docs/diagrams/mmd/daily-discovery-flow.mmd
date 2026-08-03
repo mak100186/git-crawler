@@ -37,7 +37,7 @@ sequenceDiagram
     Dig->>SMTP: send digest email
     SMTP-->>User: deliver email
 
-    User->>UI: browse Discovery Feed / Hidden Gems / Trending / Categories
+    User->>UI: browse Hidden Gems
     UI->>API: query repos, scores, summaries, trends
     API->>DB: read
     DB-->>API: results

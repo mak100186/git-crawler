@@ -7,10 +7,7 @@ import { RepositoryFilterCriteria } from '../models/repository.model';
 // `string[]?` parameters (language, topic, license), plain scalars for everything else. Pulled out
 // as a standalone function (no HttpClient dependency) specifically so filter-state -> query-param
 // translation can be unit tested without mocking HTTP (Task Packet Test Expectations).
-export function buildRepositoryQueryParams(
-  filter: RepositoryFilterCriteria,
-  options: { omitLanguage?: boolean } = {},
-): HttpParams {
+export function buildRepositoryQueryParams(filter: RepositoryFilterCriteria): HttpParams {
   let params = new HttpParams()
     .set('sort', filter.sort)
     .set('direction', filter.direction)
@@ -18,9 +15,7 @@ export function buildRepositoryQueryParams(
     .set('pageSize', String(filter.pageSize))
     .set('bookmarkedOnly', String(filter.bookmarkedOnly));
 
-  if (!options.omitLanguage) {
-    params = appendAll(params, 'language', filter.language);
-  }
+  params = appendAll(params, 'language', filter.language);
   params = appendAll(params, 'topic', filter.topic);
   params = appendAll(params, 'license', filter.license);
 

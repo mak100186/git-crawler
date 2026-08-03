@@ -74,9 +74,9 @@ help:
 	@echo "make health   - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
 	@echo "make logs     - tail the app container's logs"
 	@echo ""
-	@echo "Once 'make up' finishes, the web dashboard (F-011 - Discovery Feed, Hidden Gems,"
-	@echo "Trending, Categories) is at http://localhost:$(APP_PORT)/ - it's the Angular build"
-	@echo "served as static assets by the same app container, not a separate service/port."
+	@echo "Once 'make up' finishes, the web dashboard (F-011 - Hidden Gems, Bookmarks) is at"
+	@echo "http://localhost:$(APP_PORT)/ - it's the Angular build served as static assets by the"
+	@echo "same app container, not a separate service/port."
 	@echo ""
 	@echo "'make up' rebuilds the whole app image on every change - fine for a demo/final check,"
 	@echo "slow for active UI/backend iteration. Use 'make dev' instead while actively developing:"
@@ -111,7 +111,7 @@ check-env:
 up: check-env check-docker compose-up check-lmstudio load-model
 	@echo ""
 	@echo "Stack is up:"
-	@echo "  dashboard       -> http://localhost:$(APP_PORT)/ (Discovery Feed, Hidden Gems, Trending, Categories)"
+	@echo "  dashboard       -> http://localhost:$(APP_PORT)/ (Hidden Gems, Bookmarks)"
 	@echo "  app + postgres  -> docker compose (see 'make logs')"
 	@echo "  LM Studio       -> host-installed, model '$(LMSTUDIO_MODEL)' loaded on port $(LMSTUDIO_PORT)"
 

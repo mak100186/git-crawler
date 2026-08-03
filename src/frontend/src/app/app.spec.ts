@@ -23,28 +23,17 @@ describe('App', () => {
     return fixture;
   }
 
-  it('renders the brand and the five primary nav entries in a mat-toolbar on wide viewports', async () => {
+  it('renders the brand and the single primary nav entry in a mat-toolbar on wide viewports', async () => {
     const fixture = await setUp(false);
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.querySelector('mat-toolbar')?.textContent).toContain('GitCrawler');
     const navLinkEls = [...el.querySelectorAll('.app-toolbar__nav-link')];
     const navLinks = navLinkEls.map((n) => n.textContent?.trim());
-    expect(navLinks).toEqual([
-      'Discovery Feed',
-      'Hidden Gems',
-      'Trending',
-      'Categories',
-      'Bookmarks',
-    ]);
-
-    // TC-012-02: the Bookmarks entry is a real, routed link (not a disabled pill) - RouterLink
-    // resolves its own href from the link commands regardless of whether the route is registered in
-    // this test's `provideRouter([])`, so this confirms it's wired to `/bookmarks` rather than inert.
-    expect(navLinkEls[4].getAttribute('href')).toBe('/bookmarks');
+    expect(navLinks).toEqual(['Hidden Gems']);
   });
 
-  it('renders the Search (v2) reserved placeholder, with no reserved Bookmarks pill (TC-012-02)', async () => {
+  it('renders the Search (v2) reserved placeholder, with no reserved Bookmarks pill', async () => {
     const fixture = await setUp(false);
     const el = fixture.nativeElement as HTMLElement;
 
@@ -58,7 +47,7 @@ describe('App', () => {
 
     expect(el.querySelector('.app-toolbar__nav')).toBeNull();
     const bottomLinks = [...el.querySelectorAll('.app-bottom-nav__link')];
-    expect(bottomLinks.length).toBe(5);
+    expect(bottomLinks.length).toBe(1);
 
     // Every link is an <a mat-icon-button> - Angular Material's own base class on the host element
     // (shared by every mat-*-button variant), not a bare anchor with hand-rolled CSS mimicking one.

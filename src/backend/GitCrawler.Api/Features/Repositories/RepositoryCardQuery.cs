@@ -4,11 +4,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Features.Repositories;
 
-// F-010 D4: the filter/sort/pagination contract shared by Discovery Feed, Hidden Gems, and Category
-// drill-down. This is a plain internal helper, not a Wolverine message or a shared service layer -
-// ADR-015's "one slice per operation" governs the message/handler boundary, not whether slices may
-// share ordinary code, so a shared static class here avoids reimplementing the same D4 contract
-// three times.
+// F-010 D4: the filter/sort/pagination contract, used today solely by GetHiddenGems. Originally
+// shared by Discovery Feed, Category drill-down, and ListBookmarks too; all three were later
+// decommissioned as distinct views/endpoints (see the changelog entries for those removals), leaving
+// this helper with a single caller but the same shape - kept as its own class rather than folded
+// into GetHiddenGemsQueryHandler directly, since a future second consumer is exactly the situation
+// that already happened three times before. This is a plain internal helper, not a Wolverine message
+// or a shared service layer - ADR-015's "one slice per operation" governs the message/handler
+// boundary, not whether slices may share ordinary code.
 public enum RepositorySortField
 {
     Newest,
@@ -37,9 +40,13 @@ public sealed record RepositoryFilterCriteria(
 
 public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);
 
-// D5: shared repo-card shape returned by Discovery Feed, Hidden Gems, and Category drill-down.
-// SummaryContent is null when no Summary row exists yet ("summary pending" client-side per the
-// approved design, not an empty string).
+// D5: shared repo-card shape, extended by HiddenGemCardDto (record inheritance) for GetHiddenGems -
+// the base record itself is never returned bare anymore now that ListBookmarks is gone (it used to be
+// this shape's other consumer; see the changelog entry for that removal), but stays as the base type
+// rather than folding its fields directly into HiddenGemCardDto, since a future second consumer of the
+// bare shape is plausible (same reasoning as this file's own header comment). SummaryContent is null
+// when no Summary row exists yet ("summary pending" client-side per the approved design, not an empty
+// string).
 public record RepositoryCardDto(
     int Id,
     string Owner,
@@ -118,8 +125,9 @@ public static class RepositoryCardQuery
     // the candidates are already materialized by ApplyFilters' caller, for the same portability
     // reason those handlers give: this must behave identically on the xUnit suite's SQLite provider
     // and the real Npgsql/Postgres provider. A repo with no Score yet sorts as if Score/Commits were
-    // 0 rather than being dropped from the list - only Hidden Gems requires an actual Score (its own
-    // slice-specific filter), Discovery Feed and Category drill-down do not.
+    // 0 rather than being dropped from the list - Hidden Gems layers its own Scores.Any() filter on
+    // top before ranking (its own slice-specific requirement), so this fallback only ever matters for
+    // other, unscored candidates should a future caller need them.
     //
     // Ties are broken by a stable secondary sort on Repository.Id ascending (F-010 Task Packet's
     // explicit callout that tie-breaking is this feature's judgment call) - deterministic paging
@@ -155,21 +163,6 @@ public static class RepositoryCardQuery
     public static int ClampPage(int page) => Math.Max(page, 1);
 
     public static int ClampPageSize(int pageSize) => Math.Clamp(pageSize, 1, MaxPageSize);
-
-    public static RepositoryCardDto ToCardDto(RankedRepository ranked) => new(
-        ranked.Repository.Id,
-        ranked.Repository.Owner,
-        ranked.Repository.Name,
-        ranked.Repository.Url,
-        ranked.Repository.PrimaryLanguage,
-        ranked.Repository.StarCount,
-        ranked.Repository.ForkCount,
-        ranked.Repository.LicenseIdentifier,
-        ranked.Repository.LicenseName,
-        ranked.Repository.Topics,
-        ranked.Repository.FirstDiscoveredAtUtc,
-        ranked.LatestSummary?.Content,
-        ranked.Repository.Bookmarks.Count > 0);
 
     private static IOrderedEnumerable<T> OrderBy<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, SortDirection direction) =>
         direction == SortDirection.Asc ? source.OrderBy(keySelector) : source.OrderByDescending(keySelector);

@@ -22,6 +22,7 @@ const hiddenGem: HiddenGemCardDto = {
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'A tool.',
   isBookmarked: false,
+  trendGrowth: '▲ +18% vs. last period',
   scoreBreakdown: {
     hasLicense: true,
     licenseType: 'MIT',
@@ -87,6 +88,17 @@ describe('HiddenGems', () => {
 
     expect(fixture.nativeElement.textContent).toContain('hello-world');
     expect(fixture.nativeElement.querySelector('.repo-card__score-badge')).toBeTruthy();
+  });
+
+  it('renders each card\'s trend-growth chip (merged in from the old standalone Trending view)', () => {
+    getHiddenGems.mockReturnValue(of({ items: [hiddenGem], page: 1, pageSize: 24, totalCount: 1 }));
+
+    fixture = TestBed.createComponent(HiddenGems);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.repo-card__trend-chip')?.textContent?.trim()).toBe(
+      '▲ +18% vs. last period',
+    );
   });
 
   it('shows the empty state when there are zero hidden gems', () => {

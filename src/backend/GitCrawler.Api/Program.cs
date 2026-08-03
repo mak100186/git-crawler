@@ -5,17 +5,13 @@ using DotNetEnv;
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Features.Bookmarks.CreateBookmark;
 using GitCrawler.Api.Features.Bookmarks.DeleteBookmark;
-using GitCrawler.Api.Features.Bookmarks.ListBookmarks;
 using GitCrawler.Api.Features.Categories.GetCategories;
-using GitCrawler.Api.Features.Categories.GetCategoryRepositories;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Diagnostics.Ping;
-using GitCrawler.Api.Features.Repositories.GetDiscoveryFeed;
 using GitCrawler.Api.Features.Repositories.GetHiddenGems;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
 using GitCrawler.Api.Features.Trends.AggregateTrends;
-using GitCrawler.Api.Features.Trends.GetTrending;
 
 using Hangfire;
 using Hangfire.Dashboard;
@@ -272,17 +268,24 @@ app.MapHealthChecks("/health");
 
 app.MapPingEndpoint();
 
-// F-010: the Web API's four required dashboard views plus bookmark create/list/delete, all
-// Wolverine command/query slices dispatched via IMessageBus (ADR-015), matching MapPingEndpoint's
-// pattern above.
-app.MapGetDiscoveryFeedEndpoint();
+// F-010: the Web API's required dashboard views plus bookmark create/delete, all Wolverine
+// command/query slices dispatched via IMessageBus (ADR-015), matching MapPingEndpoint's pattern
+// above. GetCategories stays mapped even though the standalone Categories tab is gone (see
+// Program.cs's own history) - it still backs the dashboard's Language filter option list
+// (FacetOptionsService.ensureLanguageOptionsLoaded). GetTrending was removed along with the
+// standalone Trending tab - GetHiddenGemsQueryHandler now computes each card's trend growth
+// directly from TrendAggregate instead of the dashboard fetching a separate trends list.
+// GetDiscoveryFeed was removed along with the standalone Discovery Feed view - Hidden Gems was
+// judged to offer no meaningfully distinct browsing experience once Categories/Trending had
+// already folded into it. ListBookmarks was removed along with the standalone Bookmarks view for
+// the same reason - Hidden Gems' existing "Bookmarked only" filter (FilterSortBar's
+// showBookmarkedToggle) already surfaces the same repos, so Hidden Gems is now the dashboard's
+// only repository-list view. CreateBookmark/DeleteBookmark stay mapped - the bookmark toggle on
+// every card still needs them.
 app.MapGetHiddenGemsEndpoint();
-app.MapGetTrendingEndpoint();
 app.MapGetCategoriesEndpoint();
-app.MapGetCategoryRepositoriesEndpoint();
 app.MapCreateBookmarkEndpoint();
 app.MapDeleteBookmarkEndpoint();
-app.MapListBookmarksEndpoint();
 
 // Serve the Angular production build from wwwroot (populated by `dotnet publish` / the Docker
 // image build - see GitCrawler.Api.csproj's BuildAngularApp/CopyAngularApp targets and

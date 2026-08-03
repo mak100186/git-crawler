@@ -7,11 +7,10 @@ import { Observable } from 'rxjs';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
 
-// FR-007's create/delete collapsed into one idempotent toggle (dashboard-ux-brief.md §6.1). Shared
-// by the repository card (Discovery Feed, Hidden Gems, Category drill-down) and the Trending view's
-// contributing-repo rows, which need the exact same control but don't otherwise share a data shape
-// (TrendingRepositoryDto vs RepositoryCardDto) - hence a standalone component keyed only on
-// repositoryId/isBookmarked rather than living inside the repository-card component.
+// FR-007's create/delete collapsed into one idempotent toggle (dashboard-ux-brief.md §6.1). A
+// standalone component keyed only on repositoryId/isBookmarked, used by the repository card (Hidden
+// Gems - the dedicated Bookmarks view used it too before being removed as a standalone view, see the
+// changelog entry for that removal) rather than living inline inside it.
 @Component({
   selector: 'app-bookmark-toggle',
   imports: [MatButtonModule, MatIconModule, MatTooltipModule],

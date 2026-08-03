@@ -33,18 +33,6 @@ describe('buildRepositoryQueryParams', () => {
     expect(params.getAll('license')).toEqual(['MIT', 'Apache-2.0']);
   });
 
-  it('omits language params when the omitLanguage option is set (Category drill-down)', () => {
-    const params = buildRepositoryQueryParams(
-      { ...baseFilter, language: ['Rust'] },
-      { omitLanguage: true },
-    );
-
-    // Angular's HttpParams.getAll() is documented to return null (not []) when the parameter was
-    // never set at all — appendAll is skipped entirely for `language` when omitLanguage is set, so
-    // the key is absent from `params`, not present-with-zero-values.
-    expect(params.getAll('language')).toBeNull();
-  });
-
   it('only sets minStars/maxStars when present', () => {
     const withoutRange = buildRepositoryQueryParams(baseFilter);
     expect(withoutRange.has('minStars')).toBe(false);

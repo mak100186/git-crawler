@@ -32,14 +32,13 @@ describe('FilterSortBar', () => {
   // app.spec.ts already uses for the primary nav's own breakpoint collapse.
   let breakpointMatches: BehaviorSubject<{ matches: boolean }>;
 
-  function setUp(forcedCategory: string | null = null): void {
+  function setUp(): void {
     fixture = TestBed.createComponent(FilterSortBar);
     component = fixture.componentInstance as unknown as FilterSortBarInternals;
     fixture.componentRef.setInput('defaultSort', 'Newest');
     fixture.componentRef.setInput('defaultDirection', 'Desc');
     fixture.componentRef.setInput('languageOptions', ['TypeScript', 'Rust']);
     fixture.componentRef.setInput('licenseOptions', ['MIT', 'Apache-2.0']);
-    fixture.componentRef.setInput('forcedCategory', forcedCategory);
     emissions = [];
     component.stateChange.subscribe((s: FilterSortState) => emissions.push(s));
     fixture.detectChanges();
@@ -110,19 +109,6 @@ describe('FilterSortBar', () => {
     expect(last.license).toEqual([]);
     expect(last.sort).toBe('Stars');
     expect(last.bookmarkedOnly).toBe(false);
-  });
-
-  it('seeds the forced category as a pinned, non-removable chip and keeps it through clearAll', () => {
-    setUp('Rust');
-
-    const chips = component.activeChips();
-    expect(chips).toEqual([
-      expect.objectContaining({ key: 'category', label: 'category: Rust', removable: false }),
-    ]);
-    expect(component.hasRemovableFilters()).toBe(false);
-
-    component.clearAll();
-    expect(emissions.at(-1)?.language).toEqual(['Rust']);
   });
 
   it('shows the inline facets/sort row on wide viewports and no "Filters · N" trigger', () => {

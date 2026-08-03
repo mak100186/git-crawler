@@ -6,15 +6,10 @@ import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { routes } from './app.routes';
-import { Categories } from './features/categories/categories';
-import { CategoryDetail } from './features/categories/category-detail/category-detail';
-import { DiscoveryFeed } from './features/discovery-feed/discovery-feed';
 import { HiddenGems } from './features/hidden-gems/hidden-gems';
-import { Trending } from './features/trending/trending';
 
-// Routing (Task Packet Test Expectations): default route lands on Discovery Feed; all four nav
-// entries resolve to their view; the Category drill-down route resolves with a category param that
-// may contain characters needing URL encoding.
+// Routing (Task Packet Test Expectations, later narrowed when Discovery Feed was removed as a
+// standalone view - see the changelog entry for that removal): default route lands on Hidden Gems.
 describe('app.routes', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -27,35 +22,17 @@ describe('app.routes', () => {
     });
   });
 
-  it('redirects the default route ("") to Discovery Feed', async () => {
+  it('redirects the default route ("") to Hidden Gems', async () => {
     const harness = await RouterTestingHarness.create();
     const component = await harness.navigateByUrl('/');
 
-    expect(component).toBeInstanceOf(DiscoveryFeed);
+    expect(component).toBeInstanceOf(HiddenGems);
   });
 
-  it('navigates each of the four nav entries to its view', async () => {
-    const cases: [string, unknown][] = [
-      ['/discovery-feed', DiscoveryFeed],
-      ['/hidden-gems', HiddenGems],
-      ['/trending', Trending],
-      ['/categories', Categories],
-    ];
-
-    // RouterTestingHarness.create() throws "Only one harness should be created per test" if called
-    // more than once in the same test - it's designed to be created once and reused across
-    // subsequent navigateByUrl calls (its root RouterOutlet fixture is what gets reused).
+  it('navigates /hidden-gems to its view', async () => {
     const harness = await RouterTestingHarness.create();
-    for (const [path, componentType] of cases) {
-      const component = await harness.navigateByUrl(path);
-      expect(component).toBeInstanceOf(componentType as new (...args: unknown[]) => unknown);
-    }
-  });
+    const component = await harness.navigateByUrl('/hidden-gems');
 
-  it('resolves the category drill-down route with a URL-encoded category segment', async () => {
-    const harness = await RouterTestingHarness.create();
-    const component = await harness.navigateByUrl('/categories/C%2B%2B%20Systems');
-
-    expect(component).toBeInstanceOf(CategoryDetail);
+    expect(component).toBeInstanceOf(HiddenGems);
   });
 });

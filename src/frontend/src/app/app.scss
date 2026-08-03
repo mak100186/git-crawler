@@ -60,8 +60,9 @@
   }
 
   // Reserved slot styling - plain text pill, sized to its own content, no functionality behind it
-  // yet (v2 free-text search). F-012's own "Bookmarks" reserved slot has since become a live nav
-  // entry (see NAV_ENTRIES in app.ts), so this is only used by the Search (v2) placeholder now.
+  // yet (v2 free-text search). F-012's own "Bookmarks" reserved slot briefly became a live nav entry
+  // (see NAV_ENTRIES in app.ts), then that entry itself was removed once the dedicated Bookmarks view
+  // was decommissioned - so this is only used by the Search (v2) placeholder now.
   &__reserved-pill {
     border: 1.5px dashed var(--color-neutral-600);
     border-radius: 999px;

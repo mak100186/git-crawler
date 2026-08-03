@@ -1,0 +1,198 @@
+.repo-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+
+  &__header {
+    background: var(--color-ink-900);
+    color: var(--color-bg);
+    padding: 22px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  &__heading {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__title {
+    font-family: var(--font-display);
+    font-size: 20px;
+  }
+
+  &__subtitle {
+    font-size: 12px;
+    color: var(--color-neutral-300, #c0b6a5);
+    margin-top: 2px;
+  }
+
+  &__bookmark,
+  &__close {
+    flex: none;
+    color: var(--color-bg);
+  }
+
+  &__chips {
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  &__language-chip {
+    background: var(--color-olive-800);
+    color: var(--color-olive-100);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 12.5px;
+  }
+
+  &__license-chip {
+    background: var(--color-neutral-100);
+    color: var(--color-neutral-800);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 11px;
+  }
+
+  &__trend-chip {
+    background: var(--color-olive-800);
+    color: var(--color-olive-100);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  &__stat {
+    font-size: 12px;
+    color: var(--color-neutral-700);
+  }
+
+  &__github-link {
+    margin-left: auto;
+    --mat-filled-button-container-color: var(--color-accent);
+    --mat-filled-button-label-text-color: var(--color-ink-900);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  &__body {
+    flex: 1 1 auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  &__section-label {
+    margin: 0 0 8px;
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--color-neutral-600);
+    font-weight: 600;
+  }
+
+  &__summary {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-ink);
+  }
+
+  &__summary-pending {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--color-neutral-600);
+  }
+
+  &__topics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__topic-chip {
+    background: var(--color-neutral-100);
+    color: var(--color-neutral-800);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 11.5px;
+  }
+
+  &__score-footer {
+    background: var(--color-ink-900);
+    color: var(--color-bg);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  &__score-badge {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__score-value {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 22px;
+  }
+
+  &__score-caption {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-neutral-400, #a99b87);
+  }
+
+  &__score-grid {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+
+  &__score-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__score-row-label {
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-neutral-300, #c0b6a5);
+  }
+
+  &__score-row-value {
+    font-family: var(--font-display);
+    font-size: 14px;
+  }
+
+  &__score-row-caption {
+    font-size: 9px;
+    color: var(--color-neutral-300, #c0b6a5);
+  }
+}

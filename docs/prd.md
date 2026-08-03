@@ -1,8 +1,8 @@
 # PRD: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v4
-> Last updated: 2026-07-28
+> Version: v6
+> Last updated: 2026-08-03
 
 ## Problem Statement
 
@@ -53,7 +53,7 @@ Explicitly out of scope for this version (v1 / MVP) — grouped by *why* they're
 - As a software engineer, I want a daily digest of top hidden gems and emerging trends so that I stay current without actively searching GitHub myself.
 - As a software engineer, I want to save/bookmark repositories I'm interested in so that I can revisit them later.
 - As an engineering leader or developer advocate, I want aggregated trend summaries (e.g. "MCP-related repos are growing") so that I can track where the ecosystem is heading without reading every individual repo.
-- As a user, I want to browse repositories through distinct views (Discovery Feed, Hidden Gems, Trending, Categories) so that I can explore the catalog in the way that matches what I'm looking for.
+- As a user, I want to browse the repository catalog through a single, focused Hidden Gems view so that I don't have to reconcile two near-identical lists, with each hidden gem's own category trend shown right on its card.
 
 ## Success Metrics
 
@@ -88,3 +88,6 @@ Concrete numeric targets for each metric are intentionally left as `[TBD]` — t
 | v2 | 2026-07-28 | Made license, weekly-commit activity, and community health (contributors/forks) explicit scoring signals in Goals, User Stories, and Constraints & Assumptions | Triage edit |
 | v3 | 2026-07-28 | Elaborated Non-Goals with rationale per item, grouped into deferred-future, excluded-by-identity, and scoped-down categories | Triage edit |
 | v4 | 2026-07-28 | Status → APPROVED | Gate approval |
+| v5 | 2026-08-03 | US-8 narrowed: the standalone Categories browsing view was decommissioned (its content — Repository.PrimaryLanguage — is still fully accessible via the existing Discovery Feed/Hidden Gems Language filter, so no discovery capability was actually lost); User Stories now lists Discovery Feed, Hidden Gems, and Trending as the distinct views | Operator: "make category a filter and get rid of the category tab" |
+| v6 | 2026-08-03 | US-8 narrowed again: the standalone Trending view was also decommissioned and merged into Hidden Gems — each repo's own category trend growth now shows directly on its card (no discovery capability lost, same rationale as v5's Categories removal) | Operator: "merge trending, add the trending score to the repo card on the hidden gems and then remove the trending tab as well" |
+| v7 | 2026-08-03 | US-8 narrowed a third time: the standalone Discovery Feed view was decommissioned too — once Categories and Trending had already folded into it, Hidden Gems offered no distinct browsing experience left to differentiate it from Discovery Feed, so the catalog is now browsed through Hidden Gems alone | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." |
