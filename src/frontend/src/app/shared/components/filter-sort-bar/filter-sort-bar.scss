@@ -461,6 +461,20 @@
 .filter-bar__topic-field {
   width: 100%;
 
+  // This field's own outlined border (from the global .mat-mdc-form-field rule) reads as a
+  // "rounded rectangle" rather than a pill once the chip row wraps to more than one line - a
+  // fixed 20px corner radius only looks like a stadium/pill shape when it's ≥ half the box's own
+  // height, which stops being true as this field grows taller than ~40px. The surrounding
+  // .filter-bar__facet-panel--topic card already supplies the surface bg/radius/shadow/border for
+  // this whole panel, so this field's own outline is a redundant second boundary on top of that -
+  // and each individual topic (below) is already its own pill via .mdc-evolution-chip. All three
+  // outline-color states (rest/hover/focus) need covering here, not just the rest-state token,
+  // since a focused chip-input still shows its own border color otherwise (see the earlier hover
+  // border-color work on Stars/Topic's trigger buttons for the same 3-state pattern).
+  --mat-form-field-outlined-outline-color: transparent;
+  --mat-form-field-outlined-hover-outline-color: transparent;
+  --mat-form-field-outlined-focus-outline-color: transparent;
+
   // Same root cause/fix as .filter-bar__facet-select's own infix override above: the default
   // .mat-mdc-form-field-infix padding (16px top/bottom) reserves vertical space for a floating
   // <mat-label> to move into on focus - this field has no <mat-label> (just a plain placeholder
@@ -482,6 +496,13 @@
   ::ng-deep .mdc-evolution-chip-set__chips {
     align-items: center;
   }
+
+  // Now that the field's own outer outline is gone (above), each topic chip needs its own visible
+  // boundary to still read as a distinct pill against the panel's surface background, rather than
+  // relying on Material's own default (unstyled/transparent) chip border.
+  ::ng-deep .mdc-evolution-chip {
+    border: 1px solid var(--color-divider);
+  }
 }
 
 // mat-select's own overlay panel (Language/License) - same panel chrome as the Stars/Topic
@@ -496,6 +517,14 @@
   // (this margin adds to whatever gap Material's own position strategy already computed, it
   // doesn't replace it).
   margin-top: 1px !important;
+  // background already matched Material's own default (--mat-sys-surface-container, pinned to
+  // --color-surface globally) - box-shadow didn't: mat-select ships its own generic 3-layer MDC
+  // elevation shadow (flat black, unrelated to --elevation-lg), so this panel was visibly less
+  // soft/warm than the Stars/Topic panels sitting right next to it, which use --elevation-lg
+  // directly on their own inner div. Pinning both explicitly here keeps all four facet panels
+  // visually identical.
+  background: var(--color-surface) !important;
+  box-shadow: var(--elevation-lg) !important;
   @include filter-bar-scrollbar;
 }
 
@@ -525,9 +554,29 @@
 // main content of its own (only a mat-sidenav child) - collapsing it to zero height keeps it from
 // disturbing the view's normal document flow; the sidenav's own `fixedInViewport` positioning
 // (fixed relative to the viewport) is unaffected by the container's height.
-.filter-bar__sheet-container {
-  height: 0;
-  overflow: visible;
+//
+// The backdrop Material renders alongside the sidenav (mode="over") is a DIFFERENT story: it's
+// `position: absolute` against this same container, not `fixedInViewport` like the sidenav itself
+// - so collapsing the container to height: 0 collapses the backdrop's own box to 0 height right
+// along with it (bottom: 0 relative to a 0-tall containing block still lands at the same y as top:
+// 0). The dimming overlay was rendering with zero visible area, which is why opening the sidenav
+// showed the page underneath un-dimmed and, since nothing was actually covering it, still fully
+// interactive/visible through the gap. Forcing it to position: fixed (matching the sidenav's own
+// fixedInViewport behavior) makes it size against the viewport instead of this container.
+::ng-deep .filter-bar__sheet-container .mat-drawer-backdrop {
+  position: fixed !important;
+}
+
+// Material's own default z-index for mat-drawer (3, both the backdrop and the drawer/sidenav
+// itself) sits below this app's own chrome - app.scss's sticky .app-toolbar and fixed
+// .app-bottom-nav both use z-index: 10 - so the sidenav could render (and its backdrop dim)
+// underneath that chrome instead of above it, depending on scroll position. Raised past 10 here;
+// deliberately still well under the CDK overlay container's own z-index: 1000 (mat-select/mat-menu
+// panels, including the ones opened from facets *inside* this sidenav), which must stay on top of
+// everything, sidenav included.
+::ng-deep .filter-bar__sheet-container .mat-drawer-backdrop,
+.filter-bar__sidenav {
+  z-index: 20 !important;
 }
 
 .filter-bar__sidenav {
