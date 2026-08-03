@@ -15,7 +15,7 @@
 # "unknown flag" style error, run `lms --help` / `lms <subcommand> --help` for your installed
 # version and adjust the recipe - don't assume the tool is broken.
 
-.PHONY: help up down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health
+.PHONY: help up dev down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health
 
 # On Windows, GNU Make normally picks its recipe shell by searching the invoking process's PATH
 # for sh.exe. That search succeeds from a Git Bash session (which adds Git's own bin dirs to PATH
@@ -66,7 +66,8 @@ APP_PORT ?= 8080
 
 help:
 	@echo "make up      - check Docker, start docker compose (app+postgres), check/start LM Studio, load the model"
-	@echo "make down    - stop docker compose (app+postgres); LM Studio on the host is left running"
+	@echo "make dev     - fast local inner loop: Postgres in Docker + LM Studio on host, app run bare (no rebuild-per-change)"
+	@echo "make down    - stop docker compose (app+postgres, or just postgres if 'make dev' was used); LM Studio on the host is left running"
 	@echo "make status  - show whether Docker, Compose services, and LM Studio are up"
 	@echo "make health  - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
 	@echo "make logs    - tail the app container's logs"
@@ -74,6 +75,10 @@ help:
 	@echo "Once 'make up' finishes, the web dashboard (F-011 - Discovery Feed, Hidden Gems,"
 	@echo "Trending, Categories) is at http://localhost:$(APP_PORT)/ - it's the Angular build"
 	@echo "served as static assets by the same app container, not a separate service/port."
+	@echo ""
+	@echo "'make up' rebuilds the whole app image on every change - fine for a demo/final check,"
+	@echo "slow for active UI/backend iteration. Use 'make dev' instead while actively developing:"
+	@echo "it only containerizes Postgres, and you run the backend/frontend bare so both hot-reload."
 	@echo ""
 	@echo "Override LMSTUDIO_MODEL, LMSTUDIO_PORT, LMSTUDIO_CONTEXT_LENGTH as needed, e.g.:"
 	@echo "  make up LMSTUDIO_MODEL=<catalog-identifier>   (run 'lms ls' to see what's downloaded)"
@@ -107,6 +112,46 @@ up: check-env check-docker compose-up check-lmstudio load-model
 	@echo "  dashboard       -> http://localhost:$(APP_PORT)/ (Discovery Feed, Hidden Gems, Trending, Categories)"
 	@echo "  app + postgres  -> docker compose (see 'make logs')"
 	@echo "  LM Studio       -> host-installed, model '$(LMSTUDIO_MODEL)' loaded on port $(LMSTUDIO_PORT)"
+
+# Fast inner loop for active development: only Postgres runs in Docker (the one piece that's
+# genuinely infra, not app code); the backend and frontend run bare on the host so both get instant
+# reload on save instead of a full `docker compose up -d --build` (Angular npm ci + build, .NET
+# publish, image rebuild) per change. This isn't new plumbing - Program.cs already bridges .env into
+# a `localhost:$$POSTGRES_PORT` connection string when it detects it's not running under Compose
+# (see its top-of-file comments), and src/frontend/proxy.conf.json + angular.json's `serve` target
+# already proxy /api/* to the backend's dev port - both exist for exactly this. `make dev` only adds
+# the missing piece: starting Postgres (+ LM Studio, since summarization needs it) without also
+# building/starting the `app` container, then pointing at the two commands to run it bare.
+#
+# Doesn't launch the backend/frontend itself: two long-running watch processes need two terminals
+# for visible logs and a clean Ctrl+C each, which isn't something a single `make` recipe can give
+# you portably - so this hands you the exact commands instead of backgrounding them itself.
+dev: check-env check-docker
+	@docker compose up -d postgres
+	@echo "Waiting for Postgres to become healthy..."
+	@i=0; \
+	until docker compose ps postgres 2>/dev/null | grep -q healthy; do \
+		i=$$((i+2)); \
+		if [ $$i -ge $(DOCKER_WAIT_SECS) ]; then \
+			echo "Postgres did not become healthy within $(DOCKER_WAIT_SECS)s. Check 'docker compose logs postgres'."; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done
+	@$(MAKE) check-lmstudio load-model
+	@echo ""
+	@echo "Dependencies are up (Postgres in Docker, LM Studio on host). Run these in two separate"
+	@echo "terminals for the fast local dev loop - both hot-reload on save, no container rebuild:"
+	@echo ""
+	@echo "  backend:   cd src/backend/GitCrawler.Api && dotnet watch run --launch-profile http"
+	@echo "  frontend:  cd src/frontend && npm start"
+	@echo ""
+	@echo "Dashboard  -> http://localhost:4200/ (Angular dev server; proxies /api/* to the backend)"
+	@echo "Backend API-> http://localhost:5073/ (direct, no proxy)"
+	@echo ""
+	@echo "If the 'app' container from 'make up' is still running, stop it first (make down) -"
+	@echo "otherwise it and the bare backend will both be processing the same Postgres data."
+	@echo "When done: make down (stops whatever Compose has running - just postgres here)."
 
 # --- Docker ---------------------------------------------------------------
 

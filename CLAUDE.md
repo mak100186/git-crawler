@@ -30,6 +30,16 @@ Requires a `make` binary and, on Windows, Git for Windows installed at its defau
 `Makefile` forces its recipe shell to Git for Windows' bundled `bash.exe` there, so `make up` works
 the same from PowerShell, `cmd.exe`, or Git Bash.
 
+**Iterating on UI/backend code (e.g. a round of CSS/template fixes): use `make dev`, not `make
+up`.** `make up` rebuilds the whole app image (Angular build + .NET publish + Docker image) on every
+change, which is slow for a tight edit-verify loop. `make dev` starts only Postgres in Docker, then
+prints the commands to run the backend (`dotnet watch run` in `src/backend/GitCrawler.Api`) and
+frontend (`npm start` in `src/frontend`) bare — both hot-reload on save. The dashboard is then at
+`http://localhost:4200/` (proxying `/api/*` to the bare backend on `:5073` via
+`src/frontend/proxy.conf.json`), not `:8080`. Stop `make up`'s `app` container first if it's
+running (`make down`) — otherwise it and the bare backend both process the same Postgres data. See
+docs/setup.md §3a for the full explanation.
+
 ## Build / test commands
 
 Backend (`src/backend/`):

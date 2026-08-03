@@ -111,6 +111,39 @@ make up LMSTUDIO_MODEL=<identifier>
 
 Run `lms ls` first if you're not sure of the exact identifier for what you have downloaded.
 
+## 3a. Faster inner loop for active development
+
+`make up` rebuilds the whole app image (Angular `npm ci`+build, .NET publish, Docker image build)
+on every change — fine for a demo or final check, slow if you're iterating on UI or backend code.
+For active development, run:
+
+```bash
+make dev
+```
+
+This starts only Postgres in Docker (the one genuinely-infra piece) plus LM Studio on the host, and
+prints the two commands to run the backend and frontend bare, each in its own terminal, so both
+hot-reload on save instead of waiting on a container rebuild:
+
+```bash
+# terminal 1
+cd src/backend/GitCrawler.Api && dotnet watch run --launch-profile http
+
+# terminal 2
+cd src/frontend && npm start
+```
+
+The dashboard is then at `http://localhost:4200/` (Angular's own dev server — `ng serve`), which
+proxies every `/api/*` call through to the backend at `http://localhost:5073/`
+(`src/frontend/proxy.conf.json`, wired into `angular.json`'s `serve` target). The backend itself
+picks up `localhost:$POSTGRES_PORT` for its connection string when it detects it isn't running
+under Compose (see the top of `Program.cs`) — no separate config needed, it reads the same `.env`
+`make up` does.
+
+If `make up`'s `app` container is still running from an earlier session, stop it first
+(`make down`) — otherwise it and the bare backend end up processing the same Postgres data
+concurrently (duplicate crawls, duplicate Hangfire jobs).
+
 ## 4. Verify
 
 ```bash
