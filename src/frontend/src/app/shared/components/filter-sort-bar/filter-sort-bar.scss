@@ -227,6 +227,13 @@
     }
   }
 
+  // mat-button (text appearance) reads its label font from --mat-button-text-label-text-font, not
+  // a plain `font-family` - same token/reasoning as app.scss's own __nav-link, which every other
+  // Caprasimo-labeled control in this app already goes through instead of the M3 default.
+  &__clear-all {
+    --mat-button-text-label-text-font: var(--font-display);
+  }
+
   &__sort-row {
     display: flex;
     align-items: center;

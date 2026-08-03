@@ -1,8 +1,10 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
+import { createCloseScrollStrategy } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
   Component,
   ElementRef,
+  Injector,
   computed,
   inject,
   input,
@@ -14,6 +16,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
+  MAT_AUTOCOMPLETE_SCROLL_STRATEGY,
   MatAutocompleteModule,
   MatAutocompleteSelectedEvent,
 } from '@angular/material/autocomplete';
@@ -23,8 +26,8 @@ import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatSelectModule } from '@angular/material/select';
+import { MAT_MENU_SCROLL_STRATEGY, MatMenuModule } from '@angular/material/menu';
+import { MAT_SELECT_SCROLL_STRATEGY, MatSelectModule } from '@angular/material/select';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
@@ -66,6 +69,20 @@ function noRemoveAction(): void {
   // Intentionally does nothing - see comment above.
 }
 
+// Material's default scroll strategy for mat-select/mat-menu/mat-autocomplete panels is
+// "reposition" - the panel follows its trigger as the page scrolls, rather than closing. That's
+// fine on an ordinary page, but this app's toolbar is `position: sticky`, which only changes
+// paint order, not the trigger button's actual layout position - so once a facet button scrolls
+// up underneath the sticky toolbar, "reposition" faithfully recalculates the panel's position
+// relative to that now-hidden-behind-the-toolbar trigger, landing the panel in the same screen
+// region. Its overlay z-index (1000, CDK's own default) is far above the toolbar's, so it paints
+// over the toolbar instead of behind it. Closing on scroll instead avoids the whole class of
+// glitch, and is the more common pattern for dropdown-style panels like these anyway.
+function closeOnScrollStrategyFactory(): () => ReturnType<typeof createCloseScrollStrategy> {
+  const injector = inject(Injector);
+  return () => createCloseScrollStrategy(injector);
+}
+
 // FR-004's filter/sort bar (dashboard-ux-brief.md §5, dashboard-handoff.md §3). Task Packet
 // Constraints mandate the literal component per facet: Language/License = `mat-select multiple`,
 // Star range = dual-thumb `mat-slider` + synced min/max `mat-form-field` inputs, Topic =
@@ -89,6 +106,11 @@ function noRemoveAction(): void {
     MatSidenavModule,
     MatSliderModule,
     MatSlideToggleModule,
+  ],
+  providers: [
+    { provide: MAT_MENU_SCROLL_STRATEGY, useFactory: closeOnScrollStrategyFactory },
+    { provide: MAT_SELECT_SCROLL_STRATEGY, useFactory: closeOnScrollStrategyFactory },
+    { provide: MAT_AUTOCOMPLETE_SCROLL_STRATEGY, useFactory: closeOnScrollStrategyFactory },
   ],
   templateUrl: './filter-sort-bar.html',
   styleUrl: './filter-sort-bar.scss',
