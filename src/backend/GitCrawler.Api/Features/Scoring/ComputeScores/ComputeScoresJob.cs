@@ -27,7 +27,9 @@ public class ComputeScoresJob(IMessageBus messageBus, GenerateSummariesJob summa
 {
     public async Task RunAsync(PerformContext context)
     {
-        await messageBus.InvokeAsync(new ComputeScoresCommand());
+        // Typed InvokeAsync<ComputeScoresResult>, not the bare object overload - see
+        // AggregateTrendsJob.RunAsync's comment for why the bare overload logs a routing warning.
+        await messageBus.InvokeAsync<ComputeScoresResult>(new ComputeScoresCommand());
 
         continuationLink.AttachAfter(context.BackgroundJob.Id, summarizationJob);
     }

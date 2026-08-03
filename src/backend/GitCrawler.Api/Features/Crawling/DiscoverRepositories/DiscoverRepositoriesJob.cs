@@ -33,7 +33,9 @@ public class DiscoverRepositoriesJob(IMessageBus messageBus, ComputeScoresJob sc
 {
     public async Task RunAsync(PerformContext context)
     {
-        await messageBus.InvokeAsync(new DiscoverRepositoriesCommand());
+        // Typed InvokeAsync<DiscoverRepositoriesResult>, not the bare object overload - see
+        // AggregateTrendsJob.RunAsync's comment for why the bare overload logs a routing warning.
+        await messageBus.InvokeAsync<DiscoverRepositoriesResult>(new DiscoverRepositoriesCommand());
 
         continuationLink.AttachAfter(context.BackgroundJob.Id, scoringJob);
     }

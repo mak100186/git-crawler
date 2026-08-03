@@ -30,7 +30,9 @@ public class GenerateSummariesJob(IMessageBus messageBus, AggregateTrendsJob tre
 {
     public async Task RunAsync(PerformContext context)
     {
-        await messageBus.InvokeAsync(new GenerateSummariesCommand());
+        // Typed InvokeAsync<GenerateSummariesResult>, not the bare object overload - see
+        // AggregateTrendsJob.RunAsync's comment for why the bare overload logs a routing warning.
+        await messageBus.InvokeAsync<GenerateSummariesResult>(new GenerateSummariesCommand());
 
         continuationLink.AttachAfter(context.BackgroundJob.Id, trendsJob);
     }

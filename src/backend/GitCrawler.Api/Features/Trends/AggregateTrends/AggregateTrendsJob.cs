@@ -22,7 +22,12 @@ namespace GitCrawler.Api.Features.Trends.AggregateTrends;
 // docs/handoff.md, not something this feature chains into speculatively.
 public class AggregateTrendsJob(IMessageBus messageBus)
 {
-    public Task RunAsync() => messageBus.InvokeAsync(new AggregateTrendsCommand());
+    // Typed InvokeAsync<AggregateTrendsResult>, not the bare object overload: HandleAsync returns a
+    // result record, and Wolverine treats a handler's return value as a cascading outgoing message
+    // unless the call is a typed request/reply - with no subscriber for AggregateTrendsResult, the
+    // bare overload logs "No routes can be determined for Envelope" on every run. The typed overload
+    // captures the reply locally instead of trying to route it.
+    public Task RunAsync() => messageBus.InvokeAsync<AggregateTrendsResult>(new AggregateTrendsCommand());
 }
 
 // Same extraction-point rationale as ISummarizationContinuationLink/IScoringContinuationLink (see

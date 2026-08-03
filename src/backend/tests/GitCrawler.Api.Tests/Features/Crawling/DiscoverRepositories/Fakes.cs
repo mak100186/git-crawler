@@ -101,26 +101,28 @@ internal class FakeTrendsContinuationLink : ITrendsContinuationLink
 }
 
 // Hand-rolled fake for Wolverine's IMessageBus (no mocking library is referenced in this test
-// project - see the other fakes in this file for the same pattern). Only InvokeAsync(object, ...)
-// is exercised by DiscoverRepositoriesJob; every other member of this fairly large interface
-// throws if called, so a test would fail loudly instead of silently passing on the wrong overload.
+// project - see the other fakes in this file for the same pattern). Only the typed
+// InvokeAsync<T>(object, ...) is exercised by DiscoverRepositoriesJob (see that class's own comment
+// for why it's the typed overload, not the bare object one); every other member of this fairly
+// large interface throws if called, so a test would fail loudly instead of silently passing on the
+// wrong overload.
 internal class FakeMessageBus : IMessageBus
 {
     public List<object> InvokedMessages { get; } = [];
 
     public string? TenantId { get; set; }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
-    {
-        InvokedMessages.Add(message);
-        return Task.CompletedTask;
-    }
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
+        throw new NotSupportedException();
 
     public Task InvokeAsync(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        InvokedMessages.Add(message);
+        return Task.FromResult(default(T)!);
+    }
 
     public Task<T> InvokeAsync<T>(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();

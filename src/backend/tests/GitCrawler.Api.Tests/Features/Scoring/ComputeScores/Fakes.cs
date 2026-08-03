@@ -46,8 +46,9 @@ internal class FakeTrendsContinuationLink : ITrendsContinuationLink
 }
 
 // Hand-rolled fake for Wolverine's IMessageBus - same pattern as the Crawling feature's own local
-// copy (Features/Crawling/DiscoverRepositories/Fakes.cs). Only InvokeAsync(object, ...) is
-// exercised by ComputeScoresJob/GenerateSummariesJob; every other member throws if called, so a
+// copy (Features/Crawling/DiscoverRepositories/Fakes.cs). Only the typed InvokeAsync<T>(object, ...)
+// is exercised by ComputeScoresJob/GenerateSummariesJob (see those classes' own comments for why
+// it's the typed overload, not the bare object one); every other member throws if called, so a
 // test would fail loudly instead of silently passing on the wrong overload.
 internal class FakeMessageBus : IMessageBus
 {
@@ -55,17 +56,17 @@ internal class FakeMessageBus : IMessageBus
 
     public string? TenantId { get; set; }
 
-    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
-    {
-        InvokedMessages.Add(message);
-        return Task.CompletedTask;
-    }
+    public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
+        throw new NotSupportedException();
 
     public Task InvokeAsync(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotSupportedException();
+    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+    {
+        InvokedMessages.Add(message);
+        return Task.FromResult(default(T)!);
+    }
 
     public Task<T> InvokeAsync<T>(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();

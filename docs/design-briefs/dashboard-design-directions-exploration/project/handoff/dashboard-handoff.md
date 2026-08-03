@@ -108,6 +108,30 @@ router link to drill-down.
 (filter bar + card grid + paginator) with the topic chip pre-applied and removable
 (`topic: mcp-servers ✕`). No separate list component.
 
+## 5b. Repository detail pane (screen 09)
+
+Clicking anywhere on a card except its bookmark/GitHub controls opens a **`mat-drawer`
+(`position="end"`, `mode="over"`, 560px)** over the current view — the list keeps scroll position and
+filter state; no route change beyond a `?repo=<id>` query param so the pane is deep-linkable.
+
+- **Sticky header** (ink-900): 52px avatar · repo name Caprasimo 24px · “owner · discovered {rel}” ·
+  bookmark `mat-icon-button` (terracotta-400 when set) · close `mat-icon-button`. Second row:
+  olive language tag, license chip (14% cream tint), stars, forks, and a terracotta
+  **Open on GitHub** `mat-raised-button` with `open_in_new`.
+- **Body** (scrollable, 20px gaps): *AI summary* — 14px/1.6 full text (not clamped), with
+  “Generated {rel}” beneath; renders the same “Summary pending” placeholder when
+  absent. *Activity* and *Topics* — two
+  `mat-card`s side by side: commits/week, contributors, open issues, last commit; topic chips are
+  clickable and apply that topic filter to the feed behind.
+- **Sticky score bar** (bottom, ink-900, full width of the drawer): 62px terracotta score circle
+  labelled “Gem score” + the same five weighted signal columns as the Gems expansion panel (one
+  shared component). Always visible while the body scrolls.
+- Bookmark and close are the two `mat-icon-button`s at the top right of the header — there is no
+  footer action bar.
+- **Keyboard/a11y:** Esc closes; focus traps in the drawer and returns to the
+  originating card on close; `role="dialog"` + `aria-labelledby` on the repo name.
+- **Narrow viewport:** same drawer at 100% width, header close button becomes a back arrow.
+
 ## 6. Cross-view states (§3, screen 06)
 
 - First load: centered `mat-progress-spinner` (terracotta) + “Loading repositories…”.
