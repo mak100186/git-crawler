@@ -1,7 +1,61 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 7
-> Last updated: 2026-08-02
+> Revision: 8
+> Last updated: 2026-08-03
+
+## Revision 8 — 2026-08-03 — F-012 (Bookmarking), run as a standalone slice of Phase 3; Phase 3 complete
+
+**Changes:**
+- **F-012 (Bookmarking)** — a dedicated `/bookmarks` view (`src/frontend/src/app/features/bookmarks/`)
+  and a live "Bookmarks" nav entry (5th, after Categories) replacing F-011's inert "Bookmarks · F-012"
+  ghost pill. Bookmark create/toggle and backend CRUD already shipped inside F-010/F-011's own scope —
+  this feature's entire delta is the ability to *revisit* bookmarked repos from their own page. Lists
+  results via F-010's existing `GET /api/bookmarks` (unpaginated, server-ordered most-recent-first,
+  passed straight through with no client re-sort), rendered through the existing `RepositoryGrid`
+  (Loading/Error/Populated states reused unmodified; a locally-rendered empty state supplies
+  bookmarks-specific copy since `RepositoryGrid`'s own empty state is hardcoded to filter-oriented
+  text). `BookmarkApiService.listBookmarks()` added; `addBookmark`/`removeBookmark` untouched.
+- **Un-bookmarking from this view removes the card, Undo restores it — via a component-scoped DI
+  override, not a shared-component change.** `BookmarkToggle`, `RepositoryCard`, and `RepositoryGrid`
+  were all off-limits (existing F-011 code this feature only consumes). A private
+  `BookmarkChangeApiService` inside `bookmarks.ts` delegates every call to the real
+  `BookmarkApiService` via Angular's `skipSelf` injection while tapping confirmed add/remove calls
+  over an internal `Subject`, scoped to this component's own injector only. Reviewer independently
+  traced the injector wiring (not just the summary) before passing it.
+- **Modules/files affected**: `src/frontend/src/app/features/bookmarks/` (new — `.ts`/`.html`/
+  `.scss`/`.spec.ts`), `src/frontend/src/app/app.routes.ts` (new lazy `bookmarks` route),
+  `src/frontend/src/app/app.ts`/`app.html`/`app.spec.ts` (live nav entry, ghost pill removed),
+  `src/frontend/src/app/core/api/bookmark-api.service.ts` (`listBookmarks()` added). No backend
+  changes — F-010's API was consumed, not modified.
+- **Breaking changes**: none.
+- **Integration round 1 FAILed on a pre-existing, unrelated `npm audit` finding** (6 moderate
+  vulnerabilities in a devDependency chain via `@angular/cli`'s tooling, introduced by an earlier,
+  separate commit adding Playwright/`make dev` — not by F-012, which touches no `package.json`).
+  Reviewer-Integration's round-1 FAIL correctly caught two legitimately-in-scope documentation-drift
+  fixes Integration had deferred instead of making, plus asked for verification of an inconsistency
+  claim against F-011 that turned out, on checking git history, not to actually exist (F-011's own
+  finalization predates the vulnerable dependency's introduction). Integration's retry fixed both doc
+  drifts directly and carried the corrected `npm audit` finding forward as PM-007 (a human decision on
+  a breaking `@angular/cli` bump, not something to force through Integration) — round 2 PASSed.
+- **Documentation**: `docs/project-management.md` v22 (F-012 → Done, Phase 3 → Done, PM-007 added,
+  PM-006 noted-not-resolved); `docs/test-cases.md` v7 (new F-012 section, TC-012-01 through
+  TC-012-06) and v8 (TC-011-11 corrected — its "ghost pill present" assertion contradicted the new
+  TC-012-02, retitled to "Reserved v2 placeholder is inert"); `docs/test-runbook.md` (new F-012
+  section; existing F-011 step corrected to match the now-live nav entry); `docs/handoff.md` (this
+  session).
+- **Graphify**: incremental `--update` over `src`, 17 changed files (13 code + 4 Angular templates).
+  Graph grew 1445→1500 nodes, 2262→2349 edges, 114→125 communities.
+
+**Smoke tests** (see `docs/test-runbook.md` F-012 section for full steps):
+1. **Happy path**: bookmark 2-3 repos from any existing view, navigate to `/bookmarks` — they render,
+   most-recently-bookmarked first, matching the API's own order.
+2. **Edge case**: navigate to `/bookmarks` with zero bookmarks — bookmarks-specific empty-state copy
+   renders, not the generic filter-oriented "No repositories match these filters" text.
+3. **Regression-sensitive**: un-bookmark a card from `/bookmarks` — it leaves the grid immediately;
+   click Undo on the snack-bar — it's restored; navigate away and back to confirm the removal actually
+   persisted server-side (not just a local UI flip).
+
+---
 
 ## Revision 7 — 2026-08-02 — F-011 (Web Dashboard), run as a standalone slice of Phase 3; post-hoc `core/services` split
 

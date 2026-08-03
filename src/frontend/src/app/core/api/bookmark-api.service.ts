@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { BookmarkDto } from '../models/bookmark.model';
+import { RepositoryCardDto } from '../models/repository.model';
 
 // POST/DELETE are both idempotent server-side (F-010) - safe to call repeatedly without checking
 // current state first, which is what makes the optimistic toggle + Undo flow (bookmark-toggle
@@ -17,5 +18,11 @@ export class BookmarkApiService {
 
   removeBookmark(repositoryId: number): Observable<void> {
     return this.http.delete<void>(`/api/repositories/${repositoryId}/bookmark`);
+  }
+
+  // Mirrors ListBookmarksResult (F-012) - already ordered most-recently-bookmarked first server-side
+  // and not paginated (no D4-style filter/sort/page contract for this endpoint).
+  listBookmarks(): Observable<{ repositories: RepositoryCardDto[] }> {
+    return this.http.get<{ repositories: RepositoryCardDto[] }>('/api/bookmarks');
   }
 }

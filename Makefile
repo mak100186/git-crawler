@@ -15,7 +15,7 @@
 # "unknown flag" style error, run `lms --help` / `lms <subcommand> --help` for your installed
 # version and adjust the recipe - don't assume the tool is broken.
 
-.PHONY: help up dev down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health
+.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health
 
 # On Windows, GNU Make normally picks its recipe shell by searching the invoking process's PATH
 # for sh.exe. That search succeeds from a Git Bash session (which adds Git's own bin dirs to PATH
@@ -65,12 +65,14 @@ LMSTUDIO_WAIT_SECS ?= 30
 APP_PORT ?= 8080
 
 help:
-	@echo "make up      - check Docker, start docker compose (app+postgres), check/start LM Studio, load the model"
-	@echo "make dev     - fast local inner loop: Postgres in Docker + LM Studio on host, app run bare (no rebuild-per-change)"
-	@echo "make down    - stop docker compose (app+postgres, or just postgres if 'make dev' was used); LM Studio on the host is left running"
-	@echo "make status  - show whether Docker, Compose services, and LM Studio are up"
-	@echo "make health  - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
-	@echo "make logs    - tail the app container's logs"
+	@echo "make up       - check Docker, start docker compose (app+postgres), check/start LM Studio, load the model"
+	@echo "make dev      - fast local inner loop: Postgres in Docker + LM Studio on host, app run bare (no rebuild-per-change)"
+	@echo "make backend  - run the backend bare in the foreground (dotnet watch run) - no Docker check, stays running until Ctrl+C"
+	@echo "make frontend - run the frontend bare in the foreground (npm start) - no Docker check, stays running until Ctrl+C"
+	@echo "make down     - stop docker compose (app+postgres, or just postgres if 'make dev' was used); LM Studio on the host is left running"
+	@echo "make status   - show whether Docker, Compose services, and LM Studio are up"
+	@echo "make health   - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
+	@echo "make logs     - tail the app container's logs"
 	@echo ""
 	@echo "Once 'make up' finishes, the web dashboard (F-011 - Discovery Feed, Hidden Gems,"
 	@echo "Trending, Categories) is at http://localhost:$(APP_PORT)/ - it's the Angular build"
@@ -152,6 +154,19 @@ dev: check-env check-docker
 	@echo "If the 'app' container from 'make up' is still running, stop it first (make down) -"
 	@echo "otherwise it and the bare backend will both be processing the same Postgres data."
 	@echo "When done: make down (stops whatever Compose has running - just postgres here)."
+
+# `make dev` prints these same two commands rather than running them itself, since two long-running
+# watch processes need two terminals for visible logs and a clean Ctrl+C each - these targets are
+# that shortcut for whichever half you want in its own terminal, one `make` command instead of a
+# `cd` + the raw command. Deliberately no check-docker/check-env/check-lmstudio dependency: `make
+# dev` already owns bringing Postgres/LM Studio up, so these two just run the process and stay
+# attached to this terminal until Ctrl+C - the same as typing the bare command yourself, just
+# shorter. Run `make dev` first (once) so Postgres/LM Studio are actually there to connect to.
+backend:
+	cd src/backend/GitCrawler.Api && dotnet watch run --launch-profile http
+
+frontend:
+	cd src/frontend && npm start
 
 # --- Docker ---------------------------------------------------------------
 

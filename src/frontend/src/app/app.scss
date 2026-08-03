@@ -34,11 +34,18 @@
   // !important needed.
   &__nav-link {
     border-radius: 999px;
+    // The --mat-button-text-label-text-color custom property alone doesn't reliably win against
+    // Material's own internal color declaration on .mat-mdc-button - setting color directly (with
+    // !important, matching this app's established pattern in styles.scss for the same class of
+    // Material override) guarantees the unselected links actually render light-on-dark instead of
+    // falling back to the inherited near-black --color-ink from body's own color.
+    color: #fff !important;
     --mat-button-text-label-text-color: var(--color-neutral-300, #c0b6a5);
     --mat-button-text-label-text-font: var(--font-display);
 
     &--active {
       background: var(--color-accent);
+      color: var(--color-ink) !important;
       --mat-button-text-label-text-color: var(--color-ink);
     }
   }
@@ -52,8 +59,9 @@
     pointer-events: none;
   }
 
-  // Shared by both reserved slots (Bookmarks and Search) - plain text pills, sized to their own
-  // content, no functionality behind either yet (F-012 and v2 free-text search respectively).
+  // Reserved slot styling - plain text pill, sized to its own content, no functionality behind it
+  // yet (v2 free-text search). F-012's own "Bookmarks" reserved slot has since become a live nav
+  // entry (see NAV_ENTRIES in app.ts), so this is only used by the Search (v2) placeholder now.
   &__reserved-pill {
     border: 1.5px dashed var(--color-neutral-600);
     border-radius: 999px;

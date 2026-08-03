@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011 so far)
+> Last updated: 2026-08-03
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -457,8 +457,10 @@ that the isolated component/unit tests pass.
    back above 960px. **Expect:** both return to desktop layout with selection state preserved.
 3. Drill into a category whose name needs URL encoding (e.g. a `C++`-derived language). **Expect:**
    the request encodes correctly and resolves to the matching category, not a 404 (TC-011-10).
-4. Inspect the nav and filter-bar area. **Expect:** a visibly disabled "Bookmarks · F-012" nav pill
-   and a disabled "Search (v2)" field are present but inert — clicking either does nothing
+4. Inspect the nav and filter-bar area. **Expect:** the "Bookmarks" nav entry is a live, routable
+   link to `/bookmarks` and highlights active like the other four entries — the disabled
+   "Bookmarks · F-012" ghost pill this step originally described was replaced by F-012 (TC-012-02).
+   The disabled "Search (v2)" field is still present and inert — clicking it does nothing
    (TC-011-11).
 
 ### Regression-sensitive — live build-and-serve smoke test (FR-009 AC3, TC-011-12)
@@ -493,6 +495,63 @@ that the isolated component/unit tests pass.
    migration). This is the legitimate F-010 migration catching up, not a schema change introduced by
    this Integration pass; no data was altered beyond the new columns' defaults (`Topics = '{}'`,
    `FirstDiscoveredAtUtc = -infinity`), consistent with PM-006's already-documented backfill gap.
+
+---
+
+## F-012 — Bookmarking
+
+Automated coverage for every scenario below lives in
+`src/frontend/src/app/features/bookmarks/bookmarks.spec.ts` and `src/frontend/src/app/app.spec.ts`
+(61 Vitest specs total as of this Integration pass, all passing — see `docs/test-cases.md`'s F-012
+section for the full TC-012-01 through TC-012-06 scenario text). Bookmark create/toggle itself is
+F-011's own feature (see that section above) — this section covers only what F-012 added: the
+dedicated `/bookmarks` view and its live nav entry.
+
+### Happy path — Bookmarks view lists bookmarked repos, most-recent-first
+1. `make up`, then open `http://localhost:8080/` in a browser.
+2. Bookmark two or three repos from any of Discovery Feed, Hidden Gems, Trending, or a Category
+   drill-down, using the existing bookmark toggle on each card.
+3. Click the "Bookmarks" nav entry (5th, after Categories). **Expect:** navigates to `/bookmarks`;
+   the same card-grid layout used elsewhere renders exactly the repos just bookmarked, with the
+   most-recently-bookmarked one first (TC-012-01).
+
+### Happy path — nav entry is live, not the old ghost pill
+1. Inspect the primary nav (desktop) and the bottom pill nav (narrow viewport, below 960px).
+2. **Expect:** a real "Bookmarks" entry is present in both, routes to `/bookmarks`, and highlights
+   active the same way the other four entries do. The dashed, disabled "Bookmarks · F-012" pill that
+   used to occupy this slot (F-011, TC-011-11) is gone (TC-012-02).
+
+### Edge case — empty bookmarks state
+1. Navigate to `/bookmarks` with zero bookmarks saved (or remove all existing ones first).
+2. **Expect:** an empty-state card renders with bookmarks-specific copy ("You haven't bookmarked any
+   repositories yet" or equivalent) — not the generic, filter-oriented "No repositories match these
+   filters" text used elsewhere, since there's no filter bar on this view to clear (TC-012-03).
+
+### Happy path — un-bookmarking from this view removes the card, Undo restores it
+1. From `/bookmarks`, click a card's bookmark toggle to remove it.
+2. **Expect:** the same optimistic-flip + snack-bar confirm/Undo behavior as everywhere else, but
+   specific to this view the card also leaves the grid immediately (it has no other reason to be
+   listed here) (TC-012-04).
+3. Click "Undo" on the snack-bar. **Expect:** the card reappears in the grid, not just the toggle
+   icon flipping back.
+4. Navigate away (e.g. to Discovery Feed) and back to `/bookmarks`. **Expect:** the removal (if not
+   undone) persisted server-side — the card stays gone after a fresh fetch, confirming the DI-override
+   pattern (`BookmarkChangeApiService` in `bookmarks.ts`) genuinely calls through to the real
+   `DELETE /api/repositories/{id}/bookmark` endpoint rather than only updating local state.
+
+### Regression-sensitive — bookmark state stays in sync across views
+1. Bookmark a repo from Discovery Feed, confirm it appears at `/bookmarks`.
+2. Remove the bookmark from `/bookmarks`, then navigate to Discovery Feed (or wherever the same repo
+   is visible) and check its card's bookmark toggle. **Expect:** it reflects the removed state — no
+   stale "still bookmarked" icon from a cached prior fetch (TC-012-05). **Note:** verified via code
+   trace during this Integration pass (no `RouteReuseStrategy` is registered, so every view refetches
+   on `ngOnInit`) rather than a dedicated automated test — no caching layer exists to introduce
+   staleness, but this hasn't been exercised as a live click-through end-to-end.
+
+### Edge case — list-fetch error state
+1. Simulate the `GET /api/bookmarks` request failing (stop the backend, or block the network tab).
+2. **Expect:** the same centered error-state card used elsewhere, with a "Retry" button that
+   re-issues the request (TC-012-06).
 
 ---
 
@@ -540,3 +599,10 @@ that the isolated component/unit tests pass.
   server-order, and "no layout shift" are implementation-reviewed but not independently
   automated-test-asserted) and the pre-existing `daily-discovery-flow.mmd` staleness above — neither
   is new to this pass.
+- F-012's Integration Agent environment did not run a live browser session (would require the full
+  `make up`/Docker/Postgres stack, out of scope for that pass) — all 6 TC-012 scenarios above were
+  verified via the automated Vitest suite (61/61 passing) plus direct code tracing, not a live
+  click-through. An operator should run this section's steps against a real `make up` stack at least
+  once, particularly step 4 of the "un-bookmarking removes the card" scenario (confirming the removal
+  genuinely persisted server-side via the `BookmarkChangeApiService` DI-override path, not just local
+  state) and the cross-view sync check, before treating F-012 as fully live-verified.

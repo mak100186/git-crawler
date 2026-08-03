@@ -1,8 +1,91 @@
 # Handoff: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-02
+> Last updated: 2026-08-03
 
 ## What was done
+
+**F-012 (Bookmarking) is Done — Phase 3 is now complete** (F-010, F-011, F-012 all `Done`), run as a
+standalone, single-feature slice via `orchestrator-development-pattern` (same pattern as the prior
+F-010/F-011 runs). F-011's own operative detail has been moved to "F-011 handoff" below now that this
+run supersedes it.
+
+- **F-012** (Bookmarking) — PASS on the first Developer/Reviewer attempt; Integration initially FAILed
+  (round 1), reached PASS on retry (round 2). Bookmark create/toggle and backend CRUD had already
+  shipped inside F-010/F-011's own scope — this feature's actual delta was narrow: a dedicated
+  `/bookmarks` route (`features/bookmarks/{bookmarks.ts,html,scss,spec.ts}`), a live "Bookmarks" nav
+  entry replacing F-011's inert ghost pill (`app.ts`/`app.html`/`app.spec.ts`), and
+  `BookmarkApiService.listBookmarks()` reading F-010's existing `GET /api/bookmarks` (unpaginated,
+  server-ordered most-recent-first — passed straight through, no client re-sort).
+- **Un-bookmarking from this view removes the card, Undo restores it — implemented without touching
+  any shared component.** `BookmarkToggle`/`RepositoryCard`/`RepositoryGrid` were all explicitly
+  off-limits (existing, working F-011 code this feature only consumes). The Task Packet's suggested
+  approach (listen to `BookmarkToggle`'s `bookmarkedChange` output) turned out not to be reachable —
+  neither `RepositoryCard` nor `RepositoryGrid` forwards that output. Solved instead with a
+  component-scoped Angular DI override: a private `BookmarkChangeApiService` inside `bookmarks.ts`
+  that delegates every call to the real `BookmarkApiService` via `skipSelf` while tapping confirmed
+  add/remove calls over an internal `Subject`, provided only within this component's own injector so
+  it's invisible to every other view. Reviewer independently traced the actual injector wiring (not
+  just the Developer's summary) and confirmed it resolves correctly in both production and the spec's
+  mock-provider pattern before passing it.
+- **Empty state and pagination handled as two more local, non-invasive workarounds**: `RepositoryGrid`
+  hardcodes filter-oriented empty copy with no override input, so `bookmarks.ts` computes the same
+  `isEmptyState` condition internally and renders its own minimal empty-state card only for that one
+  state (Loading/Error/Populated still route through the real `RepositoryGrid`). Since
+  `GET /api/bookmarks` returns everything unpaginated, `RepositoryGrid`'s paginator is fed the full
+  array with `pageSize`/`totalCount` sized to the list length — present in the DOM but functionally a
+  single inert page, simplest of the two Task-Packet-sanctioned options.
+- **Reviewer** — PASS on the first review. Independently re-read the actual diff (not just the
+  Developer's summary) and specifically verified the DI-decorator pattern's injector wiring, confirming
+  all 6 of `docs/test-cases.md`'s new TC-012 scenarios were genuinely covered by the new/updated spec
+  files.
+- **Integration — round 1 FAILed on a pre-existing, unrelated issue; Reviewer-Integration correctly
+  pushed back; round 2 PASSed.** Integration's round-1 report found all code/test gates green (backend
+  121/121, frontend 61/61) but reported Overall Status FAIL solely due to 6 moderate `npm audit`
+  findings in a devDependency chain (`@hono/node-server` via `@modelcontextprotocol/sdk` via
+  `@angular/cli`'s tooling), plus flagged-but-deferred two documentation-drift items. Reviewer-
+  Integration's round-1 FAIL made three points: (1) it initially *claimed* this was inconsistent with
+  F-011 having passed with "the same issue" (asked for verification, didn't just assert it); (2) the
+  test-runbook drift fix was actually in Integration's own scope, not a legitimate defer; (3) the
+  test-cases-doc internal inconsistency needed resolving, not just flagging. The Orchestrator
+  independently checked git history before the retry (`git log`/`git diff` on `package.json`/
+  `package-lock.json`) and found commit `8387b4e` ("added playwright, make dev...") introduced the
+  vulnerable dependency **after** F-011's own finalization commit — so Reviewer-Integration's inference
+  was a reasonable but factually wrong guess, not a confirmed precedent violation; there was no actual
+  F-011/F-012 inconsistency to resolve. Integration's retry fixed the two legitimately-in-scope doc
+  drifts directly (`docs/test-runbook.md`'s stale F-011 step, `docs/test-cases.md`'s TC-011-11 vs
+  TC-012-02 contradiction — see Documentation drift below) and carried the corrected npm-audit finding
+  forward as an explicit Unresolvable Issue (now PM-007) rather than blocking Finalization on a
+  breaking `@angular/cli` version-bump decision that isn't F-012's to make. Reviewer-Integration
+  round 2 independently re-read the actual post-fix file contents (not just the quoted diffs) before
+  reversing to PASS.
+- **Documentation drift found and fixed this run**: `docs/test-cases.md` extended to v7 with a new
+  `F-012 — Bookmarking` section (TC-012-01 through TC-012-06), drafted by the Orchestrator *before*
+  dispatching the Developer (same Step 0.0 gap-closure precedent as every prior feature run, stated
+  explicitly to both Integration and Reviewer-Integration this time to avoid F-010's earlier
+  misattribution). During the Integration retry, `docs/test-cases.md`'s existing TC-011-11 was also
+  corrected — its "Bookmarks · F-012 pill is present/disabled" assertion directly contradicted the new
+  TC-012-02 ("pill is gone, replaced by a live entry") in the same document; retitled to "Reserved v2
+  placeholder is inert" and narrowed to just the still-accurate Search (v2) assertion (v8 row added to
+  that doc's own Version History). `docs/test-runbook.md`'s existing F-011 manual step was corrected
+  the same way (it still instructed the operator to expect the disabled ghost pill). PMBook F-012 row
+  `Planned` → `Done` (v22); Phase 3 → `Done`. New PM-007 open item added for the carried-forward `npm
+  audit` finding (dev-only, pre-existing, needs a human call on a breaking `@angular/cli` bump).
+- **Graphify** — one incremental pass this run, `--update` scoped to `src`. 17 new/changed files (13
+  code + 4 Angular `.html` templates), not code-only so the full AST + one semantic-subagent-chunk
+  pipeline ran (the 4 templates only needed one chunk). Graph grew **1445→1500 nodes**, **2262→2349
+  edges**, **114→125 communities**. Community labels generated from each community's dominant source
+  path (`Features/<Area>/<Slice>` for backend, `frontend <folder>` for frontend), same heuristic as
+  every prior run.
+- New/changed docs this run: `docs/project-management.md` v22, `docs/test-cases.md` v7 (F-012 section)
+  and v8 (TC-011-11 correction, same file), `docs/test-runbook.md` (new F-012 section + F-011 step
+  correction), `docs/changelog.md` (this session's revision bump), `docs/handoff.md` (this file).
+
+All of it is uncommitted in the working tree as of this handoff — the Orchestrator does not run git
+commands; see **Commit Messages** in this session's final response for what to run.
+
+---
+
+## F-011 handoff (superseded by the above, kept for history)
 
 **F-011 (Web Dashboard) is Done**, run as a standalone, single-feature slice of Phase 3 via
 `orchestrator-development-pattern` — scoped to F-011 alone (same pattern as the prior F-010 run), so
@@ -383,7 +466,8 @@ All of it was uncommitted at the time this Phase 1 handoff was originally writte
 
 The platform now has a working, self-hosted, end-to-end **crawl → score → summarize → aggregate
 trends** pipeline, a JSON Web API surfacing it, and a live Angular dashboard consuming that API —
-all four pipeline stages still chained via Hangfire `RecurringJob` + `ContinueJobWith`:
+all four pipeline stages still chained via Hangfire `RecurringJob` + `ContinueJobWith`. **Phase 3
+(Dashboard, API, and bookmarking) is now fully Done.**
 
 | Layer | State |
 |---|---|
@@ -394,18 +478,14 @@ all four pipeline stages still chained via Hangfire `RecurringJob` + `ContinueJo
 | Summarizer | LM Studio + Llama 3.2 3B Instruct via `IRepositorySummarizer`; unchanged this run |
 | Trend Aggregator | Rolls up scored+summarized repos by `PrimaryLanguage` into `TrendAggregate` rows; unchanged this run |
 | Web API | F-010, unchanged this run: 8 Wolverine slices serving Discovery Feed, Hidden Gems, Trending, Categories (+ drill-down), and bookmark create/list/delete |
-| **Web Dashboard** | **New (F-011)**: Angular 22 SPA, live at `/` once `make up` is running — Discovery Feed (default route), Hidden Gems, Trending, Categories (+ drill-down at `/categories/{category}`), filter/sort/bookmark all functional end-to-end against F-010; approved "Ink Header" visual design applied; responsive below 960px; `src/frontend/src/app/core/{api,facets,icons}/` (post-refactor structure, was `core/services/`) |
+| Web Dashboard | F-011, unchanged this run: Angular 22 SPA, live at `/` once `make up` is running — Discovery Feed (default route), Hidden Gems, Trending, Categories (+ drill-down); approved "Ink Header" visual design; responsive below 960px |
+| **Bookmarks view** | **New (F-012)**: dedicated `/bookmarks` route, live "Bookmarks" nav entry (5th, after Categories) — lists bookmarked repos most-recent-first via F-010's `GET /api/bookmarks`, reuses `RepositoryGrid`; un-bookmarking removes the card, Undo restores it |
 | Postgres persistence | Bind-mounted to `./data/postgres`; unchanged this run |
-| Test harness | 121 xUnit backend tests + **57 Vitest frontend tests (new)**, all passing; `npm audit --omit=dev` and `dotnet list package --vulnerable` both clean (6 moderate frontend *dev*-only vulnerabilities noted, see Important Context) |
-| Docs | `docs/test-cases.md` (v6) and `docs/test-runbook.md` cover Phase 0-2 + F-010 + F-011; `docs/project-management.md` v21, F-011 → Done, Phase 3 still `Planned` (F-012 not started) |
+| Test harness | 121 xUnit backend tests + **61 Vitest frontend tests** (was 57, +4 for F-012), all passing; `npm audit --omit=dev` and `dotnet list package --vulnerable` both clean (6 moderate frontend *dev*-only vulnerabilities carried forward as PM-007, see Important Context) |
+| Docs | `docs/test-cases.md` (v7/v8) and `docs/test-runbook.md` cover Phase 0-3 in full (F-010, F-011, F-012); `docs/project-management.md` v22, Phase 3 → Done |
 
-Still nothing exists yet for: bookmarking's dedicated management view (F-012) — bookmark
-create/toggle/list-via-filter already works end-to-end through F-011's "Bookmarked only" toggle and
-per-card icons, but a standalone bookmarks-management page (bulk-remove, notes, its own nav entry)
-is explicitly F-012's scope, not built here (the nav even ships a disabled "Bookmarks · F-012" ghost
-pill reserving the spot). No backend work happened this run — F-011 was frontend-only, per its own
-Task Packet scope; the one production code fix (`MatInputModule`) was Integration-owned frontend
-work, not a backend change.
+No backend work happened this run — F-012 was frontend-only, per its own Task Packet scope
+(F-010's `GET /api/bookmarks` already existed and was consumed unmodified).
 
 A live database check before Phase 2 started (operator request) found the Crawler's discovery
 query is functioning but only ever surfaces very-high-star repos (18.7K-453K stars across all 1,002
@@ -419,42 +499,48 @@ not anything F-010/F-011 touched.
 
 ## What's next
 
-1. **F-012 (Bookmarking) is next** — its two dependencies (F-010 API, F-011 Dashboard) are both
-   Done. F-011 already ships bookmark create/toggle and a "Bookmarked only" filter view within the
-   four existing views (per F-018's brief), so F-012's remaining scope is specifically a dedicated
-   bookmarks-management view (its own nav entry, replacing the reserved ghost "Bookmarks · F-012"
-   pill) and whatever bulk-management affordances its own Acceptance Criteria call for. Invoke
-   `orchestrator-development-pattern` scoped to F-012 the same way this run was scoped to F-011
-   alone — this closes out Phase 3 (F-010/F-011/F-012 all Done).
-2. **PM-006, still open**: F-010's two new `Repository` columns have no backfill for pre-existing
-   rows — `Topics` self-heals on the next re-crawl, but `FirstDiscoveredAtUtc` does not (set-once by
-   design) and permanently sorts old repos as "oldest" under Discovery Feed's now-live default
-   Newest sort. This is no longer a theoretical future concern — F-011's Discovery Feed is the real
-   UI a user will actually look at. Decide: a one-time backfill script, or accept as a permanent v1
-   wrinkle.
-3. **F-010's live-E2E verification gap is now closed** — F-011's Integration pass ran `dotnet
-   publish` for real and confirmed the dashboard serves correctly from the ASP.NET Core host,
-   closing what the F-010 handoff had left open. F-011's *own* three testing-depth gaps (TC-011-03's
-   literal Undo-click-through, TC-011-04's exact server-order-preservation assertion, TC-011-08's
-   visual no-layout-shift check) remain code-reviewed-but-not-automated — see
-   `docs/test-runbook.md`'s F-011 section for the manual steps that cover them; not blocking, but
-   worth automating if this dashboard sees heavier iteration.
-4. **Close the live-E2E verification gap from Phase 2, still open**: LM Studio could not be started
+1. **Phase 3 is complete — Phase 4 (Digest Service, Observability) is next.** F-013 (Digest Service)
+   and F-014 (Observability) are both `Planned`, `Should` priority. F-013 depends on F-007/F-009
+   (both Done); F-014 depends on F-005/F-006/F-007/F-008/F-009 (all Done) and can proceed
+   incrementally. Invoke `orchestrator-development-pattern` scoped to Phase 4 (or one feature at a
+   time, same pattern as every Phase 3 run) when ready to start.
+2. **PM-007, new this run**: `src/frontend`'s devDependency tree has 6 moderate `npm audit`
+   vulnerabilities (path traversal in `@hono/node-server`, reachable via `@modelcontextprotocol/sdk`
+   → `@angular/cli`), introduced by commit `8387b4e` (added Playwright/`make dev` tooling), confirmed
+   dev-only and unrelated to any feature's own diff. The only fix (`npm audit fix --force`) forces a
+   breaking `@angular/cli` downgrade (22.x → 21.0.4) — needs an explicit human decision on toolchain
+   compatibility risk before applying it.
+3. **PM-006, still open, worth a quick verification pass**: F-010's two new `Repository` columns had
+   no backfill for pre-existing rows as of F-011's close. A migration named
+   `20260802091937_BackfillFirstDiscoveredAtUtc` now exists in
+   `src/backend/GitCrawler.Api/Data/Migrations/` — it wasn't authored by this F-012 run and its
+   content/application status wasn't verified as part of F-012's scope. Confirm it actually backfills
+   `FirstDiscoveredAtUtc` correctly and has been applied, then close PM-006 for real rather than
+   carrying it forward indefinitely.
+4. **F-010's live-E2E verification gap is closed** (confirmed again this run, unchanged) — F-011's
+   Integration pass ran `dotnet publish` for real and confirmed the dashboard serves correctly from
+   the ASP.NET Core host. F-011's *own* three testing-depth gaps (TC-011-03's literal Undo-click-
+   through, TC-011-04's exact server-order-preservation assertion, TC-011-08's visual no-layout-shift
+   check) remain code-reviewed-but-not-automated — see `docs/test-runbook.md`'s F-011 section for the
+   manual steps that cover them; not blocking, but worth automating if this dashboard sees heavier
+   iteration. F-012 itself has the same style of gap for TC-012-05 (cross-view bookmark-state sync —
+   verified by code trace during Integration, no dedicated automated test).
+5. **Close the live-E2E verification gap from Phase 2, still open**: LM Studio could not be started
    in that Integration Agent's environment, so the real F-008→F-009 chain (actual README fetch +
    actual LM Studio inference + actual trend rollup against live data) was never exercised
    end-to-end — only via SQLite-backed unit/handler tests. Run this runbook's F-008 and F-009 Happy
    Path steps against a real `make up` stack with LM Studio actually running at least once.
-5. **`docs/diagrams/mmd/daily-discovery-flow.mmd` still needs a manual diagramming pass** — flagged
+6. **`docs/diagrams/mmd/daily-discovery-flow.mmd` still needs a manual diagramming pass** — flagged
    at Phase 1 close, still unaddressed: it doesn't show the Summarizer or Trend Aggregator links, and
-   doesn't show the Web API or Dashboard as consumers of the Data Store. Not blocking F-012, but
+   doesn't show the Web API or Dashboard as consumers of the Data Store. Not blocking Phase 4, but
    should be fixed before it misleads someone reading Architecture alongside the diagram.
-6. **`docs/architecture.md`'s Version History table has a duplicate/out-of-order `v12` row**
+7. **`docs/architecture.md`'s Version History table has a duplicate/out-of-order `v12` row**
    (noticed in Phase 2, still unaddressed) — fixing the numbering needs to know original intent;
    flagged rather than guessed at.
-7. Once real summaries/trends exist at scale, sanity-check `max_tokens: 300` isn't clipping longer
+8. Once real summaries/trends exist at scale, sanity-check `max_tokens: 300` isn't clipping longer
    real-world READMEs the way the F-002 spike's synthetic test content couldn't reveal — carried over
    from Phase 1's handoff, still open.
-8. **`docs/adr/ADR-011-angular-material-ui-library.md` (or wherever ADR-011 lives) could note the
+9. **`docs/adr/ADR-011-angular-material-ui-library.md` (or wherever ADR-011 lives) could note the
    icon-sourcing decision** — F-011 sourced Lucide-style SVG icons via `MatIconRegistry.
    addSvgIconLiteral` rather than the Material Icons ligature font, a judgment call within ADR-011's
    scope (icon *assets*, not a component library) but worth a one-line ADR note if a future feature
@@ -462,6 +548,26 @@ not anything F-010/F-011 touched.
 
 ## Important context
 
+- **A Reviewer-Integration FAIL's *reasoning* can be wrong even when its instinct to push back is
+  right — verify the specific factual claim, don't just accept or reject the verdict wholesale.**
+  This run's round-1 FAIL asserted F-011 had "passed with the same npm audit issue," implying an
+  inconsistency. That specific claim was false (checked via `git log`/`git diff` on
+  `package.json`/`package-lock.json`: the vulnerable dependency was added by a later, unrelated
+  commit, after F-011's own finalization) — but two of the Reviewer-Integration's other three points
+  (the test-runbook and test-cases-doc drift fixes being genuinely in Integration's own scope, not a
+  legitimate defer) were correct and got fixed. Treat each point in a FAIL verdict independently;
+  don't let one disproven claim discredit the rest, and don't let one correct point validate an
+  unverified one.
+- **When a Task Packet's suggested implementation approach turns out to be unreachable, say so and
+  solve the underlying requirement a different way — don't force the suggested approach or silently
+  drop the requirement.** F-012's Task Packet suggested "listen to `BookmarkToggle`'s
+  `bookmarkedChange` output" for the un-bookmark-removes-card behavior; tracing the actual component
+  tree showed neither `RepositoryCard` nor `RepositoryGrid` forwards that output, and both were
+  off-limits to modify. The Developer solved it with a component-scoped DI override instead
+  (`BookmarkChangeApiService`, `skipSelf`-delegating) and flagged the deviation explicitly — the
+  Reviewer then independently verified the injector wiring actually works rather than trusting the
+  explanation. This is the pattern to repeat: a suggested approach in a Task Packet is a hint from
+  the Orchestrator's own file-reading pass, not a verified fact about the codebase's reachable APIs.
 - **Stating test-cases-doc pre-draft ownership explicitly to *both* Integration and
   Reviewer-Integration up front (the lesson from F-010's run, below) worked cleanly this time** —
   this run's Reviewer-Integration was told directly in its prompt that the Orchestrator authored
@@ -557,8 +663,10 @@ not anything F-010/F-011 touched.
 - **Version-pin caveats carried from earlier phases, still current**: LM Studio host-installed
   (ADR-016), `llama-3.2-3b-instruct` (ADR-017), PostgreSQL 18.4 (ADR-014), Angular 22 (ADR-012).
 - **Open items**: PM-001, PM-002, PM-003 remain deferred exactly as before; PM-006 (schema backfill)
-  is now higher-priority since F-011's live Discovery Feed makes it user-visible — see What's Next #2.
+  may already be resolved by a migration that now exists on disk but wasn't verified this run — see
+  What's Next #3; PM-007 (new this run) tracks the carried-forward `npm audit` finding.
 - **Docs are governed, not exempt** — this run's Integration and Reviewer-Integration passes again
-  treated the PMBook/test-cases/test-runbook as specs the code must satisfy: catching a real
-  production bug via the quality gate, correcting a report that got ahead of an actual document edit,
-  and closing a previously-open live-E2E gap rather than re-deferring it. Keep doing this for F-012.
+  treated the PMBook/test-cases/test-runbook as specs the code must satisfy: two genuine doc-drift
+  fixes (test-runbook, test-cases TC-011-11) landed directly rather than being deferred, and a FAIL
+  verdict's factual claim was checked against git history rather than accepted or dismissed on
+  instinct. Keep doing this for Phase 4.

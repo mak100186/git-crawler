@@ -16,18 +16,22 @@ interface NavEntry {
   icon: string;
 }
 
-// FR-009's four required views, fixed order (dashboard-ux-brief.md §3 / dashboard-handoff.md §2).
+// FR-009's four required views, fixed order (dashboard-ux-brief.md §3 / dashboard-handoff.md §2),
+// plus F-012's "Bookmarks" entry appended last - dashboard-handoff.md fixed the first four's order,
+// this one is new and doesn't reorder them.
 const NAV_ENTRIES: NavEntry[] = [
   { label: 'Discovery Feed', path: '/discovery-feed', icon: 'home' },
   { label: 'Hidden Gems', path: '/hidden-gems', icon: 'gem' },
   { label: 'Trending', path: '/trending', icon: 'trending-up' },
   { label: 'Categories', path: '/categories', icon: 'layers' },
+  { label: 'Bookmarks', path: '/bookmarks', icon: 'bookmark' },
 ];
 
-// App shell (dashboard-handoff.md §2): ink-900 mat-toolbar with the four-entry primary nav, plus
-// inert reserved slots for F-012's "Bookmarks" nav pill and the v2 "Search" field so the shell
-// doesn't reflow when those land. Collapses to a floating bottom pill nav below the 960px
-// breakpoint via CDK BreakpointObserver.
+// App shell (dashboard-handoff.md §2): ink-900 mat-toolbar with the five-entry primary nav, plus an
+// inert reserved slot for the v2 "Search" field so the shell doesn't reflow when that lands (F-012's
+// own "Bookmarks · F-012" reserved slot is gone now that this is a live nav entry, per F-012's own
+// scope). Collapses to a floating bottom pill nav below the 960px breakpoint via CDK
+// BreakpointObserver.
 @Component({
   selector: 'app-root',
   imports: [

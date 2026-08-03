@@ -18,12 +18,10 @@
 
   <span class="app-toolbar__spacer"></span>
 
-  <!-- Reserved, inert placeholders (Task Packet/handoff §2) - not wired to a route or handler.
-       F-012 (dedicated Bookmarks view) and v2 free-text search don't exist yet; shipping these as
-       ghost slots now means the shell won't reflow when they do land. -->
-  <span class="app-toolbar__reserved app-toolbar__reserved-pill" aria-disabled="true"
-    >Bookmarks · F-012</span
-  >
+  <!-- Reserved, inert placeholder (Task Packet/handoff §2) - not wired to a route or handler. v2
+       free-text search doesn't exist yet; shipping this as a ghost slot now means the shell won't
+       reflow when it lands. (F-012's own "Bookmarks · F-012" reserved slot has been replaced by the
+       live nav entry above, rendered through the `navEntries` loop like the other four.) -->
   <span class="app-toolbar__reserved app-toolbar__reserved-pill app-toolbar__search"
     >Search (v2)</span
   >

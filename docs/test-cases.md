@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v6
-> Last updated: 2026-08-02
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010 so far)
+> Version: v7
+> Last updated: 2026-08-03
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -551,12 +551,15 @@ No running system to verify — this is a documentation output (`docs/design-bri
 2. **Expect:** the `/categories/{category}/repositories` request encodes the segment correctly and
    the drill-down resolves to the matching category, not a 404 or a mismatched filter.
 
-### TC-011-11 (Regression-sensitive) — Reserved F-012/v2 placeholders are inert
+### TC-011-11 (Regression-sensitive) — Reserved v2 placeholder is inert
 1. Inspect the primary nav and the filter-bar area.
-2. **Expect:** a visibly disabled "Bookmarks · F-012" nav pill and a disabled "Search (v2)" field are
-   present (dashed border, reduced opacity) but not wired to any route or handler — clicking either
-   does nothing. These exist so the shell won't reflow when F-012/v2 land, and must not be mistaken
-   for broken functionality in a future manual pass.
+2. **Expect:** the disabled "Search (v2)" field is present (dashed border, reduced opacity) but not
+   wired to any handler — clicking it does nothing. This placeholder exists so the shell won't
+   reflow when v2 search lands, and must not be mistaken for broken functionality in a future manual
+   pass. (This scenario originally also asserted a disabled "Bookmarks · F-012" ghost nav pill; that
+   placeholder was superseded by F-012, which replaced it with a live "Bookmarks" nav entry — see
+   TC-012-02. The nav-pill assertion is removed here to avoid contradicting TC-012-02; the
+   "Search (v2)" placeholder-inertness assertion above remains accurate and unchanged.)
 
 ### TC-011-12 (Manual) — Live build-and-serve smoke test (FR-009 AC3)
 1. Run `dotnet publish` (or the Docker image build) against `src/backend/GitCrawler.Api` with a real
@@ -574,6 +577,49 @@ No running system to verify — this is a documentation output (`docs/design-bri
 
 ---
 
+## F-012 — Bookmarking (dedicated Bookmarks view)
+
+### TC-012-01 (Happy path) — Dedicated Bookmarks view lists bookmarked repos
+1. Bookmark two or three repos from any of the four existing views (Discovery Feed, Hidden Gems,
+   Trending, Categories), then navigate to the new `/bookmarks` route.
+2. **Expect:** the same card-grid layout used elsewhere in the dashboard renders exactly the
+   bookmarked repos, most-recently-bookmarked first (matching `GET /api/bookmarks`'s server-side
+   ordering — `ListBookmarksQueryHandler` orders by each repo's max `Bookmark.CreatedAtUtc` desc).
+
+### TC-012-02 (Happy path) — Nav pill is live, not a ghost
+1. Inspect the primary nav (desktop) and bottom pill nav (narrow viewport).
+2. **Expect:** the "Bookmarks · F-012" dashed, disabled placeholder pill from F-011 (TC-011-11) is
+   gone, replaced by a real "Bookmarks" nav entry that routes to `/bookmarks` and highlights active
+   like the other four entries.
+
+### TC-012-03 (Edge case) — Empty bookmarks state
+1. Navigate to `/bookmarks` with zero bookmarks saved.
+2. **Expect:** the shared empty-state treatment (per TC-011-06) renders with bookmarks-specific
+   copy, not the generic "No repositories match these filters" filter-oriented text (there is no
+   filter bar on this view to clear).
+
+### TC-012-04 (Happy path) — Un-bookmarking from the Bookmarks view removes it immediately
+1. From `/bookmarks`, toggle a card's bookmark off via the existing `BookmarkToggle` control.
+2. **Expect:** the same optimistic toggle + snack-bar Undo/Retry behavior as elsewhere
+   (TC-011-03) — but specific to this view, the card also leaves the grid once the toggle reaches
+   its "off" state (it has no other reason to be listed here), and clicking Undo restores the card
+   to the grid rather than just flipping the toggle's own visual state.
+
+### TC-012-05 (Regression-sensitive) — Bookmark state stays in sync across views
+1. Bookmark a repo from Discovery Feed, then navigate to `/bookmarks` and confirm it appears.
+2. Remove the bookmark from `/bookmarks`, then navigate back to Discovery Feed (or Hidden Gems /
+   Trending / a Category) and locate the same repo's card.
+3. **Expect:** the card's bookmark toggle reflects the removed state (each view refetches or
+   otherwise reflects current server state on navigation — no stale "still bookmarked" toggle from
+   a cached prior fetch).
+
+### TC-012-06 (Edge case) — List-fetch error state
+1. Simulate the `GET /api/bookmarks` request failing.
+2. **Expect:** the shared error-state treatment (per TC-011-06) renders with a "Retry" button that
+   re-issues the request — same pattern as the other views, no unhandled exception or blank page.
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
@@ -583,3 +629,5 @@ No running system to verify — this is a documentation output (`docs/design-bri
 | v4 | 2026-08-02 | Added Phase 2 scenarios: TC-008 (Summarizer, including score-to-summarize chaining and a Manual live-LM-Studio quality/throughput check), TC-009 (Trend Aggregator, including the upsert-idempotency and summarize-to-aggregate chaining checks), TC-018 (Dashboard UX design brief, documentation-only) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 1 when Phase 2 features completed (same gap-closure pattern as v2) |
 | v5 | 2026-08-02 | Added F-010 scenarios (TC-010): Discovery Feed/Hidden Gems/Trending/Categories filter-sort-paginate contract, bookmark CRUD + idempotency, topic filtering, and two regression checks specific to F-010's two schema additions (`FirstDiscoveredAtUtc` set-once, latest-not-highest score sort) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended for F-010 when it completed (same gap-closure pattern as v2/v4); F-010 was run as a standalone slice of Phase 3, not the full phase |
 | v6 | 2026-08-02 | Added F-011 scenarios (TC-011): four-view navigation, filter/sort end-to-end, bookmark toggle optimistic/undo/retry, Trending server-order rendering, Categories grid/drill-down, loading/empty/error states, pagination-beyond-last-page, "Summary pending" no-layout-jump, 960px responsive collapse (filter bar → sidenav, nav → bottom pills), category-name URL-encoding, reserved F-012/v2 placeholder inertness, and a Manual live-publish smoke test for FR-009 AC3 | Orchestrator drafted this section directly, before dispatching the Integration Agent, per this skill's own Step 0.0 gap-closure pattern (same as v2/v4/v5) — stated explicitly to both the Integration and Reviewer-Integration Agents in their prompts to avoid the misattribution the F-010 run's Reviewer-Integration initially made (`docs/handoff.md` "Important context") |
+| v7 | 2026-08-03 | Added F-012 scenarios (TC-012): dedicated `/bookmarks` view lists bookmarks server-ordered, live nav pill replacing the F-011 ghost placeholder, bookmarks-specific empty state, un-bookmark-removes-card-from-this-view behavior (distinct from the generic toggle check), cross-view bookmark-state sync, and list-fetch error state | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-012 coverage before this feature's Task Packet was generated (same pattern as v2/v4/v5/v6), drafted before dispatching the Developer Agent this time (F-012's Task Packet references these scenarios directly) |
+| v8 | 2026-08-03 | TC-011-11 updated: removed its now-contradicted assertion that the "Bookmarks · F-012" nav pill is present/disabled (F-012 replaced it with a live nav entry — TC-012-02), retitled to "Reserved v2 placeholder is inert", and kept the still-accurate "Search (v2)" inert-placeholder assertion | F-012 Integration pass, retry after Reviewer-Integration flagged the internal TC-011-11/TC-012-02 contradiction |

@@ -1,0 +1,20 @@
+<div class="view">
+  @if (isEmptyState()) {
+    <mat-card class="grid-state grid-state--empty" appearance="outlined">
+      <mat-icon class="grid-state__icon" svgIcon="inbox-empty" />
+      <p class="grid-state__message">
+        You haven't bookmarked any repositories yet — bookmark one from any view to see it here.
+      </p>
+    </mat-card>
+  } @else {
+    <app-repository-grid
+      [items]="items()"
+      [loading]="loading()"
+      [error]="error()"
+      [totalCount]="items().length"
+      [page]="1"
+      [pageSize]="pageSize()"
+      (retry)="onRetry()"
+    />
+  }
+</div>
