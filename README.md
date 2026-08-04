@@ -30,12 +30,18 @@ what's already successful, this platform tries to surface what's *about to becom
   commit activity.
 - **Bookmarking** — save repositories to revisit later, with undo on every add/remove.
 - **Click-through detail view** — full summary, topics, and score breakdown in a focused dialog.
+- **Daily email digest** — a scheduled HTML email with the top-scored hidden gems and per-category
+  trend summaries (with week-over-week growth), so you don't have to open the dashboard to catch
+  what's new. Sent independently of the crawl pipeline via SMTP; a failed send is logged, never
+  silently dropped.
 
 ![Repository detail dialog — full AI summary, topics, and score breakdown](docs/images/details-pane.png)
 
 ![Filter panel — language multi-select and active filter chips](docs/images/filters.png)
 
 ![Narrow-viewport layout](docs/images/narrow-viewport.png)
+
+![Daily digest email — top hidden gems and trend summaries with growth pills](docs/images/digest.png)
 
 ## How it works
 
@@ -54,6 +60,9 @@ Crawl (GitHub API) → Score → Summarize (local LLM) → Aggregate trends
   depths for top-scored repositories.
 - **Trend Aggregator** — rolls up scored/summarized repositories into per-language trend data (used
   for the Language filter's option list) alongside each repository's own trend shown on its card.
+- **Digest Service** — composes and sends the daily digest email on its own independent schedule
+  (not chained onto the crawl pipeline, so it doesn't fire on every re-crawl), pulling from the
+  same top-scored repositories and trend data the dashboard shows.
 
 Everything is served from one ASP.NET Core process — the Web API and the built Angular dashboard —
 backed by PostgreSQL, with LM Studio running alongside as a local inference engine. See
@@ -115,9 +124,9 @@ npm run lint
 
 ## Project status
 
-Solo-operator project, actively developed. Phases 0–3 (scaffolding, data pipeline, AI
-summarization/trends, dashboard + API + bookmarking) are done; the daily email digest,
-observability, and hardening phases are planned next. See
+Solo-operator project, actively developed. Phases 0–4 (scaffolding, data pipeline, AI
+summarization/trends, dashboard + API + bookmarking, daily email digest + observability) are done;
+security/reliability/scalability hardening is planned next. See
 [`docs/project-management.md`](docs/project-management.md) for the full feature backlog and
 [`docs/handoff.md`](docs/handoff.md) for a running log of what's changed most recently.
 

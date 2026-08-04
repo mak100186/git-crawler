@@ -43,6 +43,7 @@
     a { text-decoration: none; }
     @media only screen and (max-width: 600px) {
       .container { width: 100% !important; border-radius: 0 !important; }
+      .header-pad { border-radius: 0 !important; }
       .header-pad, .body-pad { padding-left: 18px !important; padding-right: 18px !important; }
       .header-title { font-size: 22px !important; }
       .gem-col, .trend-col { display: block !important; width: 100% !important; padding: 6px 0 !important; }
@@ -67,7 +68,11 @@
              BuildGemCardCell/BuildTrendCardCell apply to the per-item cards below). -->
         <table role="presentation" class="container" width="760" cellpadding="0" cellspacing="0" style="width:760px;max-width:760px;background:#f5ead8;border:1px solid #dcd3c4;border-radius:28px;border-collapse:separate;">
           <tr>
-            <td class="header-pad" style="background:#2e2b25;padding:24px 28px;">
+            <!-- A <table>'s own border-radius (the container's 28px above) never clips a child <td>'s
+                 background - only the container's own border/background respects it, so without its
+                 own top radius here the header's dark fill would square off past the container's
+                 rounded top corners. -->
+            <td class="header-pad" style="background:#2e2b25;padding:24px 28px;border-radius:28px 28px 0 0;">
               <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#a19786;">git-crawler</div>
               <div class="header-title" style="font-family:Georgia, 'Times New Roman', serif;font-size:28px;font-weight:bold;color:#f9f4ed;margin-top:6px;">Daily Digest &middot; {{DIGEST_DATE}}</div>
             </td>
