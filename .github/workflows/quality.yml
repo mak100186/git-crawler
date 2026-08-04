@@ -36,6 +36,14 @@ jobs:
       - name: Run frontend tests
         run: npm test -- --watch=false
 
+      - name: Snyk - check frontend dependencies for known vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --file=src/frontend/package.json
+
   backend-quality:
     runs-on: ubuntu-latest
     defaults:
@@ -58,3 +66,11 @@ jobs:
 
       - name: Run backend tests
         run: dotnet test GitCrawler.sln --no-restore
+
+      - name: Snyk - check backend dependencies for known vulnerabilities
+        uses: snyk/actions/dotnet@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --file=src/backend/GitCrawler.sln
