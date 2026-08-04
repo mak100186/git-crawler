@@ -339,12 +339,17 @@ gone the same way, same day (see `docs/changelog.md` Revision 11) — unlike Tre
 didn't disappear, it was simply subsumed by `/api/hidden-gems` (see the section above).
 
 ### Happy path — Categories list
+Changed 2026-08-04: the response shape simplified from `{ category, repositoryCount, averageScore,
+periodStart, periodEnd }` to just `{ category }` — the endpoint now queries `Repository
+.PrimaryLanguage` directly instead of `TrendAggregate`, since the dashboard's Language filter (the
+only consumer) never read the rollup fields.
 1. `curl "http://localhost:<app-port>/api/categories"`.
-2. **Expect:** `200`, one entry per distinct category reflecting the latest period's
-   `RepositoryCount`/`AverageScore` (TC-010-04). (This endpoint's per-category drill-down sibling,
+2. **Expect:** `200`, one entry per distinct language among *scored* repositories — just
+   `{"category": "..."}` per entry now (TC-010-04). (This endpoint's per-category drill-down sibling,
    `/api/categories/<category>/repositories`, was removed 2026-08-03 along with the dashboard's
    Categories tab it only existed to serve — see `docs/changelog.md` Revision 9. This list endpoint
-   itself is unchanged, still backing the dashboard's Language filter option list.)
+   itself stays mapped, still backing the dashboard's Language filter option list, just reading from a
+   different source now.)
 
 ### Happy path — bookmark create/delete round-trip
 `GET /api/bookmarks` (the list endpoint) was removed 2026-08-03 along with the dashboard's dedicated

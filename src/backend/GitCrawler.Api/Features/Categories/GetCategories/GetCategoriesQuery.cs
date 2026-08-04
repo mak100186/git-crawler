@@ -4,9 +4,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Features.Categories.GetCategories;
 
-// F-010 D2: Category = TrendAggregate.Category (i.e. Repository.PrimaryLanguage), not GitHub
-// topics - F-009 already shipped Category as language-derived and that isn't reopened here.
-public record CategoryDto(string Category, int RepositoryCount, double AverageScore, DateOnly PeriodStart, DateOnly PeriodEnd);
+// F-010 D2: Category = Repository.PrimaryLanguage, not GitHub topics. Reads Repository directly as
+// of 2026-08-04 - originally read TrendAggregate.Category instead (F-009's per-category rollup),
+// but that meant fetching every TrendAggregate row's RepositoryCount/AverageScore/PeriodStart/
+// PeriodEnd over the wire just to discard all four and keep only the Category string (the frontend's
+// FacetOptionsService only ever read `.category` off each row - confirmed by reading it directly,
+// not assumed) - a whole scheduled rollup pipeline in the critical path of what's really just "the
+// distinct-language option list for a dropdown." TrendAggregate/AggregateTrendsCommand themselves
+// are unchanged and still run - operator-directed decision to keep them reserved for F-013's planned
+// digest (PRD Goal 3) rather than remove them now that this, their last UI-facing consumer, no
+// longer needs them.
+public record CategoryDto(string Category);
 
 // Wolverine message + result for this slice. No shared service/repository layer per ADR-015 -
 // everything this operation needs lives in this folder.
@@ -20,18 +28,23 @@ public class GetCategoriesQueryHandler(GitCrawlerDbContext dbContext)
 {
     public async Task<GetCategoriesResult> HandleAsync(GetCategoriesQuery query, CancellationToken cancellationToken)
     {
-        var trendAggregates = await dbContext.TrendAggregates.ToListAsync(cancellationToken);
+        // Scores.Any() matches GetHiddenGemsQueryHandler's own eligibility filter exactly - a
+        // language only belongs in this option list if selecting it could actually return a Hidden
+        // Gems result. This is also a latent-bug fix over the old TrendAggregate-based version: that
+        // one required *both* a Score and a Summary to exist (AggregateTrendsCommandHandler's own,
+        // narrower "scored + summarized" rollup criteria) before a language appeared here, but Hidden
+        // Gems itself only ever required a Score - so a newly-scored-but-not-yet-summarized repo's
+        // language was invisible to this filter until the next nightly Trend Aggregator run, even
+        // though the repo was already showing up on Hidden Gems.
+        var languages = await dbContext.Repositories
+            .Where(r => r.Scores.Any() && r.PrimaryLanguage != null)
+            .Select(r => r.PrimaryLanguage!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-        // AggregateTrendsCommandHandler upserts by (Category, PeriodStart, PeriodEnd) (F-009), so
-        // multiple TrendAggregate rows can exist per category over time (one per rollup period).
-        // The Categories view needs each category's *current* standing, so the latest-by-
-        // CreatedAtUtc row wins per category - the same "latest wins" pattern this codebase already
-        // applies to Score/Summary reads elsewhere (see those handlers' own comments).
-        var categories = trendAggregates
-            .GroupBy(t => t.Category)
-            .Select(g => g.OrderByDescending(t => t.CreatedAtUtc).First())
-            .OrderBy(t => t.Category, StringComparer.Ordinal)
-            .Select(t => new CategoryDto(t.Category, t.RepositoryCount, t.AverageScore, t.PeriodStart, t.PeriodEnd))
+        var categories = languages
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .Select(c => new CategoryDto(c))
             .ToList();
 
         return new GetCategoriesResult(categories);

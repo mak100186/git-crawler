@@ -3,7 +3,8 @@
     <div class="repo-detail__heading">
       <div class="repo-detail__title">{{ item.name }}</div>
       <div class="repo-detail__subtitle">
-        {{ item.owner }} · discovered {{ item.firstDiscoveredAtUtc | relativeDate }}
+        {{ item.owner }} · discovered {{ item.firstDiscoveredAtUtc | relativeDate }} · ★
+        {{ item.starCount }} · ⑂ {{ item.forkCount }}
       </div>
     </div>
 
@@ -31,8 +32,6 @@
     @if (item.licenseIdentifier; as license) {
       <span class="repo-detail__license-chip">{{ license }}</span>
     }
-    <span class="repo-detail__stat">★ {{ item.starCount }}</span>
-    <span class="repo-detail__stat">⑂ {{ item.forkCount }}</span>
     @if (trendGrowth; as growth) {
       <span class="repo-detail__trend-chip">{{ growth }}</span>
     }

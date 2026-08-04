@@ -11,6 +11,7 @@ public class GetCategoriesQueryHandlerTests : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly GitCrawlerDbContext _dbContext;
+    private long _nextGitHubId = 1;
 
     public GetCategoriesQueryHandlerTests()
     {
@@ -30,22 +31,38 @@ public class GetCategoriesQueryHandlerTests : IDisposable
 
     private GetCategoriesQueryHandler CreateHandler() => new(_dbContext);
 
-    private async Task AddTrendAggregateAsync(string category, int repositoryCount, double averageScore, DateTimeOffset createdAt)
+    private async Task<Repository> AddRepositoryAsync(string? primaryLanguage, bool scored)
     {
-        _dbContext.TrendAggregates.Add(new TrendAggregate
+        var repository = new Repository
         {
-            Category = category,
-            PeriodStart = DateOnly.FromDateTime(createdAt.UtcDateTime),
-            PeriodEnd = DateOnly.FromDateTime(createdAt.UtcDateTime),
-            RepositoryCount = repositoryCount,
-            AverageScore = averageScore,
-            CreatedAtUtc = createdAt,
-        });
+            GitHubId = _nextGitHubId++,
+            Owner = "octocat",
+            Name = $"repo-{_nextGitHubId}",
+            Url = $"https://github.com/octocat/repo-{_nextGitHubId}",
+            DefaultBranch = "main",
+            PrimaryLanguage = primaryLanguage,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            FirstDiscoveredAtUtc = DateTimeOffset.UtcNow,
+        };
+        _dbContext.Repositories.Add(repository);
         await _dbContext.SaveChangesAsync();
+
+        if (scored)
+        {
+            _dbContext.Scores.Add(new Score
+            {
+                RepositoryId = repository.Id,
+                TotalScore = 50,
+                ComputedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await _dbContext.SaveChangesAsync();
+        }
+
+        return repository;
     }
 
     [Fact]
-    public async Task Handle_NoTrendAggregates_ReturnsEmptyList()
+    public async Task Handle_NoScoredRepositories_ReturnsEmptyList()
     {
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new GetCategoriesQuery(), CancellationToken.None);
@@ -54,10 +71,12 @@ public class GetCategoriesQueryHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task Handle_ReturnsOneEntryPerCategory()
+    public async Task Handle_ReturnsOneEntryPerDistinctLanguage_SortedOrdinally()
     {
-        await AddTrendAggregateAsync("C#", 3, 50, DateTimeOffset.UtcNow);
-        await AddTrendAggregateAsync("Go", 2, 40, DateTimeOffset.UtcNow);
+        await AddRepositoryAsync("Go", scored: true);
+        await AddRepositoryAsync("C#", scored: true);
+        // A second C# repo proves distinctness, not just "one row per repository".
+        await AddRepositoryAsync("C#", scored: true);
 
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new GetCategoriesQuery(), CancellationToken.None);
@@ -66,16 +85,27 @@ public class GetCategoriesQueryHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task Handle_MultiplePeriodsForSameCategory_ReturnsLatestByCreatedAtUtc()
+    public async Task Handle_UnscoredRepository_Excluded()
     {
-        await AddTrendAggregateAsync("C#", repositoryCount: 3, averageScore: 40, createdAt: DateTimeOffset.UtcNow.AddDays(-2));
-        await AddTrendAggregateAsync("C#", repositoryCount: 5, averageScore: 60, createdAt: DateTimeOffset.UtcNow);
+        // Matches GetHiddenGemsQueryHandler's own Scores.Any() eligibility - a language with no
+        // scored repo behind it can never actually return a Hidden Gems result, so it must not
+        // appear as a selectable filter option.
+        await AddRepositoryAsync("Rust", scored: false);
 
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new GetCategoriesQuery(), CancellationToken.None);
 
-        var category = Assert.Single(result.Categories);
-        Assert.Equal(5, category.RepositoryCount);
-        Assert.Equal(60, category.AverageScore);
+        Assert.Empty(result.Categories);
+    }
+
+    [Fact]
+    public async Task Handle_NullPrimaryLanguage_Excluded()
+    {
+        await AddRepositoryAsync(null, scored: true);
+
+        var handler = CreateHandler();
+        var result = await handler.HandleAsync(new GetCategoriesQuery(), CancellationToken.None);
+
+        Assert.Empty(result.Categories);
     }
 }

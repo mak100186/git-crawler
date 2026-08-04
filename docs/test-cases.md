@@ -1,7 +1,7 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v14
+> Version: v15
 > Last updated: 2026-08-04
 > Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
@@ -439,13 +439,27 @@ entirely rather than kept (unlike `/api/categories`, see TC-010-04). Kept as a r
 (ID not reused), same precedent as TC-011-11.
 
 ### TC-010-04 (Happy path) — Categories list
-1. Seed `TrendAggregate` rows for two categories, call the Categories endpoint.
-2. **Expect:** one entry per distinct category reflecting the latest period's `RepositoryCount`/
-   `AverageScore`. (This scenario originally also covered a per-category drill-down endpoint; that
-   endpoint, and the dashboard's dedicated Categories tab it backed, were both removed 2026-08-03 —
-   browsing by category is done via Hidden Gems' existing Language filter instead, since Category ≡
-   `Repository.PrimaryLanguage`. Step 3's drill-down assertion is removed accordingly; this endpoint's
-   list behavior is unchanged and still covered above.)
+Changed 2026-08-04 (operator: "So for just the language filter we have the whole TrendAggregate
+table?"): `CategoryDto` used to carry `RepositoryCount`/`AverageScore`/`PeriodStart`/`PeriodEnd`
+sourced from `TrendAggregate`, none of which `FacetOptionsService` (the sole consumer) ever read —
+only `.category`. The endpoint now queries `Repository.PrimaryLanguage` directly instead;
+`TrendAggregate`/`AggregateTrendsCommand` are unchanged and still run, reserved for F-013's planned
+digest.
+1. Seed two *scored* repositories with different `PrimaryLanguage` values (plus a second, same-
+   language repository, to confirm distinctness) and call the Categories endpoint.
+2. **Expect:** one entry per distinct language among scored repositories — just `{ category: string }`
+   now, no rollup fields.
+3. Seed a repository with a `PrimaryLanguage` but no `Score` row. **Expect:** its language is absent
+   from the result — matches `GetHiddenGemsQueryHandler`'s own `Scores.Any()` eligibility, so a
+   language never appears as a filter option unless selecting it could actually return a result. (This
+   is also a fix over the old `TrendAggregate`-based version, which required both a `Score` *and* a
+   `Summary` before a language appeared here — stricter than Hidden Gems' own Score-only requirement,
+   so a newly-scored-but-not-yet-summarized repo's language used to be unfilterable until the next
+   nightly Trend Aggregator run despite the repo already appearing on Hidden Gems.)
+4. (This scenario originally also covered a per-category drill-down endpoint; that endpoint, and the
+   dashboard's dedicated Categories tab it backed, were both removed 2026-08-03 — browsing by category
+   is done via Hidden Gems' existing Language filter instead, since Category ≡
+   `Repository.PrimaryLanguage`. That drill-down assertion remains removed here.)
 
 ### TC-010-05 (Happy path) — Bookmark create/list/delete round-trip
 1. Call create-bookmark for a repository, then list-bookmarks, then delete-bookmark for the same
@@ -760,3 +774,4 @@ placeholder (ID not reused), same precedent as TC-011-11.
 | v12 | 2026-08-03 | New TC-011-14 (card click opens the repository detail pane per design brief §09 — full summary, topics, score breakdown) and TC-011-15 (a card's own interactive controls — bookmark toggle, score panel, GitHub link — don't also trigger it) | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" — implemented directly via Claude Code, not an orchestrated run |
 | v13 | 2026-08-03 | F-012's dedicated Bookmarks view decommissioned: TC-012-01/02/03/04/06 marked Removed (same precedent as TC-011-11/05/10/TC-010-03) — the view is gone, its "Bookmarked only" filter equivalent already existed on Hidden Gems; TC-012-05 retargeted in place to that filter (capability persists, same precedent as TC-010-01's Discovery Feed retargeting) rather than marked Removed. TC-011-01 updated: primary nav is now exactly one entry ("Hidden Gems"), not a separate FR-009-views-vs-Bookmarks-nav-entry distinction. TC-011-03/14 no longer mention Bookmarks as a second card source | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" — implemented directly via Claude Code, not an orchestrated run |
 | v14 | 2026-08-04 | Full documentation sync pass — several rounds of direct, operator-directed UI/backend changes on 2026-08-04 had left this doc describing behavior that no longer exists. TC-008-01 amended for the two-summary split (short + detailed, one `Summary` row, two LM Studio calls); new TC-008-09 for the README-length cap (`Summarization:MaxReadmeCharacters`) added after a live `openclaw/openclaw` context-window failure. TC-010-11 rewritten: `TrendGrowth` is now computed per repository from its own `Score` history, not per language/category from `TrendAggregate` (operator: "Trend is currently calculated per language. I want it to be calculated per repository"). TC-011-02 no longer claims the card shows a "Why this score?" panel or a trend chip (both removed from the card, consolidated into the detail dialog). TC-011-04's forward-pointer and TC-011-13 both corrected/retargeted for the same per-repository trend change (TC-011-13 now describes the dialog's chip, not a card-level one). TC-011-09 corrected: there is no bottom nav to collapse (the primary nav was removed entirely once Hidden Gems became the sole page) — only the filter bar collapses; added a step 4 regression check for the narrow-viewport GitHub-link-showing-through-the-sidenav defect (operator-confirmed fixed). TC-011-14/15 updated for the drawer→`MatDialog` conversion and the removed card-level score panel. New TC-011-16 for the paginator's 24/48/64 page-size dropdown. `docs/prd.md` (v8 — US-8 reworded), `docs/architecture.md` (v22 — §3 Web Dashboard), and `docs/project-management.md` (v29+) were also found with a separate, unrelated drift while doing this pass: each doc's own header `Version` marker had silently fallen behind its own changelog table (e.g. Architecture's header still read v18 while its table already reached v22) — fixed in each file alongside its content corrections | Operator: "now update all documents for whatever has been implemented so far" |
+| v15 | 2026-08-04 | TC-010-04 rewritten: the Categories endpoint no longer reads `TrendAggregate` — it queries `Repository.PrimaryLanguage` directly, since `CategoryDto`'s only consumer (`FacetOptionsService`) had only ever read the `category` string, never the rollup fields (`RepositoryCount`/`AverageScore`/period dates) that came with it. New assertion added: a language with no scored repository behind it must not appear as a filter option (matches `GetHiddenGemsQueryHandler`'s own eligibility) — also documents a latent-bug fix, since the old version required a `Summary` too, stricter than Hidden Gems itself requires | Operator: "So for just the language filter we have the whole TrendAggregate table?" |

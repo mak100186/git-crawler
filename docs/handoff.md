@@ -4,6 +4,84 @@
 
 ## What was done
 
+**Categories endpoint no longer reads TrendAggregate — it never needed the rollup, just the name**
+(`docs/project-management.md` v32) — a direct, operator-directed change via Claude Code, not run
+through `orchestrator-development-pattern` (an isolated simplification to an existing Done feature,
+not a new Task Packet; verified directly instead, see below). The prior "Dead-code audit after the
+per-repository trend change" entry has been moved to "Dead-code audit after the per-repository trend
+change" below now that this entry supersedes it.
+
+- **What changed and why**: after the prior entry's audit concluded `TrendAggregate` was still
+  "load-bearing" for the Language filter and left it alone, operator pushed back with a sharper
+  question: "So for just the language filter we have the whole TrendAggregate table?" Reading
+  `FacetOptionsService.ensureLanguageOptionsLoaded()` directly (not assuming) confirmed the operator's
+  instinct: it fetches every field of every `CategoryDto` — `category`, `repositoryCount`,
+  `averageScore`, `periodStart`, `periodEnd` — and only ever reads `.category`. The other four,
+  `TrendAggregate`'s actual trend data, computed nightly by a whole scheduled pipeline stage, were
+  discarded on every single response. Worse: since the old Trending view and the old per-category
+  trend chip are both already gone (see the entries further down this file), nothing in the UI
+  displays `TrendAggregate`'s trend data anywhere anymore — its only live effect, until this change,
+  was supplying language strings to a dropdown via the least direct path available.
+- **The wrinkle, and why this wasn't a unilateral rip-it-all-out decision**: PRD Goal 3 ("Detect
+  trends") and F-013 (Digest Service, Planned, not yet built) are documented as needing "trend
+  summaries" for a future daily email digest. That's a real, if unbuilt, future consumer of
+  `TrendAggregate`'s actual output — presented as a 3-way tradeoff (simplify Categories only / remove
+  the whole Trend Aggregator pipeline / leave everything as-is) rather than deciding silently, same
+  as the two-summary-call decision earlier this session. Operator chose to simplify Categories only.
+- **Fix**: `GetCategoriesQueryHandler` now queries `Repository.PrimaryLanguage` directly
+  (`Where(r => r.Scores.Any() && r.PrimaryLanguage != null)`, matching `GetHiddenGemsQueryHandler`'s
+  own eligibility exactly) instead of `TrendAggregate`. `CategoryDto` simplified from 5 fields to just
+  `Category` — mirrored on the frontend (`category.model.ts`). `TrendAggregate`/
+  `AggregateTrendsCommand` (F-009) are completely unchanged — still scheduled, still writing rows,
+  reserved for F-013's planned digest.
+- **Bonus fix found along the way**: the old `TrendAggregate`-based version required a language's
+  repos to have *both* a `Score` and a `Summary` (F-009's own "scored + summarized" rollup criteria)
+  before that language appeared as a filter option — stricter than Hidden Gems' own Score-only
+  eligibility. A newly-scored-but-not-yet-summarized repo was already visible on Hidden Gems but its
+  language wasn't selectable in the filter until the next nightly Trend Aggregator run. The direct
+  query fixes this too, incidentally.
+- **Docs updated for consistency**: `docs/architecture.md` (v23 — §3 Web API and §3 Trend Aggregator,
+  the latter now stating plainly that it currently has no UI-facing consumer), `docs/test-cases.md`
+  (v15 — TC-010-04 rewritten), `docs/test-runbook.md` (Categories section rewritten),
+  `docs/project-management.md` (v32 — F-010's row amended).
+- **Verification**: backend 86/86 (4 `GetCategoriesQueryHandlerTests` cases rewritten from
+  `TrendAggregate` fixtures to Repository+Score fixtures, including a new case proving an unscored
+  repository's language is excluded), `dotnet format --verify-no-changes` clean. Frontend 45/45
+  (`facet-options.service.spec.ts`'s fixture simplified to match the new DTO shape), `npm run lint`
+  clean.
+
+---
+
+## Dead-code audit after the per-repository trend change (superseded by the above, kept for history)
+
+**Dead-code audit after the per-repository trend change — mostly a non-finding, plus 4 unused icons**
+(`docs/project-management.md` v31) — a direct, operator-directed pass via Claude Code, not run through
+`orchestrator-development-pattern` (a small cleanup, no new Task Packet; verified directly instead,
+see below). The prior "Full documentation sync pass — every governed doc checked against current
+implementation" entry has been moved to "Full documentation sync pass — every governed doc checked
+against current implementation" below now that this entry supersedes it.
+
+- **What changed and why**: operator asked to "clean up whatever is not needed e.g. endpoints,
+  services, db tables" now that the trend chip no longer reads `TrendAggregate`. Audited every
+  endpoint (5, all live), `DbSet` (5, all live), and backend/frontend service against actual
+  consumers rather than assuming the per-repo change had orphaned anything. **`TrendAggregate` /
+  `AggregateTrendsCommand` / `GetCategoriesQuery` / `/api/categories` are all still load-bearing** —
+  they back the Language filter's dropdown options (`FacetOptionsService` → `CategoryApiService`),
+  a use that was always independent of the trend-chip display and never went away. Deleting any of
+  that would have broken the Language filter.
+- **What was actually dead**: cross-referenced all 13 registered Lucide-style icons in
+  `icon-registry.service.ts` against every `svgIcon`/`[svgIcon]` usage in the frontend. 4 had zero
+  references anywhere: `search`, `sliders-horizontal`, `home`, `gem` — leftovers from UI removed in
+  earlier rounds this session (the old bottom nav's `home` icon, an old mobile filter-trigger's
+  `sliders-horizontal`, an icon-based search trigger later replaced by the plain "Search (v2)" text
+  pill, and `gem` from an earlier Hidden-Gems-tab-era icon). Removed all 4.
+- **Verification**: frontend 45/45, `npm run lint` clean. Backend untouched (nothing to remove there),
+  not re-run.
+
+---
+
+## Full documentation sync pass — every governed doc checked against current implementation (superseded by the above, kept for history)
+
 **Full documentation sync pass — every governed doc checked against current implementation**
 (`docs/project-management.md` v30) — a direct, operator-directed pass via Claude Code, not run
 through `orchestrator-development-pattern` (documentation-only, no code changed; verified directly

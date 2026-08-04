@@ -32,22 +32,7 @@ describe('FacetOptionsService', () => {
   beforeEach(() => {
     getCategories = vi.fn().mockReturnValue(
       of({
-        categories: [
-          {
-            category: 'Rust',
-            repositoryCount: 1,
-            averageScore: 1,
-            periodStart: '2026-01-01',
-            periodEnd: '2026-01-07',
-          },
-          {
-            category: 'Go',
-            repositoryCount: 1,
-            averageScore: 1,
-            periodStart: '2026-01-01',
-            periodEnd: '2026-01-07',
-          },
-        ],
+        categories: [{ category: 'Rust' }, { category: 'Go' }],
       }),
     );
 

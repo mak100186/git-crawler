@@ -1,7 +1,7 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v22
+> Version: v23
 > Last updated: 2026-08-04
 > PRD: docs/prd.md (built against v8)
 
@@ -101,6 +101,14 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Dependencies:** Data Store.
 - **Technology:** .NET background service, scheduled batch job; implemented as a Wolverine
   command/handler slice (ADR-015).
+- **Current status (2026-08-04):** still runs on its own schedule and still writes `TrendAggregate`
+  rows correctly, but has no UI-facing consumer of that data right now — the standalone Trending view
+  it originally fed was decommissioned, the per-category trend chip that replaced it was itself later
+  changed to compute per-repository from `Score` history instead (bypassing `TrendAggregate`
+  entirely), and `/api/categories` (Web API, above) was simplified to query `Repository` directly
+  rather than route through this rollup for just its category strings. Kept running deliberately, not
+  an oversight — operator-directed decision to reserve it for the Digest Service's planned "trend
+  summaries" (below), the only remaining documented consumer of this component's actual output.
 
 ### Digest Service
 - **Responsibility:** Compose and send the daily email digest of top hidden gems and trends.
@@ -111,15 +119,19 @@ read/write shared state, which keeps each stage independently testable and resta
   command/handler slice (ADR-015).
 
 ### Web API
-- **Responsibility:** Serve the Dashboard's queries (hidden gems — including each card's trend
-  growth, computed from TrendAggregate — categories, filter/sort) and handle bookmark writes, as a
-  self-contained JSON API with no server-rendered view dependencies. (Dedicated `/api/trending`,
-  `/api/discovery-feed`, and `/api/bookmarks` GET endpoints existed through 2026-08-03; all three
-  removed the same day their dashboard views were decommissioned — `/api/trending` and
-  `/api/bookmarks`'s list endpoint since nothing else consumed them, `/api/discovery-feed` since
-  Hidden Gems offered no meaningfully distinct browsing experience once Categories and Trending had
-  already folded into it. Bookmark create/delete endpoints stay mapped — the bookmark toggle on every
-  card still needs them.)
+- **Responsibility:** Serve the Dashboard's queries (hidden gems — including each card's own trend
+  growth, computed from its Score history, not a category rollup — categories, filter/sort) and
+  handle bookmark writes, as a self-contained JSON API with no server-rendered view dependencies.
+  (Dedicated `/api/trending`, `/api/discovery-feed`, and `/api/bookmarks` GET endpoints existed
+  through 2026-08-03; all three removed the same day their dashboard views were decommissioned —
+  `/api/trending` and `/api/bookmarks`'s list endpoint since nothing else consumed them,
+  `/api/discovery-feed` since Hidden Gems offered no meaningfully distinct browsing experience once
+  Categories and Trending had already folded into it. Bookmark create/delete endpoints stay mapped —
+  the bookmark toggle on every card still needs them. `/api/categories` itself stays mapped too, but
+  changed what it reads: as of 2026-08-04 it queries `Repository.PrimaryLanguage` directly instead of
+  `TrendAggregate` — its only consumer, the dashboard's Language filter, only ever used the distinct
+  category strings, never the rollup data (`RepositoryCount`/`AverageScore`/period fields) that came
+  with them; see §3 Trend Aggregator below for what `TrendAggregate` is still for.)
 - **Inputs:** HTTP requests from the Dashboard.
 - **Outputs:** JSON responses; bookmark writes to the Data Store.
 - **Dependencies:** Data Store.
@@ -266,3 +278,4 @@ the dashboard and receiving the digest.
 | v20 | 2026-08-04 | Summarizer now generates two distinct summaries per repo instead of one - §3 Summarizer rewritten: a short one (unchanged `Summarization:MaxSummaryLength`, still the card's summary) and a new detailed one (`Summarization:MaxDetailedSummaryLength`, default 900, new config), each via its own LM Studio call (two calls per repo, operator-confirmed over a single call with a parsed structured response). `Summary.Content` split into `Summary.ShortContent`/`Summary.DetailedContent` in the Data Store; the migration that added this deleted every pre-existing Summary row (operator-confirmed - Summary's create-once design means there's no backfill path for the new field otherwise) | Operator: "there should be two kinds of summaries: short that show on the repo card and then the detailed one" |
 | v21 | 2026-08-04 | §3 Summarizer updated: README content sent to LM Studio is now capped at `Summarization:MaxReadmeCharacters` (default 6000, new config) before either prompt is built. Found via a live failure — an uncapped 111KB README (`openclaw/openclaw`) exceeded the loaded model's 8192-token context window outright, which LM Studio rejects as a hard error rather than truncating server-side, so any repo with a large enough README would have failed identically | Operator pasted a live LM Studio 400 error from a `make dev` session |
 | v22 | 2026-08-04 | §3 Web Dashboard updated: each Hidden Gems card's trend growth is now computed per repository (from that repo's own Score history across re-crawls) instead of per language/category (from its shared TrendAggregate rollup) — every repo of a given language no longer shows the same growth figure. TrendAggregate itself, and the Language filter's option list it backs (Categories query), are unchanged | Operator: "Trend is currently calculated per language. I want it to be calculated per repository and then shown. What is currently being shown is the trend aggregate for the topic?" |
+| v23 | 2026-08-04 | v22's own "TrendAggregate... unchanged" note is superseded: operator asked whether the Language filter really needed the whole TrendAggregate table, and it turned out not to — `FacetOptionsService` (the filter's only consumer) had only ever read the `Category` string off each `CategoryDto`, discarding `RepositoryCount`/`AverageScore`/`PeriodStart`/`PeriodEnd`. §3 Web API and §3 Trend Aggregator both updated: `/api/categories` now queries `Repository.PrimaryLanguage` directly (also fixing a latent gap — the old version required both a Score and a Summary before a language appeared as a filter option, stricter than Hidden Gems' own Score-only eligibility). `TrendAggregate`/`AggregateTrendsCommand` are still run deliberately, not removed — reserved for F-013's planned digest, now their only remaining documented consumer | Operator: "So for just the language filter we have the whole TrendAggregate table?" — presented as a 3-way tradeoff (simplify Categories only / remove the Trend Aggregator entirely / leave as-is), operator chose "simplify Categories only" |

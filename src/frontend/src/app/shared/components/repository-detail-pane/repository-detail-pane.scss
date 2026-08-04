@@ -80,11 +80,6 @@
     white-space: nowrap;
   }
 
-  &__stat {
-    font-size: 12px;
-    color: var(--color-neutral-300, #c0b6a5);
-  }
-
   &__github-link {
     margin-left: auto;
     --mat-filled-button-container-color: var(--color-accent);
