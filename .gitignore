@@ -81,3 +81,12 @@ src/backend/**/wwwroot/*
 # across `docker compose down` on purpose, but must never be committed.
 data/postgres/*
 !data/postgres/.gitkeep
+
+# Vitest's rerun-failed-tests cache - regenerated on every test run, not source.
+test-results/
+
+# Exported design-tool brief - a dropped-in bundle (compiled JS, generated manifests), not
+# something meant to be diffed/hand-edited. Kept on disk locally; docs referencing its path
+# (handoff.md, changelog.md, project-management.md, test-cases.md) still resolve for anyone
+# who has it, they just won't get it from a fresh clone.
+docs/design-briefs/
