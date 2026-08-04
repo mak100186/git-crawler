@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { BehaviorSubject } from 'rxjs';
 
+import { TestIconRegistry } from '../../../core/icons/test-icon-registry';
 import { FilterSortBar, FilterSortState } from './filter-sort-bar';
 
 // White-box access to FilterSortBar's protected surface for testing purposes - the component
@@ -55,6 +56,7 @@ describe('FilterSortBar', () => {
           provide: BreakpointObserver,
           useValue: { observe: () => breakpointMatches.asObservable() },
         },
+        TestIconRegistry,
       ],
     }).compileComponents();
   });

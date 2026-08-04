@@ -4,6 +4,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
+import { TestIconRegistry } from '../../../core/icons/test-icon-registry';
 import { HiddenGemCardDto, RepositoryCardDto } from '../../../core/models/repository.model';
 import { RepositoryCard } from './repository-card';
 
@@ -42,6 +43,7 @@ describe('RepositoryCard', () => {
           provide: MatSnackBar,
           useValue: { open: vi.fn(() => ({ onAction: () => of(undefined) })) },
         },
+        TestIconRegistry,
       ],
     }).compileComponents();
 

@@ -3,6 +3,7 @@ import { MatSnackBar, MatSnackBarRef } from '@angular/material/snack-bar';
 import { EMPTY, of, throwError } from 'rxjs';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
+import { TestIconRegistry } from '../../../core/icons/test-icon-registry';
 import { BookmarkToggle } from './bookmark-toggle';
 
 describe('BookmarkToggle', () => {
@@ -38,6 +39,7 @@ describe('BookmarkToggle', () => {
       providers: [
         { provide: BookmarkApiService, useValue: bookmarkApi },
         { provide: MatSnackBar, useValue: { open: snackBarOpen } },
+        TestIconRegistry,
       ],
     }).compileComponents();
   });

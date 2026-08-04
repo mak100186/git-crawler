@@ -4,6 +4,7 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
+import { TestIconRegistry } from '../../../core/icons/test-icon-registry';
 import { RepositoryCardDto, ScoreBreakdownDto } from '../../../core/models/repository.model';
 import { RepositoryDetailDialogData, RepositoryDetailPane } from './repository-detail-pane';
 
@@ -60,6 +61,7 @@ describe('RepositoryDetailPane', () => {
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: MatDialogRef, useValue: { close: dialogRefClose } },
+        TestIconRegistry,
       ],
     }).compileComponents();
 

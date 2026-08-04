@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
+import { TestIconRegistry } from '../../../core/icons/test-icon-registry';
 import { RepositoryCardDto } from '../../../core/models/repository.model';
 import { RepositoryGrid } from './repository-grid';
 
@@ -37,6 +38,7 @@ describe('RepositoryGrid', () => {
           useValue: { addBookmark: vi.fn(), removeBookmark: vi.fn() },
         },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        TestIconRegistry,
       ],
     }).compileComponents();
 
