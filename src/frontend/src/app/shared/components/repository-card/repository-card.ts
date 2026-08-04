@@ -1,8 +1,6 @@
-import { CommonModule } from '@angular/common';
 import { Component, computed, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
@@ -31,9 +29,7 @@ import { BookmarkToggle } from '../bookmark-toggle/bookmark-toggle';
 @Component({
   selector: 'app-repository-card',
   imports: [
-    CommonModule,
     MatCardModule,
-    MatChipsModule,
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,

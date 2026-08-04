@@ -1,4 +1,4 @@
-import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
+import { Component, inject, input, linkedSignal, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -23,7 +23,6 @@ export class BookmarkToggle {
 
   readonly repositoryId = input.required<number>();
   readonly initialBookmarked = input.required<boolean>();
-  readonly bookmarkedChange = output<boolean>();
 
   // linkedSignal resets to initialBookmarked() whenever a new repository/page swaps this input in,
   // while still allowing purely-local optimistic mutation via .set() in between those resets.
@@ -39,7 +38,6 @@ export class BookmarkToggle {
   private apply(next: boolean, announce: boolean): void {
     const previous = this.bookmarked();
     this.bookmarked.set(next);
-    this.bookmarkedChange.emit(next);
     this.pending.set(true);
 
     // Typed as Observable<unknown> - addBookmark/removeBookmark return different generic Observable
@@ -60,7 +58,6 @@ export class BookmarkToggle {
       error: () => {
         this.pending.set(false);
         this.bookmarked.set(previous);
-        this.bookmarkedChange.emit(previous);
         this.showError(next);
       },
     });

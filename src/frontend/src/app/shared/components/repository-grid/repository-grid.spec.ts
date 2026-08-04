@@ -16,7 +16,6 @@ const repo: RepositoryCardDto = {
   starCount: 42,
   forkCount: 5,
   licenseIdentifier: 'MIT',
-  licenseName: 'MIT License',
   topics: [],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'A tool.',

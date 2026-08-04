@@ -15,7 +15,6 @@ function repo(overrides: Partial<RepositoryCardDto>): RepositoryCardDto {
     starCount: 1,
     forkCount: 0,
     licenseIdentifier: null,
-    licenseName: null,
     topics: [],
     firstDiscoveredAtUtc: new Date().toISOString(),
     summaryContent: null,

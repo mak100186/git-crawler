@@ -16,7 +16,6 @@ const baseRepository: RepositoryCardDto = {
   starCount: 42,
   forkCount: 5,
   licenseIdentifier: 'MIT',
-  licenseName: 'MIT License',
   topics: ['cli', 'tools'],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'A small, well-maintained CLI tool.',
@@ -39,7 +38,10 @@ describe('RepositoryCard', () => {
             removeBookmark: vi.fn(() => of(undefined)),
           },
         },
-        { provide: MatSnackBar, useValue: { open: vi.fn(() => ({ onAction: () => of(undefined) })) } },
+        {
+          provide: MatSnackBar,
+          useValue: { open: vi.fn(() => ({ onAction: () => of(undefined) })) },
+        },
       ],
     }).compileComponents();
 
@@ -107,9 +109,9 @@ describe('RepositoryCard', () => {
     const emitted = vi.fn();
     fixture.componentInstance.cardClick.subscribe(emitted);
 
-    (fixture.nativeElement as HTMLElement).querySelector('mat-card')?.dispatchEvent(
-      new MouseEvent('click', { bubbles: true }),
-    );
+    (fixture.nativeElement as HTMLElement)
+      .querySelector('mat-card')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(emitted).toHaveBeenCalledTimes(1);
   });

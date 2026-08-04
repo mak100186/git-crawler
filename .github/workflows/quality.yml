@@ -33,6 +33,9 @@ jobs:
       - name: Check frontend formatting
         run: npm run format:check
 
+      - name: Run frontend tests
+        run: npm test -- --watch=false
+
   backend-quality:
     runs-on: ubuntu-latest
     defaults:
@@ -52,3 +55,6 @@ jobs:
 
       - name: Check backend formatting
         run: dotnet format --verify-no-changes --verbosity minimal GitCrawler.sln
+
+      - name: Run backend tests
+        run: dotnet test GitCrawler.sln --no-restore

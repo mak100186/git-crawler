@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, computed, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -26,7 +25,6 @@ import {
 @Component({
   selector: 'app-repository-grid',
   imports: [
-    CommonModule,
     MatButtonModule,
     MatCardModule,
     MatIconModule,

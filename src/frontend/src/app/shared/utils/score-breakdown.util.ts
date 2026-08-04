@@ -11,9 +11,9 @@ export interface ScoreRow {
 // mirrored here purely to draw an accurate "how much of this signal's ceiling did this repo hit"
 // progress bar per signal row (FR-005's "independently-weighted, identifiable inputs"). This does
 // not duplicate any scoring *decision* - the actual score always comes from the API's totalScore -
-// it only reproduces the same display-normalization math the design's per-signal bars need. Shared
-// between RepositoryCard's "Why this score?" panel and RepositoryDetailPane's score breakdown so the
-// two displays can't drift apart.
+// it only reproduces the same display-normalization math the design's per-signal bars need. Used by
+// RepositoryDetailPane's score breakdown footer (RepositoryCard's own "Why this score?" panel that
+// used to share this was removed - see RepositoryCard's own header comment).
 const COMMITS_PER_WEEK_CAP = 10.0;
 const CONTRIBUTOR_COUNT_CAP = 25.0;
 const FORK_COUNT_CAP = 200.0;

@@ -16,7 +16,6 @@ const baseRepository: RepositoryCardDto = {
   starCount: 1284,
   forkCount: 210,
   licenseIdentifier: 'Apache-2.0',
-  licenseName: 'Apache License 2.0',
   topics: ['rust', 'cargo', 'build-tools'],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'Visualizes cargo dependency graphs and feature flags.',
@@ -121,9 +120,9 @@ describe('RepositoryDetailPane', () => {
     await createFixture({ item: baseRepository, scoreBreakdown: null, trendGrowth: null });
     fixture.detectChanges();
 
-    (fixture.nativeElement as HTMLElement).querySelector('.repo-detail__close')?.dispatchEvent(
-      new MouseEvent('click', { bubbles: true }),
-    );
+    (fixture.nativeElement as HTMLElement)
+      .querySelector('.repo-detail__close')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     expect(dialogRefClose).toHaveBeenCalledTimes(1);
   });

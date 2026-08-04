@@ -35,7 +35,6 @@ export interface RepositoryCardDto {
   starCount: number;
   forkCount: number;
   licenseIdentifier: string | null;
-  licenseName: string | null;
   topics: string[];
   firstDiscoveredAtUtc: string;
   // The card itself only ever renders summaryContent (short) - detailedSummaryContent exists on

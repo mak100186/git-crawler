@@ -15,7 +15,7 @@
 # "unknown flag" style error, run `lms --help` / `lms <subcommand> --help` for your installed
 # version and adjust the recipe - don't assume the tool is broken.
 
-.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health
+.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health format test
 
 # On Windows, GNU Make normally picks its recipe shell by searching the invoking process's PATH
 # for sh.exe. That search succeeds from a Git Bash session (which adds Git's own bin dirs to PATH
@@ -73,6 +73,8 @@ help:
 	@echo "make status   - show whether Docker, Compose services, and LM Studio are up"
 	@echo "make health   - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
 	@echo "make logs     - tail the app container's logs"
+	@echo "make format   - format/lint-fix everything: frontend (eslint + prettier) and backend (dotnet format)"
+	@echo "make test     - run frontend and backend tests"
 	@echo ""
 	@echo "Once 'make up' finishes, the web dashboard (F-011 - Hidden Gems, Bookmarks) is at"
 	@echo "http://localhost:$(APP_PORT)/ - it's the Angular build served as static assets by the"
@@ -167,6 +169,22 @@ backend:
 
 frontend:
 	cd src/frontend && npm start
+
+# --- Formatting -------------------------------------------------------------
+
+# `npm run lint` (ESLint via Angular CLI) has no --fix wired up in package.json, so it only reports
+# problems here - `npm run format` (prettier --write) is the one that actually rewrites files.
+# `dotnet format` rewrites the backend in place against GitCrawler.sln. No Docker/env dependency -
+# this only touches source files, so it runs standalone against whatever's on disk right now.
+format:
+	cd src/frontend && npm run lint && npm run format
+	cd src/backend && dotnet format
+
+# Vitest (this app's actual test runner as of Angular 22's default @angular/build builder), not
+# Karma - it has no --browsers flag; --watch=false is the one flag it needs for a single CI-style run.
+test:
+	cd src/frontend && npm test -- --watch=false
+	cd src/backend && dotnet test GitCrawler.sln --no-restore
 
 # --- Docker ---------------------------------------------------------------
 
