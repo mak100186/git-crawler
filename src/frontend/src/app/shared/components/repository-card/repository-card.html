@@ -7,7 +7,8 @@
     <div class="repo-card__heading">
       <div class="repo-card__title">{{ repository().name }}</div>
       <div class="repo-card__subtitle">
-        {{ repository().owner }} · {{ repository().firstDiscoveredAtUtc | relativeDate }}
+        {{ repository().owner }} · {{ repository().firstDiscoveredAtUtc | relativeDate }} · ★
+        {{ repository().starCount }}
       </div>
     </div>
 
@@ -38,44 +39,14 @@
     }
   </mat-card-content>
 
-  @if (scoreBreakdown(); as breakdown) {
-    <mat-expansion-panel
-      class="repo-card__score-panel"
-      [hideToggle]="false"
-      (click)="$event.stopPropagation()"
-    >
-      <mat-expansion-panel-header>
-        <mat-panel-title>Why this score?</mat-panel-title>
-      </mat-expansion-panel-header>
-
-      <div class="repo-card__score-grid">
-        @for (row of scoreRows(); track row.label) {
-          <div class="repo-card__score-row">
-            <div class="repo-card__score-row-label">{{ row.label }}</div>
-            <div class="repo-card__score-row-value">{{ row.value }}</div>
-            <mat-progress-bar mode="determinate" [value]="row.ratio * 100" />
-            <div class="repo-card__score-row-caption">
-              {{ row.weight | number: '1.0-2' }}× weight
-            </div>
-          </div>
-        }
-      </div>
-    </mat-expansion-panel>
-  }
-
   <mat-card-actions class="repo-card__footer" align="start">
     @if (repository().primaryLanguage; as language) {
       <span class="repo-card__language-chip">{{ language }}</span>
     }
-    <span class="repo-card__stars">★ {{ repository().starCount }}</span>
     @if (repository().licenseIdentifier; as license) {
       <span class="repo-card__license-chip">{{ license }}</span>
     }
-    @if (trendGrowth(); as growth) {
-      <span class="repo-card__trend-chip" title="Trend for this repository's category">{{
-        growth
-      }}</span>
-    }
+
     <a
       mat-button
       class="repo-card__github-link"

@@ -179,13 +179,15 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
     // constructible. ComputeScoresJob (F-007, link 2 of the chain) is resolved the same way, since
     // DiscoverRepositoriesJob now takes it as a constructor dependency to chain into via
     // IScoringContinuationLink (see DiscoverRepositoriesJob's header comment) - it has no
-    // RecurringJob registration of its own below, since it's triggered only via that chain.
-    // GenerateSummariesJob (F-008, link 3) follows the identical pattern: ComputeScoresJob now
-    // takes it as a constructor dependency to chain into via ISummarizationContinuationLink (see
-    // ComputeScoresJob's own header comment), so it likewise gets no RecurringJob registration
-    // below. AggregateTrendsJob (F-009, link 4) follows the same pattern again: GenerateSummariesJob
-    // now takes it as a constructor dependency to chain into via ITrendsContinuationLink (see
-    // GenerateSummariesJob's own header comment), so it too gets no RecurringJob registration below.
+    // RecurringJob registration of its own, since it's triggered only via that chain.
+    // AggregateTrendsJob (F-009, link 4) follows the same pattern again: GenerateSummariesJob takes
+    // it as a constructor dependency to chain into via ITrendsContinuationLink (see
+    // GenerateSummariesJob's own header comment), so it too gets no RecurringJob registration of its
+    // own below. GenerateSummariesJob (F-008, link 3) is the one exception: ComputeScoresJob still
+    // chains into it via ISummarizationContinuationLink (right after a crawl/score cycle), but it
+    // additionally gets its own, more frequent RecurringJob registration below (see that
+    // registration's comment for why) - so it's resolved from DI both as a continuation target and
+    // as a standalone recurring job.
     builder.Services.AddScoped<DiscoverRepositoriesJob>();
     builder.Services.AddScoped<ComputeScoresJob>();
     builder.Services.AddScoped<IScoringContinuationLink, HangfireScoringContinuationLink>();
@@ -254,6 +256,23 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
         "discover-repositories",
         job => job.RunAsync(null!),
         crawlerCronSchedule);
+
+    // Second, independent trigger for GenerateSummariesJob (F-008, chain link 3), on top of the
+    // ISummarizationContinuationLink chain attachment inside ComputeScoresJob. The chain alone only
+    // gives summarization a chance to run once per crawlerCronSchedule cycle (daily by default);
+    // combined with GenerateSummariesCommandHandler's own BatchSize cap (20/run), a backlog of
+    // score-but-no-summary repos larger than one batch would otherwise sit unsummarized for days.
+    // Operator-directed: "we need to check more frequently for the repos that dont have a summary."
+    // Safe to run this often - GenerateSummariesCommandHandler's own "no Summary row yet" filter
+    // (see that class's header comment) makes every run a no-op once the backlog is cleared, and
+    // GenerateSummariesJob's own AggregateTrendsJob continuation is idempotent (F-009's
+    // upsert-by-(Category, PeriodStart, PeriodEnd) persistence). Distinct job id from
+    // "discover-repositories" so both registrations coexist rather than overwriting each other.
+    var summarizationCronSchedule = builder.Configuration.GetValue("Hangfire:SummarizationCronSchedule", "0 * * * *");
+    RecurringJob.AddOrUpdate<GenerateSummariesJob>(
+        "generate-summaries",
+        job => job.RunAsync(null!),
+        summarizationCronSchedule);
 }
 
 // Configure the HTTP request pipeline.

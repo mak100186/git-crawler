@@ -1,16 +1,19 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSidenavModule } from '@angular/material/sidenav';
 
 import { HiddenGemCardDto, RepositoryCardDto } from '../../../core/models/repository.model';
 import { RepositoryCard } from '../repository-card/repository-card';
-import { RepositoryDetailPane } from '../repository-detail-pane/repository-detail-pane';
+import {
+  RepositoryDetailDialogData,
+  RepositoryDetailPane,
+} from '../repository-detail-pane/repository-detail-pane';
 
 // Cross-view Loading/Empty/Error/Populated state machine (dashboard-ux-brief.md §3, dashboard-
 // handoff.md §6), plus the card-grid + mat-paginator layout (§4.1) - used solely by Hidden Gems now
@@ -30,14 +33,14 @@ import { RepositoryDetailPane } from '../repository-detail-pane/repository-detai
     MatPaginatorModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
-    MatSidenavModule,
     RepositoryCard,
-    RepositoryDetailPane,
   ],
   templateUrl: './repository-grid.html',
   styleUrl: './repository-grid.scss',
 })
 export class RepositoryGrid {
+  private readonly dialog = inject(MatDialog);
+
   readonly items = input<(RepositoryCardDto | HiddenGemCardDto)[]>([]);
   readonly loading = input(false);
   readonly error = input(false);
@@ -50,16 +53,24 @@ export class RepositoryGrid {
   readonly retry = output<void>();
   readonly clearFilters = output<void>();
 
-  // Card click -> right-side detail drawer (design brief §09) - `RepositoryGrid` owns this state
-  // since it's the one component shared by every view a card can be clicked from.
-  protected readonly selectedItem = signal<RepositoryCardDto | HiddenGemCardDto | null>(null);
-
+  // Card click -> centered detail modal (originally design brief §09's right-side drawer, replaced
+  // with a MatDialog per operator direction - see RepositoryDetailPane's own header comment for
+  // why). `RepositoryGrid` still owns triggering it since it's the one component shared by every
+  // view a card can be clicked from; the open/close state itself now lives in MatDialog/its
+  // MatDialogRef instead of a local signal.
   protected openDetail(item: RepositoryCardDto | HiddenGemCardDto): void {
-    this.selectedItem.set(item);
-  }
-
-  protected closeDetail(): void {
-    this.selectedItem.set(null);
+    this.dialog.open<RepositoryDetailPane, RepositoryDetailDialogData>(RepositoryDetailPane, {
+      data: {
+        item,
+        scoreBreakdown: this.scoreBreakdownOf(item),
+        trendGrowth: this.trendGrowthOf(item),
+      },
+      width: '840px',
+      maxWidth: '90vw',
+      maxHeight: '85vh',
+      panelClass: 'repo-detail-dialog-panel',
+      autoFocus: false,
+    });
   }
 
   // "First load" (nothing to show yet) gets the full centered spinner; a refetch while results are

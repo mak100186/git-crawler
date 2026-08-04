@@ -177,6 +177,36 @@ body {
   padding-right: 16px !important;
 }
 
+// RepositoryDetailPane's MatDialog panel (see repository-grid.ts's dialog.open call) - global
+// because MatDialog attaches its panel to the CDK overlay container, a sibling of <app-root> under
+// <body>, outside any component's own view encapsulation (same reason the app-snackbar/
+// app-snackbar-error hooks below - well, above, see BookmarkToggle - are global too). Rounds the
+// dialog surface to match this app's --radius-container-lg token and gives it an explicit shadow
+// (this app's own --elevation-lg token, not whatever the M3 theme's default dialog elevation
+// happens to render as - it wasn't reading as a visible shadow against this design's warm
+// background, per operator feedback). Deliberately not also setting overflow:hidden on the surface
+// itself, since that's the element MDC relies on for the dialog's own internal scroll when content
+// exceeds maxHeight; RepositoryDetailPane's own `.repo-detail` (repository-detail-pane.scss)
+// matches this same radius and clips horizontally on its own, so the corners still read as fully
+// rounded without touching the surface's scroll behavior.
+.repo-detail-dialog-panel .mat-mdc-dialog-container .mdc-dialog__surface {
+  border-radius: var(--radius-container-lg);
+  box-shadow: var(--elevation-lg);
+}
+
+@media (max-width: 720px) {
+  .repo-detail-dialog-panel {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100%;
+    max-height: 100vh !important;
+  }
+
+  .repo-detail-dialog-panel .mat-mdc-dialog-container .mdc-dialog__surface {
+    border-radius: 0;
+  }
+}
+
 // Focus ring (dashboard-handoff.md §1): 2px solid terracotta, 2px offset, on :focus-visible only.
 :focus-visible {
   outline: 2px solid var(--color-accent);

@@ -8,8 +8,8 @@
   box-shadow: var(--elevation-sm);
   height: 100%;
   // Whole card opens the detail pane (design brief §09) - interactive children (bookmark toggle,
-  // "Why this score?" panel, "Open on GitHub" link) stop propagation in the template so a click on
-  // any of those doesn't also trigger it.
+  // "Open on GitHub" link) stop propagation in the template so a click on any of those doesn't also
+  // trigger it.
   cursor: pointer;
 
   &__header {
@@ -106,41 +106,6 @@
     background: var(--color-neutral-200);
   }
 
-  &__score-panel {
-    background: var(--color-ink-900) !important;
-    color: var(--color-bg);
-    border-radius: 16px !important;
-    box-shadow: none !important;
-  }
-
-  &__score-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 12px;
-    padding: 4px 0 8px;
-  }
-
-  &__score-row {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  &__score-row-label {
-    font-size: 11px;
-    color: var(--color-neutral-300, #c0b6a5);
-  }
-
-  &__score-row-value {
-    font-family: var(--font-display);
-    font-size: 16px;
-  }
-
-  &__score-row-caption {
-    font-size: 10px;
-    color: var(--color-neutral-300, #c0b6a5);
-  }
-
   &__footer {
     display: flex;
     align-items: center;
@@ -152,7 +117,6 @@
     padding: 16px 0 0 !important;
     margin: 0;
     border-top: 1px solid var(--color-divider);
-    flex-wrap: wrap;
   }
 
   // Language chip is deliberately larger than the design's own .tag default (11px/3px 10px) - user
@@ -172,22 +136,6 @@
     border-radius: 999px;
     padding: 3px 10px;
     font-size: 11px;
-  }
-
-  &__stars {
-    font-size: 11px;
-    color: var(--color-neutral-700);
-  }
-
-  // Same visual language as the old standalone Trending view's own growth chip (removed
-  // trending.scss's .trend-card__growth-chip) - Hidden Gems only, via the trendGrowth input.
-  &__trend-chip {
-    background: var(--color-olive-800);
-    color: var(--color-olive-100);
-    border-radius: 999px;
-    padding: 4px 14px;
-    font-size: 12px;
-    white-space: nowrap;
   }
 
   &__github-link {

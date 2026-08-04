@@ -1,28 +1,11 @@
 <mat-toolbar class="app-toolbar">
   <span class="app-toolbar__brand">GitCrawler</span>
 
-  @if (!isNarrow()) {
-    <nav class="app-toolbar__nav">
-      @for (entry of navEntries; track entry.path) {
-        <a
-          mat-button
-          class="app-toolbar__nav-link"
-          [routerLink]="entry.path"
-          routerLinkActive="app-toolbar__nav-link--active"
-        >
-          {{ entry.label }}
-        </a>
-      }
-    </nav>
-  }
-
   <span class="app-toolbar__spacer"></span>
 
   <!-- Reserved, inert placeholder (Task Packet/handoff §2) - not wired to a route or handler. v2
        free-text search doesn't exist yet; shipping this as a ghost slot now means the shell won't
-       reflow when it lands. (F-012's own "Bookmarks · F-012" reserved slot briefly became a live nav
-       entry, then that entry itself was removed once the dedicated Bookmarks view was decommissioned
-       - see the changelog entry for that removal - so `navEntries` is down to Hidden Gems alone.) -->
+       reflow when it lands. -->
   <span class="app-toolbar__reserved app-toolbar__reserved-pill app-toolbar__search"
     >Search (v2)</span
   >
@@ -31,19 +14,3 @@
 <main class="app-content">
   <router-outlet />
 </main>
-
-@if (isNarrow()) {
-  <nav class="app-bottom-nav">
-    @for (entry of navEntries; track entry.path) {
-      <a
-        mat-icon-button
-        class="app-bottom-nav__link"
-        [routerLink]="entry.path"
-        routerLinkActive="app-bottom-nav__link--active"
-        [attr.aria-label]="entry.label"
-      >
-        <mat-icon [svgIcon]="entry.icon" />
-      </a>
-    }
-  </nav>
-}

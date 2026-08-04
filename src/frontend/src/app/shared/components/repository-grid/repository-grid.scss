@@ -64,22 +64,3 @@
   margin-top: 16px;
   background: transparent;
 }
-
-// Card click -> detail drawer (design brief §09). mat-drawer-container sizes itself to
-// mat-drawer-content's natural height, so this doesn't need an explicit height like a full-viewport
-// app shell would - it just wraps the existing grid content in place.
-.repository-grid-container {
-  background: transparent;
-}
-
-.repository-grid__detail-drawer {
-  width: 560px;
-  max-width: 100vw;
-  border-radius: 28px 0 0 28px;
-  overflow: hidden;
-
-  @media (max-width: 720px) {
-    width: 100vw;
-    border-radius: 0;
-  }
-}

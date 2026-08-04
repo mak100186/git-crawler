@@ -71,10 +71,14 @@ read/write shared state, which keeps each stage independently testable and resta
   (ADR-015).
 
 ### Summarizer
-- **Responsibility:** Generate a concise, structured AI summary for repositories that clear the
-  scoring threshold, from README/manifest content.
+- **Responsibility:** Generate a concise AI summary for repositories that clear the scoring
+  threshold, from README/manifest content. The prompt asks for a single plain-text passage (no
+  Markdown headings/bullet points/section labels) of about 3 sentences, capped at
+  `Summarization:MaxSummaryLength` characters (default 220) — sized to fit the dashboard card's
+  3-line clamp without server-side truncation; the length constraint is enforced by asking the
+  model for it, not by trimming the response afterward.
 - **Inputs:** Repository content (README, manifest files) for top-scored repos without a summary.
-- **Outputs:** Structured summary written to the Data Store.
+- **Outputs:** Plain-text summary written to the Data Store.
 - **Dependencies:** Local LLM Runtime, via the `IRepositorySummarizer` abstraction (ADR-001).
 - **Technology:** .NET service calling LM Studio's local (OpenAI-compatible) API (ADR-007),
   running the Llama 3.2 3B Instruct model (ADR-017, supersedes ADR-013); implemented as a
@@ -140,7 +144,12 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Responsibility:** Trigger each pipeline stage on its schedule, in dependency order (crawl
   before score, score before summarize, summarize before trend rollup, trend rollup before
   digest), recover in-flight/misfired jobs after a restart, and expose run history/failures for
-  operator monitoring.
+  operator monitoring. The Summarizer additionally has its own standalone, more-frequent recurring
+  trigger (hourly by default, `Hangfire:SummarizationCronSchedule`) alongside its chain
+  attachment — the chain alone only gives it one chance to run per daily crawl cycle, which left a
+  backlog of scored-but-not-yet-summarized repos (larger than one `Summarization:BatchSize` batch)
+  sitting unsummarized for days; both triggers converge on the same "no Summary row yet" selection,
+  so the extra trigger is a no-op once the backlog clears.
 - **Inputs:** Configured recurring schedules and stage-continuation chain.
 - **Outputs:** Triggers to Crawler, Scoring Engine, Summarizer, Trend Aggregator, Digest Service;
   dashboard view of job state.
@@ -240,3 +249,4 @@ the dashboard and receiving the digest.
 | v16 | 2026-08-03 | Discovery Feed removed as a distinct dashboard view: §3 Web Dashboard responsibility and FR-009 now name Hidden Gems as the dashboard's sole repository-browsing view (Bookmarks remains a separate, dedicated view per F-012). Like Trending (v15), this changed the Web API surface — `/api/discovery-feed` is fully removed, since `GetHiddenGems` was already the full-featured superset of the shared D4 filter/sort/paginate contract once Categories/Trending had folded away, leaving no distinct capability for Discovery Feed to keep offering | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." |
 | v17 | 2026-08-03 | §3 Web Dashboard responsibility noted a new click-to-open repository detail pane — fulfills the dashboard UX design brief's own §09 mockup (full summary, topics, score breakdown in a right-side drawer), which F-011's original implementation never built; no FR/NFR change, since no Functional Requirement committed to a detail pane in the first place — this is UX polish drawing on an already-approved design element, not new product scope | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" |
 | v18 | 2026-08-03 | F-012's dedicated Bookmarks view removed: §3 Web Dashboard responsibility now names Hidden Gems as the dashboard's sole view; §3 Web API responsibility notes `/api/bookmarks`'s GET (list) endpoint is fully removed too, same as `/api/discovery-feed`/`/api/trending`, since nothing else consumed it — create/delete stay mapped for the bookmark toggle. FR-007 itself is unaffected (still satisfied, now via Hidden Gems' existing "Bookmarked only" filter instead of a dedicated view) | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" |
+| v19 | 2026-08-04 | Summarizer changed from a "concise, structured" (headed-sections) prompt to a plain-text, ~3-sentence prompt explicitly capped at `Summarization:MaxSummaryLength` characters (default 220, new config) — §3 Summarizer updated; the prior structured output's own heading/section text was eating into the dashboard card's fixed 3-line clamp and crowding out the actual summary content. §3 Job Scheduler updated: the Summarizer now also has its own standalone hourly recurring trigger (`Hangfire:SummarizationCronSchedule`, new config) in addition to its existing chain attachment, so a backlog of scored-but-unsummarized repos no longer waits for the next full daily crawl cycle to be picked up | Operator: "we need to check more frequently for the repos that dont have a summary... summary should be x characters long... adjust prompt and ask for 3 liner (x character summary) so we dont have to truncate" |

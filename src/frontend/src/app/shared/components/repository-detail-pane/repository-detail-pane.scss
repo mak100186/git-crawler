@@ -1,13 +1,23 @@
 .repo-detail {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow-y: auto;
+  // No forced height - the dialog panel (repository-grid.ts's dialog.open call) sizes to this
+  // content up to its own maxHeight: '85vh', not the other way around (see repository-grid's own
+  // handoff note for the bug this avoids repeating - a forced-full-height ancestor stretching past
+  // its actual content leaves an empty gap before the footer). overflow: hidden auto clips
+  // horizontally (rounding the full-bleed header/footer to match --radius-container-lg, since the
+  // dialog surface itself deliberately isn't the one clipping - see styles.scss) while still
+  // scrolling vertically if content exceeds the dialog's cap.
+  overflow: hidden auto;
+  border-radius: var(--radius-container-lg);
 
+  // Header and chips share one continuous ink-900 block (operator direction: "the topic and other
+  // pills buttons are in the dialog header") - chips no longer sit in their own separate
+  // light-background section below a divider.
   &__header {
     background: var(--color-ink-900);
     color: var(--color-bg);
-    padding: 22px 24px;
+    padding: 22px 24px 0;
     display: flex;
     align-items: flex-start;
     gap: 12px;
@@ -36,12 +46,13 @@
   }
 
   &__chips {
-    padding: 16px 24px;
+    background: var(--color-ink-900);
+    color: var(--color-bg);
+    padding: 12px 24px 22px;
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    border-bottom: 1px solid var(--color-divider);
   }
 
   &__language-chip {
@@ -71,7 +82,7 @@
 
   &__stat {
     font-size: 12px;
-    color: var(--color-neutral-700);
+    color: var(--color-neutral-300, #c0b6a5);
   }
 
   &__github-link {
@@ -83,7 +94,6 @@
   }
 
   &__body {
-    flex: 1 1 auto;
     padding: 20px 24px;
     display: flex;
     flex-direction: column;

@@ -1,8 +1,67 @@
 # Handoff: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-03
+> Last updated: 2026-08-04
 
 ## What was done
+
+**Summarizer prompt and scheduling adjusted** (`docs/project-management.md` v25) — a direct,
+operator-directed change via Claude Code, not run through `orchestrator-development-pattern` (a
+config/prompt-level tweak to an existing Done feature, not a new Task Packet; verified directly
+instead, see below). The prior "Bookmarks tab decommissioned" entry has been moved to "Bookmarks tab
+decommissioned" below now that this entry supersedes it.
+
+- **What changed and why**: three related fixes to F-008's Summarizer, all from the same operator
+  note. (1) **No more headings in the summary text** — `LmStudioRepositorySummarizer`'s
+  `SystemPrompt` asked for a "concise, structured summary covering: purpose, key features, tech
+  stack, and notable caveats," which the model rendered as literal section headings/labels
+  ("Summary:", "Tech Stack:", etc). The dashboard card renders the summary in a fixed 3-line CSS
+  clamp (`repository-card.scss`'s `-webkit-line-clamp: 3`) with no server-side truncation, so that
+  heading text was eating into the visible budget and crowding out the actual summary content.
+  Reworded to ask for a single plain-text passage, no Markdown/headings/bullet points/section
+  labels. (2) **Summary should be a specific character length** — added
+  `Summarization:MaxSummaryLength` (new config, default 220, confirmed with the operator — sized to
+  fit the card's 3-line clamp at its 12.5px font / up to 420px card width) and told to the model
+  directly in `BuildUserPrompt` ("Write the summary in {N} characters or fewer"). Deliberately
+  enforced via the prompt, not by trimming the LM Studio response afterward — the operator's own
+  framing was "so we dont have to truncate." (3) **Check more frequently for repos without a
+  summary** — `GenerateSummariesJob` previously only ran via its chain attachment inside
+  `ComputeScoresJob` (F-008's own header comment), giving it one chance to run per
+  `Hangfire:CrawlerCronSchedule` cycle (daily by default); combined with
+  `Summarization:BatchSize`'s 20-per-run cap, a backlog larger than one batch could sit unsummarized
+  for days. `Program.cs` now also registers `GenerateSummariesJob` as its own independent
+  `RecurringJob` (id `"generate-summaries"`, distinct from `"discover-repositories"`) on a new
+  `Hangfire:SummarizationCronSchedule` (default hourly, `"0 * * * *"`), in addition to the existing
+  chain attachment. Safe to run this often: `GenerateSummariesCommandHandler`'s own "no Summary row
+  yet" selection filter makes every extra run a no-op once the backlog clears, and the job's own
+  `AggregateTrendsJob` continuation is idempotent (F-009's upsert-by-period persistence).
+- **No backend truncation existed to remove** — checked before assuming there was a trim step to
+  delete: `Summary.Content` is written straight from `LmStudioRepositorySummarizer.SummarizeAsync`'s
+  `.Trim()`'d response with no length cap anywhere in the write path; the only place text was ever
+  being cut off was the frontend's CSS line-clamp, which the prompt-side length constraint now
+  avoids hitting in practice rather than the code special-casing it.
+- **Docs updated for consistency, not just code**: `docs/architecture.md` (v19 — §3 Summarizer
+  responsibility now describes the plain-text/length-capped prompt instead of "concise, structured";
+  §3 Job Scheduler responsibility now notes the Summarizer's second, standalone recurring trigger),
+  `docs/project-management.md` (v25 — F-008's row annotated with the prompt/config/scheduling
+  changes).
+- **Pre-existing, unrelated documentation drift noticed while editing `docs/project-management.md`,
+  not introduced or fixed here**: this file's own Version History had only reached v24 before this
+  edit, but `docs/handoff.md`'s three most recent entries below (Repo card polish, Discovery Feed
+  removal, Bookmarks removal) cite it at v25, v26, and v27 respectively — those version bumps were
+  apparently never actually made to the file. Flagged rather than silently resolved, since fixing it
+  correctly needs to know which historical edit each of those three numbers was meant to correspond
+  to, not just renumbering forward from here.
+- **Verification**: backend 86/86 (no new/removed tests — this is a prompt/config/scheduling change
+  to existing code, not new surface area) — `dotnet build`/`dotnet test` both clean,
+  `dotnet format --verify-no-changes` clean. No frontend changes. Not live-verified end-to-end
+  against a running LM Studio instance in this session (same category of gap prior summarizer-touching
+  sessions have disclosed, e.g. Phase 2's handoff below) — the prompt wording and character-cap
+  instruction are new and unverified against the actual model's real-world adherence; worth a live
+  spot-check the next time `make up`/`make dev` runs against a populated backlog.
+
+---
+
+## Bookmarks tab decommissioned (superseded by the above, kept for history)
 
 **Bookmarks tab decommissioned** (`docs/project-management.md` v27) — a direct, operator-directed
 change via Claude Code, not run through `orchestrator-development-pattern` (no Task Packet/Developer/

@@ -90,15 +90,13 @@ describe('HiddenGems', () => {
     expect(fixture.nativeElement.querySelector('.repo-card__score-badge')).toBeTruthy();
   });
 
-  it('renders each card\'s trend-growth chip (merged in from the old standalone Trending view)', () => {
+  it('does not render a trend-growth chip on the card itself (shown in the detail dialog instead)', () => {
     getHiddenGems.mockReturnValue(of({ items: [hiddenGem], page: 1, pageSize: 24, totalCount: 1 }));
 
     fixture = TestBed.createComponent(HiddenGems);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.repo-card__trend-chip')?.textContent?.trim()).toBe(
-      '▲ +18% vs. last period',
-    );
+    expect(fixture.nativeElement.querySelector('.repo-card__trend-chip')).toBeNull();
   });
 
   it('shows the empty state when there are zero hidden gems', () => {

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
@@ -24,6 +25,7 @@ const repo: RepositoryCardDto = {
 
 describe('RepositoryGrid', () => {
   let fixture: ComponentFixture<RepositoryGrid>;
+  let dialog: MatDialog;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -39,6 +41,14 @@ describe('RepositoryGrid', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(RepositoryGrid);
+    dialog = TestBed.inject(MatDialog);
+  });
+
+  // MatDialog attaches its panel to the CDK overlay container appended to document.body, outside
+  // fixture.nativeElement - a dialog left open by one test would otherwise still be in the DOM (and
+  // still hold BookmarkToggle/MatSnackBar dependencies) when the next test's TestBed resets.
+  afterEach(() => {
+    dialog.closeAll();
   });
 
   it('shows the loading spinner on first load (no items yet)', () => {
@@ -89,7 +99,7 @@ describe('RepositoryGrid', () => {
     expect(emitted).toEqual({ page: 2, pageSize: 24 });
   });
 
-  it("opens the detail drawer with the clicked card's data (design brief §09)", () => {
+  it("opens the detail dialog with the clicked card's data (design brief §09)", () => {
     fixture.componentRef.setInput('items', [repo]);
     fixture.detectChanges();
 
@@ -99,29 +109,32 @@ describe('RepositoryGrid', () => {
     );
     fixture.detectChanges();
 
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('app-repository-detail-pane')
-        ?.textContent,
-    ).toContain('hello-world');
+    // The dialog renders into the CDK overlay container (a sibling of <app-root> under <body>), not
+    // as a child of fixture.nativeElement - queried from document.body accordingly.
+    expect(document.body.querySelector('app-repository-detail-pane')?.textContent).toContain(
+      'hello-world',
+    );
   });
 
-  it('closes the drawer when the detail pane emits closed', () => {
+  it('closes the dialog when its close button is clicked', async () => {
     fixture.componentRef.setInput('items', [repo]);
     fixture.detectChanges();
 
-    let el = fixture.nativeElement as HTMLElement;
+    const el = fixture.nativeElement as HTMLElement;
     el.querySelector('app-repository-card mat-card')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
     fixture.detectChanges();
 
-    el = fixture.nativeElement as HTMLElement;
-    el
+    document.body
       .querySelector('.repo-detail__close')
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     fixture.detectChanges();
+    // Even under NoopAnimationsModule, MatDialog tears its overlay down on a macrotask after
+    // close() rather than synchronously - whenStable() flushes that before asserting removal.
+    await fixture.whenStable();
+    fixture.detectChanges();
 
-    el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('app-repository-detail-pane .repo-detail')).toBeNull();
+    expect(document.body.querySelector('app-repository-detail-pane')).toBeNull();
   });
 });

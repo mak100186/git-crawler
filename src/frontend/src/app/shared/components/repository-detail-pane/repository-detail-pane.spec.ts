@@ -1,10 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { BookmarkApiService } from '../../../core/api/bookmark-api.service';
 import { RepositoryCardDto, ScoreBreakdownDto } from '../../../core/models/repository.model';
-import { RepositoryDetailPane } from './repository-detail-pane';
+import { RepositoryDetailDialogData, RepositoryDetailPane } from './repository-detail-pane';
 
 const baseRepository: RepositoryCardDto = {
   id: 1,
@@ -39,8 +40,13 @@ const scoreBreakdown: ScoreBreakdownDto = {
 
 describe('RepositoryDetailPane', () => {
   let fixture: ComponentFixture<RepositoryDetailPane>;
+  let dialogRefClose: ReturnType<typeof vi.fn>;
 
-  beforeEach(async () => {
+  // Data is fixed for the dialog's whole lifetime (injected via MAT_DIALOG_DATA, not a template
+  // input), so each test builds its own TestBed/fixture rather than mutating inputs on a shared one.
+  async function createFixture(data: RepositoryDetailDialogData): Promise<void> {
+    dialogRefClose = vi.fn();
+
     await TestBed.configureTestingModule({
       imports: [RepositoryDetailPane],
       providers: [
@@ -50,21 +56,16 @@ describe('RepositoryDetailPane', () => {
           useValue: { addBookmark: vi.fn(), removeBookmark: vi.fn() },
         },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: MAT_DIALOG_DATA, useValue: data },
+        { provide: MatDialogRef, useValue: { close: dialogRefClose } },
       ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(RepositoryDetailPane);
-  });
+  }
 
-  it('renders nothing when there is no item', () => {
-    fixture.componentRef.setInput('item', null);
-    fixture.detectChanges();
-
-    expect((fixture.nativeElement as HTMLElement).querySelector('.repo-detail')).toBeNull();
-  });
-
-  it('renders the full summary, topics, and chips for the given item', () => {
-    fixture.componentRef.setInput('item', baseRepository);
+  it('renders the full summary, topics, and chips for the given item', async () => {
+    await createFixture({ item: baseRepository, scoreBreakdown: null, trendGrowth: null });
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
@@ -81,22 +82,28 @@ describe('RepositoryDetailPane', () => {
     expect(topicChips).toEqual(['rust', 'cargo', 'build-tools']);
   });
 
-  it('renders the "Summary pending" placeholder when summaryContent is null', () => {
-    fixture.componentRef.setInput('item', { ...baseRepository, summaryContent: null });
+  it('renders the "Summary pending" placeholder when summaryContent is null', async () => {
+    await createFixture({
+      item: { ...baseRepository, summaryContent: null },
+      scoreBreakdown: null,
+      trendGrowth: null,
+    });
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Summary pending');
   });
 
-  it('omits the score footer when no scoreBreakdown is provided, renders it when one is', () => {
-    fixture.componentRef.setInput('item', baseRepository);
+  it('omits the score footer when no scoreBreakdown is provided', async () => {
+    await createFixture({ item: baseRepository, scoreBreakdown: null, trendGrowth: null });
     fixture.detectChanges();
 
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('.repo-detail__score-footer'),
     ).toBeNull();
+  });
 
-    fixture.componentRef.setInput('scoreBreakdown', scoreBreakdown);
+  it('renders the score footer when scoreBreakdown is provided', async () => {
+    await createFixture({ item: baseRepository, scoreBreakdown, trendGrowth: null });
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
@@ -104,17 +111,14 @@ describe('RepositoryDetailPane', () => {
     expect(el.textContent).toContain('Commits/week');
   });
 
-  it('emits closed when the close button is clicked', () => {
-    fixture.componentRef.setInput('item', baseRepository);
+  it('closes the dialog when the close button is clicked', async () => {
+    await createFixture({ item: baseRepository, scoreBreakdown: null, trendGrowth: null });
     fixture.detectChanges();
-
-    const emitted = vi.fn();
-    fixture.componentInstance.closed.subscribe(emitted);
 
     (fixture.nativeElement as HTMLElement).querySelector('.repo-detail__close')?.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
 
-    expect(emitted).toHaveBeenCalledTimes(1);
+    expect(dialogRefClose).toHaveBeenCalledTimes(1);
   });
 });

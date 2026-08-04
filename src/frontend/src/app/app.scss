@@ -13,41 +13,15 @@
   gap: 16px;
   position: sticky;
   top: 0;
-  z-index: 10;
+  // Higher than the CDK overlay container's own z-index (1000, set by Angular CDK's default
+  // styles) - RepositoryDetailPane's MatDialog (repository-grid.ts) attaches its backdrop/panel
+  // there, and the operator asked for the header to stay visible above that backdrop rather than
+  // being dimmed along with the rest of the page ("i want it to show under the header").
+  z-index: 1001;
 
   &__brand {
     font-family: var(--font-display);
     font-size: 21px;
-  }
-
-  &__nav {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: 24px;
-  }
-
-  // mat-button reads its own font-family/color from --mat-button-text-label-text-font/-color
-  // (falling back to the M3 system tokens) rather than a plain `font-family`/`color` declaration -
-  // setting those custom properties is the supported override path Material provides for exactly
-  // this, and (being custom properties) they apply regardless of stylesheet load order, no
-  // !important needed.
-  &__nav-link {
-    border-radius: 999px;
-    // The --mat-button-text-label-text-color custom property alone doesn't reliably win against
-    // Material's own internal color declaration on .mat-mdc-button - setting color directly (with
-    // !important, matching this app's established pattern in styles.scss for the same class of
-    // Material override) guarantees the unselected links actually render light-on-dark instead of
-    // falling back to the inherited near-black --color-ink from body's own color.
-    color: #fff !important;
-    --mat-button-text-label-text-color: var(--color-neutral-300, #c0b6a5);
-    --mat-button-text-label-text-font: var(--font-display);
-
-    &--active {
-      background: var(--color-accent);
-      color: var(--color-ink) !important;
-      --mat-button-text-label-text-color: var(--color-ink);
-    }
   }
 
   &__spacer {
@@ -60,9 +34,7 @@
   }
 
   // Reserved slot styling - plain text pill, sized to its own content, no functionality behind it
-  // yet (v2 free-text search). F-012's own "Bookmarks" reserved slot briefly became a live nav entry
-  // (see NAV_ENTRIES in app.ts), then that entry itself was removed once the dedicated Bookmarks view
-  // was decommissioned - so this is only used by the Search (v2) placeholder now.
+  // yet (v2 free-text search).
   &__reserved-pill {
     border: 1.5px dashed var(--color-neutral-600);
     border-radius: 999px;
@@ -76,30 +48,4 @@
   flex: 1 1 auto;
   background: var(--color-bg);
   min-height: 0;
-  padding-bottom: 72px;
-}
-
-.app-bottom-nav {
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--color-ink-900);
-  border-radius: 999px;
-  padding: 8px 14px;
-  box-shadow: var(--elevation-lg);
-  z-index: 10;
-
-  // mat-icon-button already provides the button chrome (sizing, circular ripple/hover target) -
-  // only the design's per-state icon color is themed here.
-  &__link {
-    color: var(--color-neutral-500);
-
-    &--active {
-      color: var(--color-accent-400, #f6a06b);
-    }
-  }
 }

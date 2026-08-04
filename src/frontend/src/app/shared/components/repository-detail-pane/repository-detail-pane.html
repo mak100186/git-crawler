@@ -1,99 +1,97 @@
-@if (item(); as repo) {
-  <div class="repo-detail">
-    <header class="repo-detail__header">
-      <div class="repo-detail__heading">
-        <div class="repo-detail__title">{{ repo.name }}</div>
-        <div class="repo-detail__subtitle">
-          {{ repo.owner }} · discovered {{ repo.firstDiscoveredAtUtc | relativeDate }}
-        </div>
+<div class="repo-detail">
+  <header class="repo-detail__header">
+    <div class="repo-detail__heading">
+      <div class="repo-detail__title">{{ item.name }}</div>
+      <div class="repo-detail__subtitle">
+        {{ item.owner }} · discovered {{ item.firstDiscoveredAtUtc | relativeDate }}
       </div>
-
-      <app-bookmark-toggle
-        class="repo-detail__bookmark"
-        [repositoryId]="repo.id"
-        [initialBookmarked]="repo.isBookmarked"
-      />
-
-      <button
-        mat-icon-button
-        type="button"
-        class="repo-detail__close"
-        aria-label="Close"
-        (click)="closed.emit()"
-      >
-        <mat-icon svgIcon="x" />
-      </button>
-    </header>
-
-    <div class="repo-detail__chips">
-      @if (repo.primaryLanguage; as language) {
-        <span class="repo-detail__language-chip">{{ language }}</span>
-      }
-      @if (repo.licenseIdentifier; as license) {
-        <span class="repo-detail__license-chip">{{ license }}</span>
-      }
-      <span class="repo-detail__stat">★ {{ repo.starCount }}</span>
-      <span class="repo-detail__stat">⑂ {{ repo.forkCount }}</span>
-      @if (trendGrowth(); as growth) {
-        <span class="repo-detail__trend-chip">{{ growth }}</span>
-      }
-      <a
-        mat-flat-button
-        class="repo-detail__github-link"
-        [href]="repo.url"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <mat-icon svgIcon="external-link" />
-        Open on GitHub
-      </a>
     </div>
 
-    <div class="repo-detail__body">
-      <section class="repo-detail__section">
-        <h3 class="repo-detail__section-label">AI summary</h3>
-        @if (repo.summaryContent; as summary) {
-          <p class="repo-detail__summary">{{ summary }}</p>
-        } @else {
-          <div class="repo-detail__summary-pending">
-            <mat-progress-spinner mode="indeterminate" diameter="14" strokeWidth="2" />
-            <span>Summary pending</span>
-          </div>
-        }
-      </section>
+    <app-bookmark-toggle
+      class="repo-detail__bookmark"
+      [repositoryId]="item.id"
+      [initialBookmarked]="item.isBookmarked"
+    />
 
-      @if (repo.topics.length > 0) {
-        <section class="repo-detail__section">
-          <h3 class="repo-detail__section-label">Topics</h3>
-          <div class="repo-detail__topics">
-            @for (topic of repo.topics; track topic) {
-              <span class="repo-detail__topic-chip">{{ topic }}</span>
-            }
-          </div>
-        </section>
-      }
-    </div>
+    <button
+      mat-icon-button
+      type="button"
+      class="repo-detail__close"
+      aria-label="Close"
+      (click)="close()"
+    >
+      <mat-icon svgIcon="x" />
+    </button>
+  </header>
 
-    @if (scoreBreakdown(); as breakdown) {
-      <footer class="repo-detail__score-footer">
-        <div class="repo-detail__score-badge">
-          <span class="repo-detail__score-value">{{ scoreRounded() }}</span>
-          <span class="repo-detail__score-caption">Gem score</span>
+  <div class="repo-detail__chips">
+    @if (item.primaryLanguage; as language) {
+      <span class="repo-detail__language-chip">{{ language }}</span>
+    }
+    @if (item.licenseIdentifier; as license) {
+      <span class="repo-detail__license-chip">{{ license }}</span>
+    }
+    <span class="repo-detail__stat">★ {{ item.starCount }}</span>
+    <span class="repo-detail__stat">⑂ {{ item.forkCount }}</span>
+    @if (trendGrowth; as growth) {
+      <span class="repo-detail__trend-chip">{{ growth }}</span>
+    }
+    <a
+      mat-flat-button
+      class="repo-detail__github-link"
+      [href]="item.url"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <mat-icon svgIcon="external-link" />
+      Open on GitHub
+    </a>
+  </div>
+
+  <div class="repo-detail__body">
+    <section class="repo-detail__section">
+      <h3 class="repo-detail__section-label">AI summary</h3>
+      @if (item.summaryContent; as summary) {
+        <p class="repo-detail__summary">{{ summary }}</p>
+      } @else {
+        <div class="repo-detail__summary-pending">
+          <mat-progress-spinner mode="indeterminate" diameter="14" strokeWidth="2" />
+          <span>Summary pending</span>
         </div>
+      }
+    </section>
 
-        <div class="repo-detail__score-grid">
-          @for (row of scoreRows(); track row.label) {
-            <div class="repo-detail__score-row">
-              <div class="repo-detail__score-row-label">{{ row.label }}</div>
-              <div class="repo-detail__score-row-value">{{ row.value }}</div>
-              <mat-progress-bar mode="determinate" [value]="row.ratio * 100" />
-              <div class="repo-detail__score-row-caption">
-                {{ row.weight | number: '1.0-2' }}× weight
-              </div>
-            </div>
+    @if (item.topics.length > 0) {
+      <section class="repo-detail__section">
+        <h3 class="repo-detail__section-label">Topics</h3>
+        <div class="repo-detail__topics">
+          @for (topic of item.topics; track topic) {
+            <span class="repo-detail__topic-chip">{{ topic }}</span>
           }
         </div>
-      </footer>
+      </section>
     }
   </div>
-}
+
+  @if (scoreBreakdown; as breakdown) {
+    <footer class="repo-detail__score-footer">
+      <div class="repo-detail__score-badge">
+        <span class="repo-detail__score-value">{{ scoreRounded }}</span>
+        <span class="repo-detail__score-caption">Gem score</span>
+      </div>
+
+      <div class="repo-detail__score-grid">
+        @for (row of scoreRows; track row.label) {
+          <div class="repo-detail__score-row">
+            <div class="repo-detail__score-row-label">{{ row.label }}</div>
+            <div class="repo-detail__score-row-value">{{ row.value }}</div>
+            <mat-progress-bar mode="determinate" [value]="row.ratio * 100" />
+            <div class="repo-detail__score-row-caption">
+              {{ row.weight | number: '1.0-2' }}× weight
+            </div>
+          </div>
+        }
+      </div>
+    </footer>
+  }
+</div>
