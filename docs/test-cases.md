@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v15
+> Version: v16
 > Last updated: 2026-08-04
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012 so far)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -757,6 +757,88 @@ placeholder (ID not reused), same precedent as TC-011-11.
 
 ---
 
+## F-013 — Digest Service
+
+### TC-013-01 (Happy path) — Daily digest composed and sent with top hidden gems + trend summaries
+1. Seed several scored-and-summarized repositories with varying `TotalScore`, plus at least one
+   `TrendAggregate` row for today's period. Trigger `SendDigestCommand` (directly via
+   `IMessageBus.InvokeAsync`, or by waiting for its scheduled Hangfire trigger).
+2. **Expect:** an outbound email is sent via the configured SMTP provider, containing the top-N
+   highest-scored repos (by latest `TotalScore`) with their short summary, and a trend-summary
+   section sourced from the current period's `TrendAggregate` rows (still populated per Architecture's
+   Trend Aggregator note — reserved specifically for this consumer) — satisfies F-013's "composes and
+   sends a daily email with top hidden gems and trend summaries" AC (FR-006).
+
+### TC-013-02 (Edge case) — Send failure is logged, not silently dropped
+1. Configure the SMTP client to fail (e.g. an unreachable host, or a stubbed mail-transport dependency
+   that throws), then trigger `SendDigestCommand`.
+2. **Expect:** the failure is logged (visible in the app's structured logs, at `Error`/`Warning` level)
+   with enough detail to diagnose it, and the command completes without an unhandled exception
+   crashing the host — matches F-013's explicit "failure to send is logged, not silently dropped" AC.
+   Distinct from F-008's per-repo-failure pattern: there's only one send per run, so "not silently
+   dropped" means the log itself is the check, not a skip-and-continue count.
+
+### TC-013-03 (Edge case) — No eligible repos or trend data for today
+1. Trigger `SendDigestCommand` against a database with no scored repos meeting the digest's inclusion
+   bar, and no `TrendAggregate` row for the current period.
+2. **Expect:** the digest either sends an email stating there's nothing new, or explicitly skips
+   sending with a logged reason — never silently sends a malformed/empty-body email, and never throws.
+
+### TC-013-04 (Regression-sensitive) — Digest reflects each repo's latest score, not a historical peak
+1. Seed a repository with two `Score` rows: an earlier high score and a chronologically later (by
+   `ComputedAtUtc`) lower one, positioned so the earlier score alone would place it in the top-N but
+   the later one would not.
+2. **Expect:** the digest's top-N selection uses the latest score, excluding this repository if its
+   current standing doesn't qualify — same "latest by `ComputedAtUtc`" rule F-007/F-008/F-009/F-010
+   each already apply to their own `Score` reads.
+
+### TC-013-05 (Manual) — Live SMTP delivery
+1. **Manual (requires a real or local-relay SMTP endpoint configured):** trigger `SendDigestCommand`
+   against real data and confirm an email actually arrives at the configured recipient(s), rendering
+   correctly (subject, top hidden gems, trend summaries) in a real mail client.
+2. **Expect:** the email is legible and complete — confirms the composed content isn't just internally
+   well-formed but actually deliverable through the configured SMTP provider end-to-end.
+
+---
+
+## F-014 — Observability
+
+### TC-014-01 (Happy path) — Every command/query stage emits structured stage-level metrics
+1. Trigger a representative sample of existing pipeline commands/queries (e.g.
+   `DiscoverRepositoriesCommand`, `ComputeScoresCommand`, `GenerateSummariesCommand`,
+   `AggregateTrendsCommand`, and at least one Web API query handler) with the Wolverine observability
+   middleware active.
+2. **Expect:** each invocation emits a structured log record (or metric) containing a records-processed
+   count, duration, and success/failure status, attributable to the specific stage/handler that ran —
+   confirms the middleware wraps every command/query platform-wide (F-014's AC), not just the
+   scheduled pipeline jobs.
+
+### TC-014-02 (Edge case) — Failures are captured per stage, not just successes
+1. Force a handler to throw (e.g. a stubbed dependency failure in `GenerateSummariesCommandHandler`),
+   with the middleware active.
+2. **Expect:** the emitted stage record reflects the failure (failure count/flag set, exception detail
+   present) rather than being silently omitted or reported as a success — satisfies the "failures per
+   stage" half of F-014's AC.
+
+### TC-014-03 (Regression-sensitive) — Middleware adds stage-level detail beyond the Hangfire dashboard, without duplicating it
+1. Compare what the Hangfire dashboard (F-006) already shows for a job run (start/end time,
+   succeeded/failed, retry count) against what the new middleware emits for the same run.
+2. **Expect:** the middleware's output includes detail the Hangfire dashboard does not capture (e.g.
+   per-stage records-processed count, or a per-signal breakdown within a single job invocation) —
+   confirms F-014 is additive to F-006, not a redundant re-implementation of job-level history already
+   covered (per Architecture's NFR-005 note: "job-level piece ... now covered by the Hangfire
+   dashboard ... F-014 still needed for stage-level detail").
+
+### TC-014-04 (Manual) — A stuck or rate-limited run is diagnosable from logs/metrics alone
+1. **Manual/simulated:** reproduce a rate-limited crawl (same trigger as TC-005-03) or otherwise stall
+   a stage, with the observability middleware active, then attempt to determine what stage is stuck
+   and why using only the emitted logs/metrics — no debugger attached.
+2. **Expect:** the stage name, the point it's stuck at, and a reason (e.g. rate-limit wait, exception)
+   are all identifiable from the structured output alone — directly validates NFR-005's "diagnose a
+   stuck or rate-limited run without a debugger" requirement, the actual motivating scenario for F-014.
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
@@ -775,3 +857,4 @@ placeholder (ID not reused), same precedent as TC-011-11.
 | v13 | 2026-08-03 | F-012's dedicated Bookmarks view decommissioned: TC-012-01/02/03/04/06 marked Removed (same precedent as TC-011-11/05/10/TC-010-03) — the view is gone, its "Bookmarked only" filter equivalent already existed on Hidden Gems; TC-012-05 retargeted in place to that filter (capability persists, same precedent as TC-010-01's Discovery Feed retargeting) rather than marked Removed. TC-011-01 updated: primary nav is now exactly one entry ("Hidden Gems"), not a separate FR-009-views-vs-Bookmarks-nav-entry distinction. TC-011-03/14 no longer mention Bookmarks as a second card source | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" — implemented directly via Claude Code, not an orchestrated run |
 | v14 | 2026-08-04 | Full documentation sync pass — several rounds of direct, operator-directed UI/backend changes on 2026-08-04 had left this doc describing behavior that no longer exists. TC-008-01 amended for the two-summary split (short + detailed, one `Summary` row, two LM Studio calls); new TC-008-09 for the README-length cap (`Summarization:MaxReadmeCharacters`) added after a live `openclaw/openclaw` context-window failure. TC-010-11 rewritten: `TrendGrowth` is now computed per repository from its own `Score` history, not per language/category from `TrendAggregate` (operator: "Trend is currently calculated per language. I want it to be calculated per repository"). TC-011-02 no longer claims the card shows a "Why this score?" panel or a trend chip (both removed from the card, consolidated into the detail dialog). TC-011-04's forward-pointer and TC-011-13 both corrected/retargeted for the same per-repository trend change (TC-011-13 now describes the dialog's chip, not a card-level one). TC-011-09 corrected: there is no bottom nav to collapse (the primary nav was removed entirely once Hidden Gems became the sole page) — only the filter bar collapses; added a step 4 regression check for the narrow-viewport GitHub-link-showing-through-the-sidenav defect (operator-confirmed fixed). TC-011-14/15 updated for the drawer→`MatDialog` conversion and the removed card-level score panel. New TC-011-16 for the paginator's 24/48/64 page-size dropdown. `docs/prd.md` (v8 — US-8 reworded), `docs/architecture.md` (v22 — §3 Web Dashboard), and `docs/project-management.md` (v29+) were also found with a separate, unrelated drift while doing this pass: each doc's own header `Version` marker had silently fallen behind its own changelog table (e.g. Architecture's header still read v18 while its table already reached v22) — fixed in each file alongside its content corrections | Operator: "now update all documents for whatever has been implemented so far" |
 | v15 | 2026-08-04 | TC-010-04 rewritten: the Categories endpoint no longer reads `TrendAggregate` — it queries `Repository.PrimaryLanguage` directly, since `CategoryDto`'s only consumer (`FacetOptionsService`) had only ever read the `category` string, never the rollup fields (`RepositoryCount`/`AverageScore`/period dates) that came with it. New assertion added: a language with no scored repository behind it must not appear as a filter option (matches `GetHiddenGemsQueryHandler`'s own eligibility) — also documents a latent-bug fix, since the old version required a `Summary` too, stricter than Hidden Gems itself requires | Operator: "So for just the language filter we have the whole TrendAggregate table?" |
+| v16 | 2026-08-04 | Added Phase 4 scenarios ahead of implementation (TC-013 Digest Service: composition/send, logged-not-dropped send failure, empty-digest handling, latest-not-highest score selection, a Manual live-SMTP-delivery check; TC-014 Observability: platform-wide stage metrics, per-stage failure capture, additive-not-duplicate vs. the Hangfire dashboard, a Manual stuck-run-diagnosability check) | Orchestrator Step 0.0 gap-closure — test-cases-doc had no Phase 4 coverage before F-013/F-014's Task Packets were generated (same pattern as v2/v4/v5/v6/v7), drafted before dispatching either Developer Agent per the operator's explicit choice to draft scenarios now rather than proceed without them |

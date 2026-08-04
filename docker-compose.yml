@@ -77,3 +77,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  # Dev-only SMTP capture tool for F-013 (Digest Service) local testing - see
+  # appsettings.Development.json's Smtp section and docs/setup.md §3a. Mailpit is the actively-
+  # maintained successor to MailHog (which has had no meaningful releases since 2022) - same
+  # catch-all SMTP server + web UI to inspect what got "sent" idea, still developed. Not part of
+  # the self-hosted deployment ADR-002 describes (app + postgres, LM Studio host-installed) - it
+  # exists purely so `make dev`'s bare backend has something to send digest emails to without a
+  # real mailbox.
+  #
+  # `profiles: ["dev"]` keeps this out of `make up`'s unqualified `docker compose up -d --build`
+  # (no profile flag = no profiled services start) - only `make dev`'s explicit
+  # `docker compose up -d postgres mailpit` starts it, since naming a profiled service directly
+  # on the command line starts it regardless of active profiles (Compose's documented behavior).
+  #
+  # Unpinned (`latest`), unlike postgres above: this holds no persistent data and a breaking image
+  # update is immediately visible in a throwaway dev tool - the pinning discipline that matters for
+  # production data durability doesn't buy anything here.
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["dev"]
+    ports:
+      - "1025:1025" # SMTP - matches appsettings.Development.json's Smtp:Port
+      - "8025:8025" # Web UI - http://localhost:8025 to see captured digest emails

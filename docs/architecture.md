@@ -1,7 +1,7 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v23
+> Version: v24
 > Last updated: 2026-08-04
 > PRD: docs/prd.md (built against v8)
 
@@ -118,6 +118,31 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Technology:** .NET background service, SMTP client; implemented as a Wolverine
   command/handler slice (ADR-015).
 
+### Observability (cross-cutting, not a pipeline stage)
+- **Responsibility:** Emit structured stage-level logs/metrics (records processed, duration,
+  success/failure) for every command/query invocation platform-wide — the five background pipeline
+  stages and the Web API alike — satisfying NFR-005's "diagnose a stuck or rate-limited run without
+  attaching a debugger" requirement beyond what the Job Scheduler's Hangfire dashboard already covers
+  (job-level history only, no visibility inside a single job execution or into HTTP-triggered query
+  handlers, which aren't Hangfire jobs at all).
+- **Inputs:** Every Wolverine command/query invocation Wolverine compiles, platform-wide — no
+  per-handler opt-in.
+- **Outputs:** Structured log records ("Starting"/"Completed ... OK|FAILED, RecordsProcessed=...,
+  ElapsedMs=...") via the standard `ILogger` pipeline; no separate metrics store in v1.
+- **Dependencies:** None beyond the Wolverine runtime itself (a leaf, cross-cutting concern, not a
+  stage that reads/writes the Data Store).
+- **Technology:** `Infrastructure/Observability/` — the one deliberate exception to ADR-015's
+  `Features/<Area>/<Operation>` vertical-slice layout, since this applies to every slice rather than
+  belonging to one (predicted directly by ADR-015's own Consequences section: "structured
+  logging/metrics for NFR-005 are natural fits for Wolverine middleware"). Two Wolverine idioms
+  combined: an attribute-based `[WolverineBefore]`/`[WolverineOnException]` middleware
+  (`ObservabilityMiddleware`) for duration/success/failure, plus a raw `IChainPolicy`
+  (`RecordsProcessedPolicy`) that reflects over each chain's actual handler return type at codegen
+  time to extract a records-processed count — required because the attribute-convention idiom alone
+  has no way to bind a handler's real, correctly-typed return value (verified empirically against
+  WolverineFx 6.24.2). Registered once, globally, via `opts.Policies.AddMiddleware<...>()` /
+  `opts.Policies.Add<...>()` inside `Program.cs`'s `UseWolverine(...)` block.
+
 ### Web API
 - **Responsibility:** Serve the Dashboard's queries (hidden gems — including each card's own trend
   growth, computed from its Score history, not a category rollup — categories, filter/sort) and
@@ -166,14 +191,18 @@ read/write shared state, which keeps each stage independently testable and resta
   Material (ADR-011).
 
 ### Job Scheduler
-- **Responsibility:** Trigger each pipeline stage on its schedule, in dependency order (crawl
-  before score, score before summarize, summarize before trend rollup, trend rollup before
-  digest), recover in-flight/misfired jobs after a restart, and expose run history/failures for
-  operator monitoring. The Summarizer additionally has its own standalone, more-frequent recurring
-  trigger (hourly by default, `Hangfire:SummarizationCronSchedule`) alongside its chain
-  attachment — the chain alone only gives it one chance to run per daily crawl cycle, which left a
-  backlog of scored-but-not-yet-summarized repos (larger than one `Summarization:BatchSize`, default
-  200, batch)
+- **Responsibility:** Trigger each pipeline stage on its schedule, recover in-flight/misfired jobs
+  after a restart, and expose run history/failures for operator monitoring. Crawl → score →
+  summarize → aggregate trends is a true `ContinueJobWith` dependency chain (each link fires only
+  once its predecessor completes). Digest Service (F-013) is deliberately NOT chain link 5 onto
+  Trend Aggregator: Trend Aggregator itself fires on Summarizer's own hourly cadence (see below), so
+  chaining the digest onto it would email the operator on every one of those runs, not once a day —
+  it instead gets its own independent daily `RecurringJob` (`Hangfire:DigestCronSchedule`, default
+  `0 6 * * *`, chosen to comfortably trail the 03:00 crawl chain's completion for that day's cohort).
+  The Summarizer additionally has its own standalone, more-frequent recurring trigger (hourly by
+  default, `Hangfire:SummarizationCronSchedule`) alongside its chain attachment — the chain alone
+  only gives it one chance to run per daily crawl cycle, which left a backlog of
+  scored-but-not-yet-summarized repos (larger than one `Summarization:BatchSize`, default 200, batch)
   sitting unsummarized for days; both triggers converge on the same "no Summary row yet" selection,
   so the extra trigger is a no-op once the backlog clears.
 - **Inputs:** Configured recurring schedules and stage-continuation chain.
@@ -280,3 +309,4 @@ the dashboard and receiving the digest.
 | v21 | 2026-08-04 | §3 Summarizer updated: README content sent to LM Studio is now capped at `Summarization:MaxReadmeCharacters` (default 6000, new config) before either prompt is built. Found via a live failure — an uncapped 111KB README (`openclaw/openclaw`) exceeded the loaded model's 8192-token context window outright, which LM Studio rejects as a hard error rather than truncating server-side, so any repo with a large enough README would have failed identically | Operator pasted a live LM Studio 400 error from a `make dev` session |
 | v22 | 2026-08-04 | §3 Web Dashboard updated: each Hidden Gems card's trend growth is now computed per repository (from that repo's own Score history across re-crawls) instead of per language/category (from its shared TrendAggregate rollup) — every repo of a given language no longer shows the same growth figure. TrendAggregate itself, and the Language filter's option list it backs (Categories query), are unchanged | Operator: "Trend is currently calculated per language. I want it to be calculated per repository and then shown. What is currently being shown is the trend aggregate for the topic?" |
 | v23 | 2026-08-04 | v22's own "TrendAggregate... unchanged" note is superseded: operator asked whether the Language filter really needed the whole TrendAggregate table, and it turned out not to — `FacetOptionsService` (the filter's only consumer) had only ever read the `Category` string off each `CategoryDto`, discarding `RepositoryCount`/`AverageScore`/`PeriodStart`/`PeriodEnd`. §3 Web API and §3 Trend Aggregator both updated: `/api/categories` now queries `Repository.PrimaryLanguage` directly (also fixing a latent gap — the old version required both a Score and a Summary before a language appeared as a filter option, stricter than Hidden Gems' own Score-only eligibility). `TrendAggregate`/`AggregateTrendsCommand` are still run deliberately, not removed — reserved for F-013's planned digest, now their only remaining documented consumer | Operator: "So for just the language filter we have the whole TrendAggregate table?" — presented as a 3-way tradeoff (simplify Categories only / remove the Trend Aggregator entirely / leave as-is), operator chose "simplify Categories only" |
+| v24 | 2026-08-04 | Phase 4 (F-013 Digest Service, F-014 Observability) built and integrated. New §3 "Observability (cross-cutting, not a pipeline stage)" component added — this section never existed before; NFR-005's own gap note previously described the need but §3 had no component entry for the actual `Infrastructure/Observability/` middleware once it was built. §3 Job Scheduler corrected: its dependency-order prose previously implied "trend rollup before digest" was a `ContinueJobWith` chain link like the other four stages, which contradicts F-013's actual implementation (an independent daily `RecurringJob`, deliberately not chained onto Trend Aggregator — see `SendDigestJob`'s own header comment) | Integration Agent — documentation drift check found §3 hadn't been updated for either newly-built Phase 4 component |

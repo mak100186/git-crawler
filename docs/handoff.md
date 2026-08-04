@@ -4,6 +4,141 @@
 
 ## What was done
 
+**Mailpit added for local F-013 digest-email testing** — a direct, operator-directed change via Claude
+Code, not run through `orchestrator-development-pattern` (dev-tooling, not a Task Packet; verified
+directly instead, see below). The prior "Phase 4 complete" entry has been moved to "Phase 4 complete"
+below now that this entry supersedes it.
+
+- **What changed and why**: operator asked to configure MailHog (or something better) for local SMTP
+  testing, since F-013's `Smtp:Host`/`Smtp:FromAddress` ship blank in `appsettings.json` on purpose (no
+  real SMTP provider decided yet) and there was previously no way to exercise `SendDigestCommand`
+  locally without a real mailbox. Recommended Mailpit over MailHog — MailHog has had no meaningful
+  releases since 2022, Mailpit is its actively-maintained, drop-in successor (same catch-all SMTP +
+  web UI idea, still developed, adds a REST API for asserting on captured mail if ever wanted).
+- **`docker-compose.yml`**: new `mailpit` service (`axllent/mailpit:latest` — deliberately unpinned,
+  unlike `postgres:18.4` above it, since this holds no persistent data and a breaking image update is
+  immediately visible in a throwaway dev tool). Scoped to a new `dev` Compose profile so `make up`'s
+  unqualified `docker compose up -d --build` never starts it — confirmed via `docker compose config
+  --services` (no `mailpit`) vs. `docker compose --profile dev config --services` (includes it).
+- **`Makefile`**: `dev` target now brings up `postgres mailpit` together (was `postgres` alone), and
+  its printed output gains a `Mailpit UI -> http://localhost:8025/` line.
+- **`appsettings.Development.json`**: new `Smtp` section (`Host: localhost`, `Port: 1025`,
+  `EnableSsl: false`, `FromAddress: dev@localhost`) and `Digest:RecipientEmail: test@localhost` — a
+  bare `dotnet watch run` (ASP.NET Core's default `Development` environment) now picks these up
+  automatically with zero manual config, and Mailpit accepts any recipient address without delivering
+  anywhere. `appsettings.json`'s own blank `Smtp` defaults are untouched — a real deployment still
+  needs its own SMTP provider configured there, same as before.
+- **Docs updated**: `docs/setup.md` §3a (new "Testing the F-013 digest email locally" paragraph),
+  `docs/test-runbook.md` (TC-013-05 updated from "no live SMTP endpoint available" to a concrete
+  `make dev` + Mailpit-UI procedure; "Known caveats" section's TC-013-05 note updated to match).
+  `docs/project-management.md`/`docs/architecture.md` deliberately left unchanged — this is dev
+  tooling, not a system component or a change to F-013's own behavior/AC.
+- **Verification**: `docker compose config --services`/`--profile dev config --services` confirm the
+  profile scoping works as intended; `python -c "import json; json.load(...)"` confirms
+  `appsettings.Development.json` is still valid JSON; `make -n dev` confirms the Makefile's tab-indented
+  recipe survived the edit intact. Not live-tested end-to-end against a running Mailpit container this
+  session (no Docker container actually started to confirm an email lands in its web UI) — worth a
+  first real `make dev` + manual digest trigger to confirm before relying on it.
+
+---
+
+## Phase 4 complete: F-013 (Digest Service) and F-014 (Observability) → Done (superseded by the above, kept for history)
+
+**Phase 4 complete: F-013 (Digest Service) and F-014 (Observability) → Done**
+(`docs/project-management.md` v33) — run via a full `orchestrator-development-pattern` pass (Feature
+Loop for both features, then Integration, then Reviewer-Integration, then this Finalization). The prior
+"Categories endpoint no longer reads TrendAggregate" entry has been moved to "Categories endpoint no
+longer reads TrendAggregate" below now that this entry supersedes it.
+
+- **Step 0.0 gap-closure**: `docs/test-cases.md` had zero Phase 4 coverage going in. Operator chose to
+  have the Orchestrator draft E2E/smoke scenarios (TC-013-01 through TC-013-05, TC-014-01 through
+  TC-014-04) ahead of implementation, so Integration would have something concrete to run against —
+  same gap-closure pattern this doc's own Version History has used since Phase 0 (v1/v2/v4/v5/v6/v7).
+- **F-013 — Digest Service**: new `Features/Digest/SendDigest/` slice. `SendDigestCommandHandler` ranks
+  eligible (scored + summarized) repos by each one's *latest* `Score.TotalScore` (same latest-by-
+  `ComputedAtUtc` rule F-007/F-008/F-009/F-010 already apply to their own `Score` reads — checked and
+  matched, not reinvented), takes the top `Digest:TopN` (default 10) with each repo's
+  `Summary.ShortContent`, and pulls the current period's `TrendAggregate` rows (the pipeline F-009 kept
+  running specifically for this consumer, per v32's own note) for the trend section. Sends via a new
+  `IEmailSender`/`SmtpEmailSender` abstraction — the BCL's own `System.Net.Mail.SmtpClient`, no new
+  NuGet package, mirroring `IRepositorySummarizer`'s existing abstraction-for-testability pattern. A
+  send failure is caught, logged, and returned as `Sent: false` — never propagates, never crashes the
+  host (FR-006's explicit "logged, not silently dropped" requirement).
+  - **A genuine design decision, not an oversight**: `SendDigestJob` is deliberately *not* chained onto
+    `AggregateTrendsJob` (which would have been the natural "link 5" of the existing crawl → score →
+    summarize → aggregate-trends chain). `AggregateTrendsJob` now fires roughly hourly — chained off
+    `GenerateSummariesJob`'s own hourly `Hangfire:SummarizationCronSchedule` trigger, added earlier this
+    session (v25) — so chaining the digest there would email the operator on every one of those hourly
+    runs, not once a day. Gets its own independent `RecurringJob` instead
+    (`Hangfire:DigestCronSchedule`, default `0 6 * * *`, timed to run after the 03:00 crawl-chain
+    default has had time to finish).
+  - PASS on the Developer's first attempt; the Reviewer verified all four Acceptance Criteria against
+    actual code (not just the Developer's summary), including tracing the "latest, not historical
+    peak" score selection down to `RepositoryCardQuery`'s own `OrderByDescending(ComputedAtUtc)`.
+- **F-014 — Observability**: new `Infrastructure/Observability/` folder — the first platform-wide,
+  non-feature-scoped code in this codebase. Legitimate exception to ADR-015's vertical-slice
+  convention (the Task Packet called this out explicitly): this is cross-cutting middleware by nature,
+  not a pipeline stage. Two complementary Wolverine idioms, both registered globally inside
+  `Program.cs`'s existing `UseWolverine(opts => ...)` block (never opted into individual handlers):
+  - `ObservabilityMiddleware` (attribute-based `[WolverineBefore]`/`[WolverineOnException]`) logs a
+    "Starting X" / "Completed X" pair per invocation with duration and success/failure status.
+  - `RecordsProcessedPolicy` (a raw `IChainPolicy`) supplies the records-processed count via a
+    documented priority heuristic: a named `*Count` property, then a collection's element count, then
+    a default of `1`.
+  - **Why two idioms, not one**: the Developer's own spike (outside the repo) found WolverineFx
+    6.24.2's attribute convention can't bind a parameter to "whatever the handler actually returned" —
+    an `object result` parameter silently defaults to `new object()` — so getting the real typed return
+    value (needed for the records-processed heuristic) requires the lower-level `IChainPolicy` API
+    instead. Documented in the code's own header comments, not just this handoff.
+  - **Reviewer round 1 FAILed on two real defects, both fixed and re-verified in round 2**: (1) the
+    failure path (`OnException`) didn't log `RecordsProcessed` at all, breaking AC3's "every
+    invocation, including failures" requirement — fixed by explicitly logging `0` ("failed before
+    producing a countable result"); (2) the heuristic's original "any int/long property" fallback
+    would have grabbed an entity's `Id` field (e.g. `BookmarkDto.Id`) as a fake "count" whenever no
+    `*Count`-named property existed — fixed by dropping that fallback entirely in favor of a flat
+    default of `1`, per the Reviewer's own simpler-of-two-options steer.
+  - **What this adds beyond the Hangfire dashboard (F-006)**, per NFR-005's own gap note: Hangfire's
+    dashboard already shows job-level history (start/end time, succeeded/failed, retry count) — this
+    middleware adds per-*invocation* detail for every command and query (not just scheduled jobs),
+    including a records-processed count Hangfire has no equivalent for.
+- **Integration pass** (single combined pass covering both features): 103/103 backend tests passing,
+  `dotnet list package --vulnerable --include-transitive` clean. One fix applied, root-cause not gamed:
+  `ObservabilityMiddlewareTests.MessageTypeOf` was comparing against the wrong string shape (a bare
+  `nameof(...)` against Wolverine's actual fully-qualified `Envelope.MessageType` CLR type name) — a
+  test-only defect, confirmed by the fact that the captured (but mis-matched) log lines already showed
+  correct `RecordsProcessed`/`OK`/`FAILED` values throughout; the production middleware was never wrong.
+- **Documentation Drift Check found two real gaps, both fixed**: `docs/architecture.md` §3 had no
+  component entry at all for the new Observability middleware (a new "Observability (cross-cutting, not
+  a pipeline stage)" section was added); and its Job Scheduler prose still implied Digest Service was
+  chain link 5, contradicting the actual independent-schedule implementation (rewritten to state the
+  true chain and explain Digest's own schedule). Architecture → v24. `docs/test-runbook.md` had zero
+  F-013/F-014 mention despite both being fully built — full sections added, mirroring every other
+  section's format.
+- **What's still Manual/unverified live**: TC-013-05 (live SMTP delivery) and TC-014-04 (diagnosing a
+  real stuck/rate-limited run purely from logs) both require infrastructure this session couldn't reach
+  (a real SMTP endpoint; a live rate-limited GitHub crawl) — flagged as Manual in both `docs/test-
+  cases.md` and the Integration Output's own Unresolvable Issues, not silently skipped. Worth a live
+  `make dev`/`make up` spot-check of both before relying on either in production, same category of gap
+  prior sessions have disclosed for LM Studio-dependent checks.
+- **graphify**: re-run on `src/backend` — first completed run at that directory scope (leftover AST
+  cache existed from an earlier attempt, but no `graph.json`/`manifest.json`, so this was effectively a
+  first build, not an `--update`). 1102 nodes, 1635 edges, 75 communities (14 thin communities omitted
+  from the report). Code-only corpus (0 docs/papers/images detected), so semantic extraction was
+  skipped per the skill's own fast path — AST extraction alone.
+- **Docs updated for consistency, not just code**: `docs/test-cases.md` (v16 — TC-013/TC-014 sections),
+  `docs/architecture.md` (v24 — Observability component + Job Scheduler correction),
+  `docs/project-management.md` (v33 — Phase 4 → Done, F-013/F-014 rows → Done with implementation
+  annotations), `docs/test-runbook.md` (F-013/F-014 sections added).
+- **Verification**: backend 103/103 (was 86 before this phase — 17 new tests: 9 for F-013's
+  `SendDigestCommandHandler`/`SendDigestJob`, 8 for F-014's `ObservabilityMiddleware`),
+  `dotnet format --verify-no-changes` clean, `dotnet build` 0 warnings/0 errors,
+  `dotnet list package --vulnerable --include-transitive` clean. No frontend changes (both features are
+  backend-only) — frontend suite not re-run, unaffected by this phase.
+
+---
+
+## Categories endpoint no longer reads TrendAggregate — it never needed the rollup, just the name (superseded by the above, kept for history)
+
 **Categories endpoint no longer reads TrendAggregate — it never needed the rollup, just the name**
 (`docs/project-management.md` v32) — a direct, operator-directed change via Claude Code, not run
 through `orchestrator-development-pattern` (an isolated simplification to an existing Done feature,

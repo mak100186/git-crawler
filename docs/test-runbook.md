@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
 > Last updated: 2026-08-04
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 so far)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -605,6 +605,103 @@ section above, "Happy path — bookmark toggle, optimistic UI, undo/retry").
 
 ---
 
+## F-013 — Digest Service
+
+Automated coverage lives in `SendDigestCommandHandlerTests`/`SendDigestJobTests`
+(`src/backend/tests/GitCrawler.Api.Tests/Features/Digest/SendDigest/`), matching TC-013-01 through
+TC-013-04. The steps below are for a human/live-environment check of the same scenarios, plus
+TC-013-05's live-SMTP-delivery check that no automated test can cover.
+
+### Happy path — daily digest composed and sent (TC-013-01)
+1. Seed several scored-and-summarized repositories with varying `TotalScore` (see F-005/F-007/F-008
+   above), and let a `AggregateTrendsJob` run at least once (F-009) so at least one `TrendAggregate`
+   row exists for today's period.
+2. `appsettings.Development.json` already points `Smtp:Host`/`Smtp:FromAddress`/`Digest:RecipientEmail`
+   at Mailpit (`make dev` starts it alongside Postgres, per `docs/setup.md` §3a — no credentials
+   needed, mirroring `SmtpEmailSender`'s own "no auth header needed for a local service" precedent
+   from `LmStudioRepositorySummarizer`), so a bare `dotnet watch run` needs no extra config here. Then
+   either wait for the `send-digest` Hangfire RecurringJob to fire (`Hangfire:DigestCronSchedule`,
+   default `0 6 * * *`) or trigger it manually from the Hangfire dashboard's "Recurring Jobs" tab
+   (`/hangfire`).
+3. **Expect:** an email arrives at the configured recipient listing the top-N (`Digest:TopN`, default
+   10) highest-*current*-scored repos with their short summary, plus a trend-summary section sourced
+   from today's `TrendAggregate` rows.
+
+### Edge case — send failure is logged, not silently dropped (TC-013-02)
+1. Point `Smtp:Host` at an unreachable host (or stop the local relay), then trigger `send-digest`.
+2. **Expect:** the app logs an `Error`-level entry ("Failed to send the daily digest email to
+   {Recipient}") with the underlying exception, and the Hangfire job itself still reports Succeeded
+   (the failure is caught and logged inside `SendDigestCommandHandler`, not left to fail the job) —
+   confirms FR-006's "failure to send is logged, not silently dropped" without crashing the host.
+
+### Edge case — no eligible repos or trend data (TC-013-03)
+1. Trigger `send-digest` against a fresh database (or one with no scored-and-summarized repos and no
+   current-period `TrendAggregate` row).
+2. **Expect:** the email still sends, with "No hidden gems to report today." / "No trend data
+   available for the current period." placeholder lines — never a malformed/empty body, never a
+   thrown exception.
+
+### Manual — live SMTP delivery (TC-013-05)
+1. **Manual (requires a running `make dev` stack — Mailpit, see `docs/setup.md` §3a):** repeat the
+   Happy path above against a real bare `dotnet watch run`, then open `http://localhost:8025/`
+   (Mailpit's web UI) and confirm the captured email is legible and complete (subject, top hidden
+   gems, trend summaries) end-to-end, not just internally well-formed. Still not executable in the
+   Integration Agent's own environment (no Docker access there) — see this runbook's "Known caveats"
+   section below — but now runnable by an operator in under a minute via `make dev`, no real mailbox
+   or SMTP relay account needed.
+
+---
+
+## F-014 — Observability
+
+Automated coverage lives in `ObservabilityMiddlewareTests`
+(`src/backend/tests/GitCrawler.Api.Tests/Infrastructure/Observability/`), matching TC-014-01 through
+TC-014-03 — against local fake handler types standing in for the real pipeline stages/Web API queries
+(see `ObservabilityHostFixture`'s own header comment for why), since the same production
+`ObservabilityMiddleware`/`RecordsProcessedPolicy` classes are registered identically either way. The
+steps below are for confirming the same wiring against the real pipeline stages live, plus TC-014-04's
+manual stuck-run-diagnosability check.
+
+### Happy path — every command/query stage emits structured stage-level metrics (TC-014-01)
+1. `make up`, then watch `make logs` (or `docker compose logs -f app`) while a crawl-to-trend chain
+   runs (F-005 through F-009), and while hitting a Web API query endpoint directly (e.g.
+   `curl http://localhost:8080/api/hidden-gems`).
+2. **Expect:** a `"Starting <MessageType> (<EnvelopeId>)"` line followed by a matching
+   `"Completed <MessageType> (<EnvelopeId>) in <N>ms - OK, RecordsProcessed=<N>"` line for every
+   command/query invocation — `DiscoverRepositoriesCommand`, `ComputeScoresCommand`,
+   `GenerateSummariesCommand`, `AggregateTrendsCommand`, `SendDigestCommand`, and the
+   `GetHiddenGemsQuery` HTTP call alike — confirming the middleware wraps every stage platform-wide,
+   not just the scheduled pipeline jobs.
+
+### Edge case — failures are captured per stage (TC-014-02)
+1. Temporarily misconfigure a stage so its handler throws (e.g. an invalid `GitHub:Token` for
+   `DiscoverRepositoriesCommandHandler`, or stop LM Studio mid-run for
+   `GenerateSummariesCommandHandler`).
+2. **Expect:** the corresponding `"Completed <MessageType> ... - FAILED, RecordsProcessed=0"` log line
+   appears with the exception detail attached, and the stage's own pre-existing failure-handling
+   behavior (retry, per-repo skip, etc.) is otherwise unaffected — the middleware observes and logs
+   only, per its own "never alter control flow" design constraint.
+
+### Regression-sensitive — additive to, not duplicating, the Hangfire dashboard (TC-014-03)
+1. Compare the Hangfire dashboard (`/hangfire`, F-006) for a completed job run against the app logs
+   for the same run.
+2. **Expect:** the Hangfire dashboard shows job-level history (start/end time, succeeded/failed, retry
+   count) for the top-level scheduled job only; the app logs additionally show per-invocation
+   stage-level detail (`RecordsProcessed`, precise elapsed milliseconds) the dashboard has no
+   equivalent for — including for Web API query handlers, which are never Hangfire jobs at all and so
+   have no dashboard entry whatsoever.
+
+### Manual — a stuck or rate-limited run is diagnosable from logs alone (TC-014-04)
+1. **Manual/simulated (requires reproducing a rate-limited crawl, same trigger as TC-005-03):** while
+   `DiscoverRepositoriesCommandHandler` is mid-wait inside its Polly rate-limit retry loop, read only
+   the app logs (no debugger attached) and confirm a `"Starting DiscoverRepositoriesCommand"` line
+   with no matching `"Completed"` line for an implausibly long duration, alongside that handler's own
+   rate-limit warning logs, is enough to identify which stage is stuck and why. Not executable in the
+   Integration Agent's environment (no live rate-limited GitHub session available) — see this
+   runbook's "Known caveats" section below.
+
+---
+
 ### Known caveats to check when re-running this runbook later
 - `postgres:18.4`'s data directory must be mounted at `/var/lib/postgresql` (not the older
   `/var/lib/postgresql/data` convention) — check `docker-compose.yml`'s inline comment if the
@@ -664,3 +761,20 @@ section above, "Happy path — bookmark toggle, optimistic UI, undo/retry").
   narrow-viewport GitHub-link regression check (F-011's responsive-collapse section, step 3) is
   operator-confirmed fixed, not just applied — see `docs/handoff.md`'s "Narrow-viewport filter
   sidenav" entry.
+- **Phase 4 (F-013/F-014) Integration pass**: this runbook had no F-013/F-014 sections at all before
+  this pass — the new sections above were added from scratch, not corrected in place. Neither
+  feature's live-environment steps were executed in the Integration Agent's environment (no live SMTP
+  endpoint or live GitHub rate-limit condition available) — TC-013-05 and TC-014-04 remain Manual/
+  not-yet-verified, same status as this doc's other pre-existing Manual scenarios (TC-002-01/02,
+  TC-008-08). TC-013-01/02/03 and TC-014-01/02/03's automated-test-equivalent coverage (103/103
+  backend tests passing, including 9 `SendDigestCommandHandlerTests`/`SendDigestJobTests` cases and 8
+  `ObservabilityMiddlewareTests` cases) was confirmed instead. **Update (same day, operator-directed,
+  not orchestrated)**: `make dev` now brings up Mailpit (a dev-only SMTP capture tool,
+  `docker-compose.yml`'s `mailpit` service under the `dev` Compose profile) alongside Postgres, and
+  `appsettings.Development.json` points `Smtp:Host`/`Digest:RecipientEmail` at it — TC-013-05 is now
+  runnable by an operator via `make dev` + `http://localhost:8025/`, closing the "no live SMTP
+  endpoint available" gap for anyone outside the Integration Agent's own sandboxed environment (which
+  still can't run this, no Docker access there). TC-014-04 (a live rate-limited GitHub crawl) has no
+  equivalent local fix and remains genuinely Manual. An operator should still run both live steps at
+  least once — F-013's now-easy `make dev` + Mailpit check, and F-014's stuck-run log-only diagnosis —
+  before relying on Phase 4 in production.

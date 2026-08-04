@@ -1,7 +1,72 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 13
-> Last updated: 2026-08-03
+> Revision: 14
+> Last updated: 2026-08-04
+
+## Revision 14 — 2026-08-04 — Phase 4: Digest Service (F-013) and Observability (F-014)
+
+**Note**: this revision jumps straight from Revision 13 (2026-08-03) to cover Phase 4 — the several
+operator-directed changes between them (recorded in `docs/project-management.md` v14 through v32 and
+`docs/handoff.md`) were not each given their own changelog revision; this is pre-existing drift in this
+file, not introduced here, and out of scope to backfill as part of this Phase 4 run.
+
+**Changes:**
+- **F-013 — Digest Service (Should, Planned → Done)**: new `Features/Digest/SendDigest/` Wolverine
+  slice. Composes and sends a daily email with the top-N (default 10) hidden gems — ranked by each
+  repo's *latest* `Score.TotalScore`, with its short summary — plus the current period's trend
+  summaries from `TrendAggregate`. Sent via a new `IEmailSender`/`SmtpEmailSender` abstraction (BCL
+  `SmtpClient`, no new package). A send failure is logged and returned as `Sent: false`, never
+  propagates or crashes the host (FR-006). Runs on its own independent daily `RecurringJob`
+  (`Hangfire:DigestCronSchedule`, default `0 6 * * *`) rather than chaining onto `AggregateTrendsJob`,
+  since that job now fires roughly hourly.
+- **F-014 — Observability (Should, Planned → Done)**: new `Infrastructure/Observability/` cross-cutting
+  middleware — the first non-feature-scoped code in this codebase, a deliberate exception to ADR-015's
+  vertical-slice convention. `ObservabilityMiddleware` + `RecordsProcessedPolicy`, both registered
+  globally in `Program.cs`'s `UseWolverine(...)` block, log a structured "Starting"/"Completed" pair
+  per command/query invocation with duration, success/failure status, and a records-processed count —
+  detail the Hangfire dashboard (F-006) doesn't capture at the per-invocation level (NFR-005).
+- **Docs updated**: `docs/test-cases.md` (v16 — TC-013/TC-014 scenarios, drafted ahead of
+  implementation), `docs/architecture.md` (v24 — new Observability component section; Job Scheduler
+  prose corrected to describe Digest's independent schedule instead of implying a chain-link-5
+  relationship), `docs/project-management.md` (v33 — Phase 4 → Done, F-013/F-014 rows → Done),
+  `docs/test-runbook.md` (F-013/F-014 sections added).
+- **Verification**: backend 103/103 (was 86 — 17 new tests), `dotnet format --verify-no-changes` clean,
+  `dotnet build` 0 warnings/0 errors, `dotnet list package --vulnerable --include-transitive` clean. No
+  frontend changes (both features are backend-only). Run through the full
+  `orchestrator-development-pattern` (Feature Loop for both features, Integration, Reviewer-Integration,
+  Finalization) — F-013 PASSed on the first Developer/Reviewer attempt; F-014 PASSed after 1 retry (two
+  real defects caught by the Reviewer: a missing `RecordsProcessed` value on the failure-log path, and a
+  records-processed heuristic that misreported an entity's `Id` field as a count).
+
+**Smoke tests:**
+1. **Happy path**: with at least one scored+summarized repo and a `TrendAggregate` row for the current
+   period, trigger `SendDigestCommand` (or wait for `Hangfire:DigestCronSchedule`) — confirm an email is
+   sent via the configured SMTP provider containing the top-N hidden gems and a trend summary section.
+2. **Edge case**: trigger `SendDigestCommand` against a database with no eligible repos and no current-
+   period `TrendAggregate` row — confirm it still sends a well-formed "nothing to report" email rather
+   than throwing or sending malformed content.
+3. **Regression-sensitive**: force a wrapped handler (any command/query) to throw with the Observability
+   middleware active — confirm the failure is logged with `RecordsProcessed=0` and the original
+   exception still propagates unchanged to the caller (control flow must be unaffected by the
+   middleware).
+
+**Files changed:**
+- `src/backend/GitCrawler.Api/Features/Digest/SendDigest/` — new (`SendDigestCommand.cs`,
+  `SendDigestJob.cs`, `IEmailSender.cs`, `SmtpEmailSender.cs`).
+- `src/backend/GitCrawler.Api/Infrastructure/Observability/` — new (`ObservabilityMiddleware.cs`,
+  `RecordsProcessedPolicy.cs`).
+- `src/backend/GitCrawler.Api/Program.cs` — F-013 DI + `RecurringJob` registration; F-014 middleware/
+  policy registration inside `UseWolverine(...)`.
+- `src/backend/GitCrawler.Api/appsettings.json` — new `Smtp`/`Digest` sections,
+  `Hangfire:DigestCronSchedule`.
+- `src/backend/tests/GitCrawler.Api.Tests/Features/Digest/SendDigest/` — new (9 tests).
+- `src/backend/tests/GitCrawler.Api.Tests/Infrastructure/Observability/` — new (8 tests).
+- `docs/test-cases.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/test-runbook.md`,
+  `docs/handoff.md` — updated.
+- `src/backend/graphify-out/` — first completed graph build at this directory scope (1102 nodes, 1635
+  edges, 75 communities).
+
+---
 
 ## Revision 13 — 2026-08-03 — Bookmarks tab decommissioned
 

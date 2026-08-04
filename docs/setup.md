@@ -121,9 +121,9 @@ For active development, run:
 make dev
 ```
 
-This starts only Postgres in Docker (the one genuinely-infra piece) plus LM Studio on the host, and
-prints the two commands to run the backend and frontend bare, each in its own terminal, so both
-hot-reload on save instead of waiting on a container rebuild:
+This starts Postgres and Mailpit in Docker plus LM Studio on the host, and prints the two commands to
+run the backend and frontend bare, each in its own terminal, so both hot-reload on save instead of
+waiting on a container rebuild:
 
 ```bash
 # terminal 1
@@ -143,6 +143,17 @@ under Compose (see the top of `Program.cs`) — no separate config needed, it re
 If `make up`'s `app` container is still running from an earlier session, stop it first
 (`make down`) — otherwise it and the bare backend end up processing the same Postgres data
 concurrently (duplicate crawls, duplicate Hangfire jobs).
+
+**Testing the F-013 digest email locally**: `appsettings.Development.json` points `Smtp:Host` at
+`localhost:1025` — Mailpit's SMTP port, published by `make dev` alongside Postgres — so a bare
+`dotnet watch run` sends real digest emails there instead of needing a live mailbox. Open
+`http://localhost:8025/` to see what `SendDigestCommand` actually composed and sent (subject, top
+hidden gems, trend summaries) — Mailpit catches everything sent to it and never delivers anywhere
+external, so it's safe to trigger the digest repeatedly while iterating. Mailpit is the actively-
+maintained successor to MailHog (which has seen no meaningful releases since 2022); same idea, still
+developed. It only runs under `make dev`'s `dev` Compose profile — `make up`'s production path never
+starts it, and a real deployment needs its own SMTP provider configured in `appsettings.json`'s
+`Smtp` section, which ships blank on purpose.
 
 ## 4. Verify
 

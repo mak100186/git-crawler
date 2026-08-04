@@ -131,7 +131,7 @@ up: check-env check-docker compose-up check-lmstudio load-model
 # for visible logs and a clean Ctrl+C each, which isn't something a single `make` recipe can give
 # you portably - so this hands you the exact commands instead of backgrounding them itself.
 dev: check-env check-docker
-	@docker compose up -d postgres
+	@docker compose up -d postgres mailpit
 	@echo "Waiting for Postgres to become healthy..."
 	@i=0; \
 	until docker compose ps postgres 2>/dev/null | grep -q healthy; do \
@@ -144,18 +144,21 @@ dev: check-env check-docker
 	done
 	@$(MAKE) check-lmstudio load-model
 	@echo ""
-	@echo "Dependencies are up (Postgres in Docker, LM Studio on host). Run these in two separate"
-	@echo "terminals for the fast local dev loop - both hot-reload on save, no container rebuild:"
+	@echo "Dependencies are up (Postgres + Mailpit in Docker, LM Studio on host). Run these in two"
+	@echo "separate terminals for the fast local dev loop - both hot-reload on save, no container"
+	@echo "rebuild:"
 	@echo ""
 	@echo "  backend:   cd src/backend/GitCrawler.Api && dotnet watch run --launch-profile http"
 	@echo "  frontend:  cd src/frontend && npm start"
 	@echo ""
 	@echo "Dashboard  -> http://localhost:4200/ (Angular dev server; proxies /api/* to the backend)"
 	@echo "Backend API-> http://localhost:5073/ (direct, no proxy)"
+	@echo "Mailpit UI -> http://localhost:8025/ (catches F-013 digest emails - appsettings.Development.json"
+	@echo "              points Smtp:Host at it, no real mailbox needed)"
 	@echo ""
 	@echo "If the 'app' container from 'make up' is still running, stop it first (make down) -"
 	@echo "otherwise it and the bare backend will both be processing the same Postgres data."
-	@echo "When done: make down (stops whatever Compose has running - just postgres here)."
+	@echo "When done: make down (stops whatever Compose has running - Postgres + Mailpit here)."
 
 # `make dev` prints these same two commands rather than running them itself, since two long-running
 # watch processes need two terminals for visible logs and a clean Ctrl+C each - these targets are

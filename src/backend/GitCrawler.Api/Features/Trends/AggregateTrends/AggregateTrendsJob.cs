@@ -16,10 +16,13 @@ namespace GitCrawler.Api.Features.Trends.AggregateTrends;
 // summarization finishes", not a separate cron - same reasoning every earlier link's own header
 // comment already gives for itself.
 //
-// No PerformContext parameter or further continuation attached here: this is now the last link
-// Architecture §3 currently describes with a built stage (Crawler -> Scoring Engine -> Summarizer ->
-// Trend Aggregator). Digest Service (F-013) is the next not-yet-built pipeline stage per
-// docs/handoff.md, not something this feature chains into speculatively.
+// No PerformContext parameter or further continuation attached here: this remains the last link in
+// the ContinueJobWith chain itself (Crawler -> Scoring Engine -> Summarizer -> Trend Aggregator).
+// Digest Service (F-013) is now built, but deliberately does NOT chain onto this class via a
+// AggregateTrendsJob-owned continuation link the way earlier links do for each other - see
+// SendDigestJob's own header comment for why an independent daily RecurringJob was chosen instead
+// (this job's own firing cadence isn't daily, since GenerateSummariesJob's hourly recurring schedule
+// re-triggers it far more often than once a day).
 public class AggregateTrendsJob(IMessageBus messageBus)
 {
     // Typed InvokeAsync<AggregateTrendsResult>, not the bare object overload: HandleAsync returns a

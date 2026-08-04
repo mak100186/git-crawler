@@ -8,10 +8,12 @@ using GitCrawler.Api.Features.Bookmarks.DeleteBookmark;
 using GitCrawler.Api.Features.Categories.GetCategories;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Diagnostics.Ping;
+using GitCrawler.Api.Features.Digest.SendDigest;
 using GitCrawler.Api.Features.Repositories.GetHiddenGems;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
 using GitCrawler.Api.Features.Trends.AggregateTrends;
+using GitCrawler.Api.Infrastructure.Observability;
 
 using Hangfire;
 using Hangfire.Dashboard;
@@ -129,6 +131,11 @@ builder.Services.AddHttpClient(LmStudioRepositorySummarizer.LmStudioClientName, 
 });
 builder.Services.AddScoped<IRepositorySummarizer, LmStudioRepositorySummarizer>();
 
+// F-013: SMTP-backed IEmailSender (ADR-001-style provider-agnostic abstraction), mirroring
+// IRepositorySummarizer's own registration above - no named HttpClient needed here, SmtpEmailSender
+// talks to the configured SMTP host directly via System.Net.Mail.SmtpClient.
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+
 // F-005: Octokit.GraphQL's Connection is safe to share as a singleton - the token is fixed for
 // this single-operator system's lifetime (F-001 spike assumption 1), so there's no per-request
 // identity to scope it to.
@@ -155,6 +162,13 @@ builder.Host.UseWolverine(opts =>
     // (wolverinefx.net/guide/codegen.html), scoped to this one type rather than relaxing the
     // policy for every handler dependency.
     opts.CodeGeneration.AlwaysUseServiceLocationFor<GitCrawlerDbContext>();
+
+    // F-014: structured logging/metrics middleware, applied platform-wide to every command/query
+    // chain Wolverine compiles - no per-handler opt-in, and nothing bolted onto the Hangfire *Job.cs
+    // glue classes specifically (see ObservabilityMiddleware's own header comment for the full
+    // rationale, including why two Wolverine idioms are needed together here).
+    opts.Policies.AddMiddleware<ObservabilityMiddleware>();
+    opts.Policies.Add<RecordsProcessedPolicy>();
 });
 
 // F-006: Hangfire is the Job Scheduler (Architecture §3) that triggers each pipeline stage on
@@ -187,7 +201,10 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
     // chains into it via ISummarizationContinuationLink (right after a crawl/score cycle), but it
     // additionally gets its own, more frequent RecurringJob registration below (see that
     // registration's comment for why) - so it's resolved from DI both as a continuation target and
-    // as a standalone recurring job.
+    // as a standalone recurring job. SendDigestJob (F-013) is registered but never taken as a
+    // constructor dependency by any other *Job class - see its own header comment for why it's
+    // deliberately not chained onto AggregateTrendsJob - so it needs no *ContinuationLink seam of its
+    // own; it's resolved from DI solely for its own RecurringJob registration below.
     builder.Services.AddScoped<DiscoverRepositoriesJob>();
     builder.Services.AddScoped<ComputeScoresJob>();
     builder.Services.AddScoped<IScoringContinuationLink, HangfireScoringContinuationLink>();
@@ -195,6 +212,7 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
     builder.Services.AddScoped<ISummarizationContinuationLink, HangfireSummarizationContinuationLink>();
     builder.Services.AddScoped<AggregateTrendsJob>();
     builder.Services.AddScoped<ITrendsContinuationLink, HangfireTrendsContinuationLink>();
+    builder.Services.AddScoped<SendDigestJob>();
 }
 
 // Liveness-only check for the Docker Compose health check (TC-003-04). Deliberately does not
@@ -273,6 +291,22 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
         "generate-summaries",
         job => job.RunAsync(null!),
         summarizationCronSchedule);
+
+    // Third, independent trigger for SendDigestJob (F-013) - its own daily RecurringJob rather than
+    // a chain attachment onto AggregateTrendsJob (see SendDigestJob's own header comment for why: a
+    // chain attachment there would fire on every one of AggregateTrendsJob's own hourly-driven runs,
+    // not once a day). No `null!` PerformContext argument needed here, unlike the two registrations
+    // above - SendDigestJob.RunAsync takes none, since it attaches no further continuation of its
+    // own (it's the terminal pipeline stage). Default 06:00 UTC: comfortably after the 03:00
+    // crawlerCronSchedule chain (crawl -> score -> summarize -> aggregate trends) has had time to
+    // complete for that day's cohort, so the digest reflects the day's fresh data rather than
+    // racing it - an operator judgment call (Task Packet: "your call, document it"), tunable via
+    // config like every other cron schedule here.
+    var digestCronSchedule = builder.Configuration.GetValue("Hangfire:DigestCronSchedule", "0 6 * * *");
+    RecurringJob.AddOrUpdate<SendDigestJob>(
+        "send-digest",
+        job => job.RunAsync(),
+        digestCronSchedule);
 }
 
 // Configure the HTTP request pipeline.
