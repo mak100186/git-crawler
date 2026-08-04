@@ -1,9 +1,9 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v18
-> Last updated: 2026-08-03
-> PRD: docs/prd.md (built against v6)
+> Version: v22
+> Last updated: 2026-08-04
+> PRD: docs/prd.md (built against v8)
 
 ## 1. System Context
 

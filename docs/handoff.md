@@ -4,6 +4,97 @@
 
 ## What was done
 
+**Full documentation sync pass — every governed doc checked against current implementation**
+(`docs/project-management.md` v30) — a direct, operator-directed pass via Claude Code, not run
+through `orchestrator-development-pattern` (documentation-only, no code changed; verified directly
+instead, see below). The prior "Narrow-viewport filter sidenav no longer shows repo-card GitHub links
+through it" entry has been moved to "Narrow-viewport filter sidenav no longer shows repo-card GitHub
+links through it" below now that this entry supersedes it.
+
+- **What changed and why**: after confirming the narrow-viewport fix worked, operator asked to
+  "update all documents for whatever has been implemented so far." Checked every governed doc
+  (`docs/prd.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/test-cases.md`,
+  `docs/test-runbook.md`) against the actual current codebase rather than assuming the existing text
+  was still accurate — this session's many single-topic UI/backend changes (two-summary split, README
+  cap, per-repository trend, MatDialog conversion, card score-panel removal, nav removal, narrow-
+  viewport z-index fix) had each updated their own directly-relevant doc section at the time, but left
+  `docs/test-cases.md`/`docs/test-runbook.md` specifically behind by several rounds — those two
+  describe UI/API behavior at a level of concrete detail (exact card contents, exact panel/dialog
+  mechanics) that's easy to invalidate with an adjacent change and easy to forget to re-check, unlike
+  the higher-level Architecture/PMBook prose that already got touched each time.
+- **`docs/prd.md` (v6 → v8)**: US-8 corrected — "each hidden gem's own category trend" was never
+  actually true for the per-repository computation `docs/project-management.md` v28 shipped; this
+  wasn't a v6-era inaccuracy that became true later, it was wrong from the moment the per-repo change
+  landed and simply hadn't been caught until now.
+- **`docs/test-cases.md` (v13 → v14) and `docs/test-runbook.md`**: corrected stale references to the
+  card's own "Why this score?" panel and trend chip (both removed 2026-08-04, consolidated into the
+  click-through detail dialog), the per-*category* `TrendAggregate`-based trend computation (TC-010-11/
+  TC-011-13 rewritten for the per-repository version), the right-side `mat-drawer` detail pane (now a
+  centered `MatDialog`, TC-011-14/15 updated for its actual close/resize behavior), a bottom pill nav
+  that no longer exists (the primary nav was removed entirely 2026-08-04, not narrowed), and the
+  renamed `Summary.Content` → `ShortContent`/`DetailedContent` columns in a raw `psql` query. Added
+  new coverage that plainly hadn't existed at all: TC-008-09 (README-length cap), TC-011-16
+  (paginator page-size dropdown), and a regression check for the narrow-viewport fix itself
+  (TC-011-09 step 4, noted as operator-confirmed, not just applied).
+- **Separately found while doing this pass, unrelated to any of the above**: `docs/prd.md`,
+  `docs/architecture.md`, and `docs/project-management.md` each had their own header `Version` marker
+  silently fall behind their own changelog table — e.g. `docs/architecture.md`'s header still read
+  v18 while its own table already reached v22. Root cause: this session's rapid single-topic edits
+  each appended a new changelog row but didn't always also bump the header line above it in the same
+  edit. Fixed in all three files, including each file's cross-references to the others' versions
+  (e.g. `docs/project-management.md`'s own "PRD: docs/prd.md (built against vN)" line).
+- **Verification**: documentation-only change, no test suite applies. Every corrected claim was
+  checked by reading the actual current source it describes (component templates, DTOs, migration
+  files, the live `.filter-bar__sheet-container` CSS) rather than assumed correct on the first pass -
+  same discipline as the code-level work this session, applied to prose instead of code.
+
+---
+
+## Narrow-viewport filter sidenav no longer shows repo-card GitHub links through it (superseded by the above, kept for history)
+
+**Narrow-viewport filter sidenav no longer shows repo-card GitHub links through it**
+(`docs/project-management.md` v29) — a direct, operator-directed fix via Claude Code, not run through
+`orchestrator-development-pattern` (an isolated CSS defect on an existing Done feature, not a new Task
+Packet; verified directly instead, see below). The prior "Hidden Gems trend growth now computed per
+repository, not per language" entry has been moved to "Hidden Gems trend growth now computed per
+repository, not per language" below now that this entry supersedes it.
+
+- **What changed and why**: operator screenshot of the narrow-viewport (<960px) "Filters" sidenav
+  opened, showing the repository grid's own "Open on GitHub" links painted on top of the sidenav
+  panel at three points instead of being hidden behind it. Read `filter-sort-bar.scss`'s existing
+  z-index handling: `.filter-bar__sheet-container` (the `<mat-sidenav-container>`, i.e. Angular
+  Material's `.mat-drawer-container`) ships Material's own default `z-index: 1` unconditionally: this
+  app's own override already raises the sidenav and its backdrop - the container's *children* - to
+  `z-index: 20`, but never touched the container element itself, so the container's own subtree was
+  still only `z-index: 1` when compared against other content on the page (the repository grid,
+  elsewhere in the DOM). This is offered as the most likely explanation given a careful read of every
+  relevant CSS rule (confirmed via `@angular/material`'s own compiled `sidenav.mjs`/`card.mjs`/
+  `button.mjs` that no other explicit z-index exists anywhere else in this app's own styles) - not
+  confirmed against a live rendered DOM's actual computed styles, since no browser/devtools tool was
+  available this session (see the honesty caveat below).
+- **Fix**: added `z-index: 20; isolation: isolate;` directly on `.filter-bar__sheet-container`,
+  matching the value already applied to its sidenav/backdrop children, so the whole subtree
+  unambiguously outranks the grid regardless of the exact stacking-context mechanics at play.
+  `isolation: isolate` is the defensive half of the fix - it forces this element to form its own
+  stacking context outright, rather than depending on the `position: relative` + `z-index`
+  combination Material's default CSS already gives it (which, per CSS spec, should already have been
+  sufficient - the isolation property closes that gap regardless of why the plain z-index alone
+  didn't visibly work). Also fixed a stale comment in the same file still describing `app.scss`'s
+  toolbar as `z-index: 10` and referencing a `.app-bottom-nav` class that was removed earlier this
+  session (see the "Hidden Gems tab decommissioned"-adjacent history further down this file) -
+  outdated context that would have misled the next person reading it.
+- **Confirmed working**: the fix was applied without a browser tool available to re-screenshot it
+  directly (see the CSS-analysis writeup above) - operator confirmed separately, against the live
+  narrow-viewport render, that the GitHub links no longer show through the opened sidenav ("it
+  worked"). Recorded here as closed, not just applied.
+- **Verification**: frontend 45/45 (no test targets this specific visual symptom - Vitest unit tests
+  don't render real stacking/paint order), `npm run lint` clean, `npm run build`/`ng test`'s own
+  build step confirms the SCSS itself compiles without error. Backend untouched, not re-run.
+
+---
+
+## Hidden Gems trend growth now computed per repository, not per language (superseded by the above, kept for history)
+
 **Hidden Gems trend growth now computed per repository, not per language**
 (`docs/project-management.md` v28) — a direct, operator-directed fix via Claude Code, not run through
 `orchestrator-development-pattern` (an isolated computation-logic fix to an existing Done feature, not

@@ -1,6 +1,6 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-03
+> Last updated: 2026-08-04
 > Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
@@ -226,9 +226,23 @@ them.
    watch the Hangfire dashboard's "Succeeded" job list.
 3. **Expect:** shortly after the `ComputeScoresJob` run completes, a `GenerateSummariesJob` run
    appears, chained via `ContinueJobWith` — not on its own independent schedule.
-4. `psql -c 'SELECT "RepositoryId", LEFT("Content", 80) AS preview, "GeneratedAtUtc" FROM "Summaries" ORDER BY "GeneratedAtUtc" DESC LIMIT 10;'`
-   — expect non-empty `Content` for each row, and only for repositories that met the score
-   threshold.
+4. `psql -c 'SELECT "RepositoryId", LEFT("ShortContent", 80) AS short_preview, LEFT("DetailedContent", 80) AS detailed_preview, "GeneratedAtUtc" FROM "Summaries" ORDER BY "GeneratedAtUtc" DESC LIMIT 10;'`
+   — expect both `ShortContent` and `DetailedContent` non-empty for each row (split into two
+   columns/two separate LM Studio calls 2026-08-04 — was a single `Content` column), and only for
+   repositories that met the score threshold.
+
+### Edge case — README length is capped before being sent to LM Studio
+Added 2026-08-04 after a live run against `openclaw/openclaw` (111KB README) failed with LM Studio's
+`"n_keep: 35489 >= n_ctx: 8192"` — the loaded model's context window, exceeded because nothing capped
+the README before that point.
+1. Find (or seed) a repository whose README exceeds `Summarization:MaxReadmeCharacters` (default
+   6000), then trigger summarization for it.
+2. **Expect:** it summarizes successfully rather than failing with a context-length error — confirm
+   via the app logs (`make logs`) showing no `LogWarning` for that repo.
+3. **If a future failure of this kind does occur:** confirm the app logs now show LM Studio's actual
+   response body in the warning (not just a bare "400 Bad Request") — `CallLmStudioAsync` was changed
+   the same day to surface it, specifically so this class of failure is diagnosable from the logs
+   alone next time, without a manual `curl` repro against LM Studio directly.
 
 ### Edge case — README-missing and per-repo failure handling
 1. Pick a repository with no README (or temporarily point at one) among the eligible batch.
@@ -305,12 +319,17 @@ already covers the same shared D4 contract as a superset (TC-010-01).
    signals (license/commits-per-week/contributor count/fork count/star count) with the exact
    `ScoringWeights` constants (0.18/0.27/0.225/0.225/0.10) alongside `TotalScore`, not just the
    aggregate number (TC-010-02).
-3. After a summarize-to-aggregate chain has run (see F-009 above) so at least one `TrendAggregate`
-   row exists for a returned card's category, re-fetch the same endpoint. **Expect:** that card's
-   `trendGrowth` is a non-null string — either a percentage-change label ("▲ +18% vs. last period")
-   if two or more periods exist for its category, or an average-score fallback ("{avg} avg score")
-   if only one does (TC-010-11). (This merges what the now-removed standalone Trending view used to
-   show separately — see below.)
+3. Re-crawl and re-score a repository already returned by this endpoint (advancing its `Score`
+   history to two rows), then re-fetch the same endpoint. **Expect:** that card's `trendGrowth` is a
+   non-null string, computed from *that repository's own* two most recent `Score.TotalScore` values —
+   either a percentage-change label ("▲ +18% vs. last period") once a second `Score` row exists, or a
+   "{score} current score" fallback if it's still on its first (TC-010-11). Changed 2026-08-04
+   (operator: "Trend is currently calculated per language. I want it to be calculated per
+   repository") — previously this came from `TrendAggregate`, a rollup shared by every repository of
+   the same `PrimaryLanguage`, so every repo in a language showed the identical figure regardless of
+   its own standing; `TrendAggregate` itself is unchanged and still backs the Categories endpoint
+   below, just no longer this field. (This merges what the now-removed standalone Trending view used
+   to show separately — see below.)
 
 **Removed 2026-08-03** — this section previously also covered `/api/trending` directly (a trend's
 contributing-repos list, matching `AggregateTrendsCommandHandler`'s own membership rule). That
@@ -396,21 +415,22 @@ freshly-seeded `make up` stack before relying on F-010 in anything resembling pr
 
 ## F-011 — Web Dashboard
 
-Automated coverage for every scenario below lives in `src/frontend/src/**/*.spec.ts` (47 Vitest
-specs as of the Bookmarks-view-removal change, down from 51 after the repo-detail-pane change, up
-from 42 after Discovery Feed was removed, 47 at the Trending-merge change, and 57 at F-011's own
-original completion — see `docs/test-cases.md`'s F-011 section for the full TC-011-01 through
-TC-011-15 scenario text). The steps here are the manual/live-browser equivalent, useful for
-confirming the built bundle actually renders and behaves this way, not just that the isolated
-component/unit tests pass.
+Automated coverage for every scenario below lives in `src/frontend/src/**/*.spec.ts` (45 Vitest
+specs as of the 2026-08-04 UI-polish round — see `docs/test-cases.md`'s F-011 section for the full
+TC-011-01 through TC-011-16 scenario text). The steps here are the manual/live-browser equivalent,
+useful for confirming the built bundle actually renders and behaves this way, not just that the
+isolated component/unit tests pass.
 
 ### Happy path — required view navigates by default, filter/sort works end-to-end
 1. `make up`, then open `http://localhost:8080/` in a browser.
-2. **Expect:** lands on Hidden Gems by default — the dashboard's sole view; the primary nav
-   (`mat-toolbar`) has exactly one entry, "Hidden Gems" (TC-011-01). (Originally four view entries
-   plus a separate F-012 "Bookmarks" nav entry: Categories, Trending, and Discovery Feed were removed
-   2026-08-03 as distinct views; Bookmarks was removed last, once its dedicated view turned out to be
-   redundant with Hidden Gems' own "Bookmarked only" filter.)
+2. **Expect:** lands on Hidden Gems by default — the dashboard's sole page. The `mat-toolbar` shows
+   only the brand and a reserved (inert) search placeholder — there is no primary nav at all anymore
+   (TC-011-01). (Originally four view entries plus a separate F-012 "Bookmarks" nav entry: Categories,
+   Trending, and Discovery Feed were removed 2026-08-03 as distinct views; Bookmarks was removed the
+   same day, once its dedicated view turned out to be redundant with Hidden Gems' own "Bookmarked
+   only" filter; the resulting single-entry "Hidden Gems" nav was itself removed entirely on
+   2026-08-04, once a nav with exactly one destination had nothing left to navigate between —
+   operator: "remove the hidden gems tab, we only have one page".)
 3. On Hidden Gems, select a language via the Language `mat-select`, narrow the star range slider,
    add a topic via the autocomplete, select a license. **Expect:** each selection renders as a
    removable chip; the grid re-fetches from `GET /api/hidden-gems` with matching
@@ -418,8 +438,9 @@ component/unit tests pass.
 4. Change the sort control and flip the direction icon button. **Expect:** results re-order to
    match (default sort is Score desc). Click "Clear all". **Expect:** chips disappear, grid returns
    to the unfiltered default-sorted set. **Expect also:** each card shows a score badge, an
-   expandable "Why this score?" breakdown, and (once at least one `TrendAggregate` period exists for
-   its category) a trend-growth chip (TC-011-02, TC-011-13).
+   owner/discovered-date/star-count subtitle, and a footer with language/license chips plus an "Open
+   on GitHub" link — the score breakdown and trend-growth chip both moved into the click-through
+   detail dialog on 2026-08-04, no longer shown inline on the card (TC-011-02).
 
 ### Happy path — bookmark toggle, optimistic UI, undo/retry
 1. On any repository card, click the bookmark toggle. **Expect:** the icon flips immediately, a
@@ -436,12 +457,17 @@ component/unit tests pass.
 3. Stop the backend mid-request (or block the network tab) and click the toggle again. **Expect:**
    the icon reverts to its prior state and the snack-bar shows the error variant ("Couldn't save
    bookmark — try again") with a "Retry" action.
+4. Visually inspect both snack-bar variants (added 2026-08-04 — a stale comment had claimed this
+   styling already existed, but the actual CSS rules were never written until this pass). **Expect:**
+   a dark rounded pill (not Material's stock gray rectangular bar) for the success/Undo case, and a
+   distinct brick-brown pill for the error/Retry case, both with bold uppercase action text.
 
-### Happy path — Hidden Gems card trend-growth chip
-1. Load Hidden Gems with a card whose category already has at least one `TrendAggregate` row (see
-   F-010's own "Hidden Gems score breakdown and trend growth" step above). **Expect:** the card
-   renders a trend-growth chip with that same text, styled like the old standalone Trending view's
-   own growth chip (TC-011-13).
+### Happy path — detail dialog's trend-growth chip
+Retargeted 2026-08-04: the trend-growth chip moved off the card entirely into the click-through
+detail dialog the same day (see the "card click opens the repository detail dialog" section below).
+1. Open a repository's detail dialog (see below). **Expect:** its chip row renders a trend-growth
+   chip with `trendGrowth`'s text — computed from that repository's own `Score` history, not a
+   `TrendAggregate` category rollup (see F-010's own trend-growth step above) (TC-011-13).
 
 **Removed 2026-08-03** — this section previously covered the standalone Trending view: "Load
 Trending... expanding a trend's `mat-expansion-panel` lists its `contributingRepositories`..."
@@ -469,34 +495,48 @@ walkthrough, since Hidden Gems now covers the same ground.
    **expect:** the real summary replaces the placeholder with no visible layout shift (TC-011-08).
    **Note:** the layout-shift-absence part of this check is inherently visual and not covered by an
    automated assertion; only the initial null-state rendering is unit-tested.
-2. Resize the browser below 960px on Hidden Gems. **Expect:** the primary nav
-   collapses to a bottom pill nav; the filter/sort bar collapses to a "Filters · N" button opening a
-   `mat-sidenav` with the same controls; active filter chips stay visible inline (TC-011-09). Resize
-   back above 960px. **Expect:** both return to desktop layout with selection state preserved.
-3. **Removed 2026-08-03** — this step previously drilled into a category whose name needed URL
-   encoding (TC-011-10); the Category drill-down route no longer exists (see the "Hidden Gems card
+2. Resize the browser below 960px on Hidden Gems. **Expect:** the filter/sort bar collapses to a
+   "Filters · N" button opening a `mat-sidenav` with the same controls; active filter chips stay
+   visible inline (TC-011-09). There is no nav to collapse (removed entirely 2026-08-04 — see the
+   "required view navigates by default" section above) — the sticky toolbar is unchanged at any
+   width. Resize back above 960px. **Expect:** the filter bar returns to desktop layout with
+   selection state preserved.
+3. With the sidenav open at a narrow width, **expect:** the repository grid behind it — including
+   every card's "Open on GitHub" link — is fully hidden and non-interactive, not visible/clickable
+   through the opened panel. Regression check added 2026-08-04, operator-confirmed fixed, after a
+   screenshot showed grid content painting on top of the opened sidenav (see
+   `docs/handoff.md`'s "Narrow-viewport filter sidenav" entry for the root cause and fix).
+4. **Removed 2026-08-03** — this step previously drilled into a category whose name needed URL
+   encoding (TC-011-10); the Category drill-down route no longer exists (see the "detail dialog's
    trend-growth chip" section above for the current Categories/Trending removal notes).
-4. Inspect the nav and filter-bar area. **Expect:** the disabled "Search (v2)" field is present and
-   inert — clicking it does nothing (TC-011-11). (This step originally also checked a live
-   "Bookmarks" nav entry, added by F-012 to replace an earlier disabled "Bookmarks · F-012" ghost
-   pill; that entry was itself removed 2026-08-03 along with the dedicated Bookmarks view — see
-   TC-012-01/02 — so there is nothing left to check there beyond the single "Hidden Gems" entry
-   TC-011-01 already covers.)
+5. Inspect the toolbar and filter-bar area. **Expect:** the disabled "Search (v2)" field is present
+   and inert — clicking it does nothing (TC-011-11). (This step originally also checked a live nav
+   entry — first a disabled "Bookmarks · F-012" ghost pill, later a live "Bookmarks" entry added by
+   F-012, then a single remaining "Hidden Gems" entry once Bookmarks/Categories/Trending/Discovery
+   Feed had all folded away — the nav itself was removed entirely 2026-08-04, so there is nothing
+   nav-related left to check here at all, only the "Search (v2)" placeholder.)
 
-### Happy path — card click opens the repository detail pane (design brief §09)
-1. On Hidden Gems, click a card anywhere except the bookmark toggle, the "Why this score?" panel, or
-   the "Open on GitHub" link. **Expect:** a right-side drawer slides in over the grid (the grid itself
-   stays scrolled where it was), showing that repo's full untruncated AI summary, its topics as a chip
-   list, its language/license/star/fork chips and trend-growth chip (when present), an "Open on
-   GitHub" button, and an always-expanded five-signal score breakdown matching the card's own "Why
-   this score?" panel content exactly (TC-011-14).
-2. Click the drawer's close button. **Expect:** it closes and the grid is interactive again. Reopen it
-   and click the dimmed backdrop instead. **Expect:** same result.
-3. Click the bookmark toggle, expand "Why this score?", and click "Open on GitHub" on a card in turn.
-   **Expect:** each behaves as usual (toggle flips, panel expands, link navigates) and none of them
-   also opens the detail pane (TC-011-15).
-4. Resize below 720px and reopen the drawer. **Expect:** it takes the full viewport width rather than
-   the default 560px panel.
+### Happy path — card click opens the repository detail dialog (design brief §09)
+Converted 2026-08-04 from a right-side `mat-drawer` to a centered `MatDialog` (operator: "i want the
+overlay to show under the header. And i want this detail pane to be centered like a modal") — steps
+below describe the dialog's actual current behavior, not the original drawer's.
+1. On Hidden Gems, click a card anywhere except the bookmark toggle or the "Open on GitHub" link (the
+   card's own "Why this score?" panel was removed the same day, so there's no third control to
+   avoid). **Expect:** a centered dialog opens over the full page, under the sticky header, with a
+   dimmed backdrop covering everything else — showing that repo's full untruncated **detailed**
+   summary (`detailedSummaryContent`, distinct from the card's own short `summaryContent` since the
+   2026-08-04 two-summary split), its topics as a chip list, its language/license chips and star/fork
+   counts and trend-growth chip merged into the same dark header block as the title bar, an "Open on
+   GitHub" link, and an always-expanded five-signal score breakdown in the dialog's own footer
+   (TC-011-14).
+2. Click the dialog's close (X) button. **Expect:** it closes and the page is interactive again.
+   Reopen it and click the dimmed backdrop outside the dialog surface instead. **Expect:** same
+   result (`MatDialog`'s default backdrop-click-to-close behavior).
+3. Click the bookmark toggle, then click "Open on GitHub" on a card, in turn. **Expect:** each behaves
+   as usual (toggle flips, link navigates) and neither also opens the detail dialog (TC-011-15).
+4. Resize below 720px and reopen the dialog. **Expect:** it takes the full viewport width/height with
+   square (non-rounded) corners, rather than its default desktop sizing (840px wide, capped at 90% of
+   the viewport width and 85% of its height, with rounded corners and a visible shadow).
 
 ### Edge case — repo-card summary/footer spacing (operator UI feedback, no dedicated TC)
 1. Load Hidden Gems with a card whose summary is long enough to wrap. **Expect:** up to 3 lines render
@@ -611,3 +651,11 @@ section above, "Happy path — bookmark toggle, optimistic UI, undo/retry").
   once, particularly step 4 of the "un-bookmarking removes the card" scenario (confirming the removal
   genuinely persisted server-side via the `BookmarkChangeApiService` DI-override path, not just local
   state) and the cross-view sync check, before treating F-012 as fully live-verified.
+- **2026-08-04 documentation sync**: this runbook (and `docs/test-cases.md`) had fallen behind
+  several rounds of direct, operator-directed UI/backend changes made the same day — stale references
+  to the card's own "Why this score?" panel, a per-category trend chip, a right-side drawer instead
+  of the current `MatDialog`, a bottom pill nav that no longer exists, and the `Summary.Content`
+  column (renamed to `ShortContent`/`DetailedContent`) were all corrected in this pass. The
+  narrow-viewport GitHub-link regression check (F-011's responsive-collapse section, step 3) is
+  operator-confirmed fixed, not just applied — see `docs/handoff.md`'s "Narrow-viewport filter
+  sidenav" entry.

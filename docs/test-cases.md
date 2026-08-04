@@ -1,8 +1,8 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v13
-> Last updated: 2026-08-03
+> Version: v14
+> Last updated: 2026-08-04
 > Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012 so far)
 > Source of truth for acceptance criteria: docs/project-management.md
 
@@ -249,9 +249,12 @@ LM Studio instance — those steps are marked **Manual**).
 ### TC-008-01 (Happy path) — Top-scored repository without a summary is summarized
 1. Seed a `Repository` with a latest `Score.TotalScore` ≥ `Summarization:MinimumScore` (default 40)
    and no existing `Summary` row, then trigger `GenerateSummariesCommand`.
-2. **Expect:** a `Summary` row is written for the repository (`GeneratedAtUtc` set), and the request
-   passed to `IRepositorySummarizer` carries the repo's `Owner`/`Name` — satisfies F-008's "generates
-   a structured summary for top-scored repos without one" AC.
+2. **Expect:** a `Summary` row is written for the repository (`GeneratedAtUtc` set) with **both**
+   `ShortContent` and `DetailedContent` populated — two separate `IRepositorySummarizer` calls, not
+   one (2026-08-04: split from a single shared summary into a short card summary and a longer
+   detailed one, each generated via its own LM Studio call) — and each request carries the repo's
+   `Owner`/`Name` — satisfies F-008's "generates a structured summary for top-scored repos without
+   one" AC.
 
 ### TC-008-02 (Edge case) — Below-threshold and already-summarized repos are excluded
 1. Seed one repository with a latest score below `Summarization:MinimumScore`, and a second with a
@@ -305,6 +308,21 @@ LM Studio instance — those steps are marked **Manual**).
 2. **Expect:** each generated summary is non-empty, covers purpose/key features/tech stack/notable
    caveats per `LmStudioRepositorySummarizer`'s system prompt, and completes within NFR-001's
    seconds-per-repository target — consistent with the F-002 spike's live throughput results.
+
+### TC-008-09 (Regression-sensitive) — README content is capped before being sent to the model
+Added 2026-08-04 after a live run against `openclaw/openclaw` (a 111KB/~35,489-token README) failed
+outright: LM Studio rejected the request with `"n_keep: 35489 >= n_ctx: 8192"` — the loaded model's
+context window, exceeded because nothing capped the README's length before it was sent.
+1. Seed an eligible repository whose README content exceeds `Summarization:MaxReadmeCharacters`
+   (default 6000), then trigger `GenerateSummariesCommand` against a stubbed `IRepositorySummarizer`/
+   HTTP handler that records the outgoing prompt text.
+2. **Expect:** the README portion of both the short and detailed prompts is truncated to
+   `MaxReadmeCharacters` characters, with a `"[README truncated for length]"` marker appended — the
+   full, untruncated README is never sent to the model, regardless of its actual size.
+3. **Expect also:** a non-success LM Studio response now has its response body surfaced in the thrown
+   exception message (previously discarded by a bare `EnsureSuccessStatusCode()`), so a future
+   context-window (or other) failure is diagnosable directly from `GenerateSummariesCommandHandler`'s
+   existing `logger.LogWarning(ex, ...)` call, without a manual repro.
 
 ---
 
@@ -468,17 +486,28 @@ entirely rather than kept (unlike `/api/categories`, see TC-010-04). Kept as a r
 2. **Expect:** page 1 returns a full page, page 2 returns exactly one result, and the out-of-range
    page returns an empty result set — never an error.
 
-### TC-010-11 (Happy path) — Hidden Gems card exposes its own category's trend growth
-1. Seed two `TrendAggregate` periods for a category (previous period 50, current period 60), and a
-   scored repository in that category. Call the Hidden Gems endpoint.
-2. **Expect:** the card's `TrendGrowth` is `"▲ +20% vs. last period"` — the same current/previous-
-   period growth formula the old standalone Trending view used to compute per trend card, now
-   computed server-side per repo card instead (added when Trending was merged into Hidden Gems, see
-   TC-011-04's removal note).
-3. Repeat with only one `TrendAggregate` period seeded for the category. **Expect:** `TrendGrowth`
-   falls back to `"{avg} avg score"` (no prior period to diff against).
-4. Repeat with no `TrendAggregate` row at all for the repo's category. **Expect:** `TrendGrowth` is
-   `null` — not a fabricated value.
+### TC-010-11 (Happy path) — Hidden Gems card exposes its own repository's trend growth
+Changed 2026-08-04 (operator: "Trend is currently calculated per language. I want it to be calculated
+per repository"): originally computed from `TrendAggregate` — a rollup shared by every repository of
+the same `PrimaryLanguage`, so every C# repo showed the identical growth figure regardless of its own
+standing. Now computed directly from the repository's own `Score` history instead (`Score` already
+gets a new row per repo on every re-crawl, per `ComputeScoresCommandHandler` — no schema change was
+needed); `TrendAggregate` itself is untouched and still backs the Categories/Language-filter endpoint
+(TC-010-04).
+1. Seed a repository with two `Score` rows from separate re-crawls (previous `TotalScore` 50, latest
+   60), and a second, same-language repository with a single differently-valued `Score`. Call the
+   Hidden Gems endpoint.
+2. **Expect:** the first repository's `TrendGrowth` is `"▲ +20% vs. last period"` — computed from
+   *its own* two most recent `Score.TotalScore` values, not blended with the second, same-language
+   repository's score (confirms this is genuinely per-repository, not still secretly per-category).
+3. Repeat with only one `Score` row ever recorded for a repository (no re-crawl yet). **Expect:**
+   `TrendGrowth` falls back to `"{score} current score"` (no prior score to diff against — reworded
+   from the old `"{avg} avg score"`, since it's no longer an average across multiple repos, just this
+   one repo's sole score so far).
+4. **Expect:** `TrendGrowth` is never `null` for any card Hidden Gems returns — every returned card
+   already has at least one `Score` row (Hidden Gems' own `Scores.Any()` filter), so there's always at
+   least the single-score fallback in step 3, unlike the old `TrendAggregate`-based version, which
+   could be `null` if the nightly Trend Aggregator hadn't run yet for that category.
 
 ---
 
@@ -506,10 +535,10 @@ the filter/sort capability itself is unaffected, only the view exercising it cha
    **Expect:** the request's `sort`/`direction` params update and results re-order accordingly
    (default sort is `Score desc`).
 4. Click "Clear all". **Expect:** all chips disappear and the grid returns to the unfiltered,
-   default-sorted result set. **Expect also:** every card shows the score badge, an expandable "Why
-   this score?" breakdown panel (five signals + weights, sourced from
-   `HiddenGemCardDto.scoreBreakdown`), and a trend-growth chip sourced from
-   `HiddenGemCardDto.trendGrowth` where non-null (see TC-011-13).
+   default-sorted result set. **Expect also:** every card shows the score badge, its owner/discovered-
+   date/star-count subtitle, and a footer with language/license chips plus an "Open on GitHub" link —
+   the score breakdown and trend-growth chip both moved off the card into the click-through detail
+   dialog on 2026-08-04 (see TC-011-14) and are no longer shown inline on the card itself.
 
 ### TC-011-03 (Happy path) — Bookmark toggle, optimistic UI, undo/retry
 1. On any Hidden Gems card, click the bookmark toggle.
@@ -525,8 +554,9 @@ the filter/sort capability itself is unaffected, only the view exercising it cha
 This scenario covered the standalone Trending view (per-category trend cards, server-order rendering,
 expandable contributing-repos panel), decommissioned per the operator's direction to merge Trending
 into Hidden Gems — see TC-010-11/TC-011-13 for its replacement (each Hidden Gems card now shows its
-own category's trend growth directly). Kept as a removed placeholder (ID not reused), same precedent
-as TC-011-11.
+own trend growth directly — computed per repository since 2026-08-04, not per category as originally
+built, see TC-010-11's own note). Kept as a removed placeholder (ID not reused), same precedent as
+TC-011-11.
 
 ### TC-011-05 (Removed 2026-08-03) — Categories grid and drill-down
 This scenario covered the standalone Categories tile grid and its Category drill-down route, both
@@ -562,13 +592,25 @@ precedent for a superseded scenario in this document.
    change/layout shift.
 
 ### TC-011-09 (Edge case) — Responsive collapse at the 960px breakpoint
+Step 2's original "primary nav collapses to a bottom floating pill nav" no longer applies — the
+primary nav (Hidden Gems/Bookmarks entries, then just Hidden Gems) was removed entirely on 2026-08-04
+once Hidden Gems became the dashboard's only page ("remove the hidden gems tab, we only have one
+page"); the toolbar today is brand + a reserved search placeholder only, with nothing to collapse at
+any width. Only the filter/sort bar's own collapse behavior still applies.
 1. Resize the viewport below 960px on Hidden Gems.
-2. **Expect:** the primary nav collapses to a bottom floating pill nav (brand-only toolbar); the
-   filter/sort bar collapses to a single "Filters · N" button (N = active filter count) that opens a
-   `mat-sidenav` containing the same controls the desktop layout shows inline; active filter chips
-   remain visible inline next to the trigger button regardless of panel state.
-3. Resize back above 960px. **Expect:** both the nav and filter bar return to their desktop layout
-   with selection state preserved.
+2. **Expect:** the filter/sort bar collapses to a single "Filters · N" button (N = active filter
+   count) that opens a `mat-sidenav` containing the same controls the desktop layout shows inline;
+   active filter chips remain visible inline next to the trigger button regardless of panel state; the
+   sticky toolbar is unchanged at any width.
+3. Resize back above 960px. **Expect:** the filter bar returns to its desktop layout with selection
+   state preserved.
+4. With the sidenav open, **expect:** the repository grid behind it (including each card's "Open on
+   GitHub" link) is fully hidden/inert — not visible or clickable through the opened panel. Regression
+   check added 2026-08-04 after an operator screenshot showed grid content painting on top of the
+   opened sidenav (`.filter-bar__sheet-container` shipped Angular Material's own default `z-index: 1`
+   on the container element itself, distinct from the `z-index: 20` this app already applied to the
+   sidenav/backdrop *children* — fixed by raising the container to the same `z-index: 20` plus
+   `isolation: isolate`, confirmed against the live render).
 
 ### TC-011-10 (Removed 2026-08-03) — Category name requiring URL encoding
 This scenario covered URL-encoding for the Category drill-down route, removed alongside the rest of
@@ -599,33 +641,56 @@ TC-011-11.
    and Node toolchain in the same execution context — same category of gap Phase 1/2/F-010's own
    Integration passes disclosed for their own live-infrastructure checks (`docs/handoff.md`).
 
-### TC-011-13 (Happy path) — Hidden Gems card renders the trend-growth chip
-1. Load Hidden Gems with a card whose `trendGrowth` is non-null (see TC-010-11 for how the API
-   computes it). **Expect:** the card renders a chip with that exact text, styled the same as the old
-   standalone Trending view's own growth chip (added when Trending was merged into Hidden Gems, see
-   TC-011-04's removal note).
-2. Load a card whose `trendGrowth` is `null` (no `TrendAggregate` for its category yet). **Expect:**
-   no chip renders for that card — not an empty/placeholder chip.
+### TC-011-13 (Happy path) — Detail dialog renders the trend-growth chip
+Retargeted 2026-08-04 (capability persists, only the vehicle changed, same precedent as TC-010-01's
+Discovery Feed retargeting): the trend-growth chip was removed from the compact card entirely that
+same day ("dont show trending pilll on the card... just show topic, license on bottom left and
+github link on bottom right") — it renders only in the click-through detail dialog now (TC-011-14).
+1. Open the detail dialog (TC-011-14) for a repository. **Expect:** its chip row renders a chip with
+   `trendGrowth`'s exact text (see TC-010-11 for how the API now computes it per repository).
+2. Per TC-010-11's step 4, `trendGrowth` is never `null` for a repository Hidden Gems returns at all
+   (every returned repo has at least one `Score` row) — so, unlike the old category-based version,
+   there is no "chip omitted" case left to test here.
 
-### TC-011-14 (Happy path) — Card click opens the repository detail pane (design brief §09)
-1. On Hidden Gems, click a card anywhere except the bookmark toggle, the "Why this score?" panel, or
-   the "Open on GitHub" link.
-2. **Expect:** a right-side drawer opens over the current grid (list keeps its scroll position, per
-   the design brief) showing that repo's full, untruncated AI summary (not clamped to 3 lines like
-   the card), its topics as a chip list (not shown on the compact card at all), its language/license/
-   star/fork chips and trend-growth chip (when present), an "Open on GitHub" link, and an
-   always-expanded five-signal score breakdown identical in content to the card's own "Why this
-   score?" panel (every Hidden Gems item carries a `scoreBreakdown`, so this always renders here).
-3. Click the drawer's close button, or click the dimmed backdrop behind it. **Expect:** the drawer
-   closes and the underlying grid is fully interactive again.
+### TC-011-14 (Happy path) — Card click opens the repository detail dialog (design brief §09)
+Converted 2026-08-04 from a right-side `mat-drawer` to a centered `MatDialog` ("i want the overlay to
+show under the header. And i want this detail pane to be centered like a modal") — the drawer-specific
+assertions below (backdrop click, viewport-width panel) are updated for the dialog's actual behavior,
+not carried over unchanged. The card's own "Why this score?" panel referenced in the original version
+of this scenario no longer exists (removed the same day, folded into this dialog's own score-breakdown
+footer instead) — this scenario no longer compares the dialog's breakdown against a card-level panel,
+since there isn't one to compare against.
+1. On Hidden Gems, click a card anywhere except the bookmark toggle or the "Open on GitHub" link (the
+   card itself no longer has any other interactive control to avoid, now that the score panel is
+   gone).
+2. **Expect:** a centered dialog opens over the full page, under the sticky header (not just the
+   grid), with a dimmed backdrop — showing that repo's full, untruncated **detailed** AI summary
+   (`detailedSummaryContent`, distinct from the card's own short `summaryContent` since the
+   2026-08-04 two-summary split — not clamped to 3 lines like the card), its topics as a chip list
+   (not shown on the compact card at all), its language/license chips, star/fork counts, and
+   trend-growth chip merged into the same dark header block as the title bar, an "Open on GitHub"
+   link, and an always-expanded five-signal score breakdown in its own footer (every Hidden Gems item
+   carries a `scoreBreakdown`, so this always renders here).
+3. Click the dialog's close (X) button. **Expect:** it closes and the underlying page is fully
+   interactive again. Reopen it and click the dimmed backdrop outside the dialog surface instead.
+   **Expect:** same result (`MatDialog`'s default backdrop-click-to-close behavior).
 
-### TC-011-15 (Edge case) — Card's own interactive controls don't also open the detail pane
+### TC-011-15 (Edge case) — Card's own interactive controls don't also open the detail dialog
+Narrowed 2026-08-04: the "Why this score?" panel step below no longer applies — that control was
+removed from the card the same day (see TC-011-14's own note) — leaving only the bookmark toggle and
+the "Open on GitHub" link as the card's interactive controls to check.
 1. Click the bookmark toggle on a card. **Expect:** it toggles as usual (TC-011-03) and the detail
-   pane does **not** open.
-2. Expand a Hidden Gems card's "Why this score?" panel. **Expect:** it expands in place and the
-   detail pane does **not** open.
-3. Click a card's "Open on GitHub" link. **Expect:** it navigates (new tab) and the detail pane does
+   dialog does **not** open.
+2. Click a card's "Open on GitHub" link. **Expect:** it navigates (new tab) and the detail dialog does
    **not** open.
+
+### TC-011-16 (Edge case) — Paginator page-size options
+Added 2026-08-04 (operator: "the items per page should be a dropdown with options for 24, 48 and 64
+items").
+1. Open the paginator's items-per-page control.
+2. **Expect:** exactly three options — 24, 48, 64 — not a single option matching whatever page size
+   happens to already be selected. Selecting a different one re-fetches with the new `pageSize` and
+   resets to page 1.
 
 ---
 
@@ -694,3 +759,4 @@ placeholder (ID not reused), same precedent as TC-011-11.
 | v11 | 2026-08-03 | Discovery Feed tab decommissioned: `/api/discovery-feed` is fully removed, like Trending, since `GetHiddenGems` already covers the same shared D4 contract as a superset. TC-010-01 retargeted from Discovery Feed to Hidden Gems in place (capability persists, only the vehicle changed — not marked Removed, unlike Trending/Categories' own dedicated scenarios which covered feature-specific behavior that's genuinely gone); TC-010-04/05/07/08 no longer mention Discovery Feed. TC-011-01 narrowed to Hidden Gems as the sole required view (Bookmarks called out as a separate, non-FR-009 nav entry); TC-011-02 narrowed to Hidden Gems alone (was: Discovery Feed then repeated on Hidden Gems); TC-011-03/09/TC-012-01/05 no longer mention Discovery Feed as a card source or view | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." — implemented directly via Claude Code, not an orchestrated run |
 | v12 | 2026-08-03 | New TC-011-14 (card click opens the repository detail pane per design brief §09 — full summary, topics, score breakdown) and TC-011-15 (a card's own interactive controls — bookmark toggle, score panel, GitHub link — don't also trigger it) | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" — implemented directly via Claude Code, not an orchestrated run |
 | v13 | 2026-08-03 | F-012's dedicated Bookmarks view decommissioned: TC-012-01/02/03/04/06 marked Removed (same precedent as TC-011-11/05/10/TC-010-03) — the view is gone, its "Bookmarked only" filter equivalent already existed on Hidden Gems; TC-012-05 retargeted in place to that filter (capability persists, same precedent as TC-010-01's Discovery Feed retargeting) rather than marked Removed. TC-011-01 updated: primary nav is now exactly one entry ("Hidden Gems"), not a separate FR-009-views-vs-Bookmarks-nav-entry distinction. TC-011-03/14 no longer mention Bookmarks as a second card source | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" — implemented directly via Claude Code, not an orchestrated run |
+| v14 | 2026-08-04 | Full documentation sync pass — several rounds of direct, operator-directed UI/backend changes on 2026-08-04 had left this doc describing behavior that no longer exists. TC-008-01 amended for the two-summary split (short + detailed, one `Summary` row, two LM Studio calls); new TC-008-09 for the README-length cap (`Summarization:MaxReadmeCharacters`) added after a live `openclaw/openclaw` context-window failure. TC-010-11 rewritten: `TrendGrowth` is now computed per repository from its own `Score` history, not per language/category from `TrendAggregate` (operator: "Trend is currently calculated per language. I want it to be calculated per repository"). TC-011-02 no longer claims the card shows a "Why this score?" panel or a trend chip (both removed from the card, consolidated into the detail dialog). TC-011-04's forward-pointer and TC-011-13 both corrected/retargeted for the same per-repository trend change (TC-011-13 now describes the dialog's chip, not a card-level one). TC-011-09 corrected: there is no bottom nav to collapse (the primary nav was removed entirely once Hidden Gems became the sole page) — only the filter bar collapses; added a step 4 regression check for the narrow-viewport GitHub-link-showing-through-the-sidenav defect (operator-confirmed fixed). TC-011-14/15 updated for the drawer→`MatDialog` conversion and the removed card-level score panel. New TC-011-16 for the paginator's 24/48/64 page-size dropdown. `docs/prd.md` (v8 — US-8 reworded), `docs/architecture.md` (v22 — §3 Web Dashboard), and `docs/project-management.md` (v29+) were also found with a separate, unrelated drift while doing this pass: each doc's own header `Version` marker had silently fallen behind its own changelog table (e.g. Architecture's header still read v18 while its table already reached v22) — fixed in each file alongside its content corrections | Operator: "now update all documents for whatever has been implemented so far" |

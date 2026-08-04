@@ -608,15 +608,32 @@
 }
 
 // Material's own default z-index for mat-drawer (3, both the backdrop and the drawer/sidenav
-// itself) sits below this app's own chrome - app.scss's sticky .app-toolbar and fixed
-// .app-bottom-nav both use z-index: 10 - so the sidenav could render (and its backdrop dim)
-// underneath that chrome instead of above it, depending on scroll position. Raised past 10 here;
+// itself) sits below this app's own chrome - app.scss's sticky .app-toolbar sits at z-index: 1001
+// (raised past the CDK overlay's own 1000 so it stays visible above RepositoryDetailPane's dialog
+// backdrop too) - so the sidenav could render (and its backdrop dim) underneath that chrome instead
+// of above it, depending on scroll position. Raised well past Material's default of 3 here;
 // deliberately still well under the CDK overlay container's own z-index: 1000 (mat-select/mat-menu
 // panels, including the ones opened from facets *inside* this sidenav), which must stay on top of
 // everything, sidenav included.
 ::ng-deep .filter-bar__sheet-container .mat-drawer-backdrop,
 .filter-bar__sidenav {
   z-index: 20 !important;
+}
+
+// .mat-drawer-container (this element) ships its own z-index: 1 (Angular Material's default,
+// unrelated to the z-index: 20 above, which only targets its sidenav/backdrop CHILDREN) - live on a
+// narrow viewport with the filter sheet open, the repository grid's own "GitHub" links were
+// painting on top of the opened sidenav panel (operator screenshot) despite the backdrop/sidenav
+// z-index override above, because that override only wins comparisons made *within* this
+// container's own local stacking context - the container ITSELF, as a whole subtree, was still only
+// z-index: 1 when compared against sibling content elsewhere in the page. isolation: isolate forces
+// this element to unambiguously form its own stacking context (rather than relying on the
+// position: relative + z-index combination Material already gives it, which should already do this
+// per spec but evidently didn't paint correctly here), and the raised z-index matches the sidenav/
+// backdrop children above so the whole subtree - container included - compares at the same level.
+.filter-bar__sheet-container {
+  z-index: 20;
+  isolation: isolate;
 }
 
 .filter-bar__sidenav {
