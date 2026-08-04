@@ -217,16 +217,6 @@
     flex-wrap: wrap;
   }
 
-  // Matches .tag-accent exactly (accent-100 bg / accent-800 text).
-  &__active-chips {
-    ::ng-deep .mdc-evolution-chip {
-      background: var(--color-accent-100);
-    }
-    ::ng-deep .mdc-evolution-chip__text-label {
-      color: var(--color-accent-800);
-    }
-  }
-
   // mat-button (text appearance) reads its label font from --mat-button-text-label-text-font, not
   // a plain `font-family` - same token/reasoning as app.scss's own __nav-link, which every other
   // Caprasimo-labeled control in this app already goes through instead of the M3 default.
@@ -533,6 +523,42 @@
   background: var(--color-surface) !important;
   box-shadow: var(--elevation-lg) !important;
   @include filter-bar-scrollbar;
+
+  // Reference screenshot (operator-provided): each option row is Figtree/13px (was falling back to
+  // Material's own --mat-sys-label-large-font default, unset by anything here), and reads as an
+  // inset pill rather than a full-bleed rectangle - the side margin is what makes border-radius:
+  // pill actually look like a floating pill instead of only rounding where it happens to touch the
+  // panel's own already-rounded edge.
+  .mat-mdc-option {
+    font-family: var(--font-body);
+    font-size: 13px;
+    border-radius: var(--radius-pill);
+    margin: 2px 6px;
+  }
+
+  // Material's own compiled CSS deliberately excludes multi-select options
+  // (.mat-mdc-option-multiple, set on the host whenever mat-select has `multiple`) from its
+  // selected-state-layer background rule - the `:not(..., .mat-mdc-option-multiple, ...)` clause
+  // on `.mdc-list-item--selected` - and even zeroes the same token via
+  // `.mat-mdc-option-multiple { --mat-list-list-item-selected-container-color: transparent; }`.
+  // So the reference design's selected-row pill fill needs an explicit rule targeting the actual
+  // selected state directly (aria-selected mirrors MatOption's own `selected` host binding),
+  // rather than a --mat-option-selected-state-layer-color override, which Material's own CSS would
+  // just keep excluding for this multi-select case.
+  .mat-mdc-option.mat-mdc-option-multiple[aria-selected='true'] {
+    background-color: var(--color-accent-200);
+  }
+
+  // The checkbox each option renders (MatPseudoCheckbox, default "full" appearance for multi-select
+  // - see MatOption's own template, which only passes appearance="minimal" for the single-select
+  // end-of-row checkmark case, not this one) - olive-800 fill/white checkmark instead of Material's
+  // own --mat-sys-primary default (this app's accent orange, already used elsewhere so it'd read as
+  // "the same as everything else" rather than the reference's distinct olive tone).
+  .mat-pseudo-checkbox-full {
+    --mat-pseudo-checkbox-full-selected-icon-color: var(--color-olive-800);
+    --mat-pseudo-checkbox-full-selected-checkmark-color: var(--color-bg);
+    --mat-pseudo-checkbox-full-unselected-icon-color: var(--color-neutral-500);
+  }
 }
 
 // Topic's search-suggestions overlay (mat-autocomplete) had no panelClass at all, so it fell back
