@@ -253,4 +253,112 @@ public class SendDigestCommandHandlerTests : IDisposable
         Assert.Equal(0, result.TrendCount);
         Assert.Empty(_emailSender.SentMessages);
     }
+
+    private TrendAggregate NewTrendAggregate(string category, int repositoryCount, DateTimeOffset periodEnd) => new()
+    {
+        Category = category,
+        PeriodStart = DateOnly.FromDateTime(periodEnd.UtcDateTime),
+        PeriodEnd = DateOnly.FromDateTime(periodEnd.UtcDateTime),
+        RepositoryCount = repositoryCount,
+        AverageScore = 50,
+        CreatedAtUtc = periodEnd,
+    };
+
+    [Fact]
+    public async Task Handle_TrendGrewSincePreviousWeek_RendersUpwardGrowthPill()
+    {
+        // 4 repos a week ago, 6 today: (6-4)/4*100 = +50%.
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("C#", 4, _timeProvider.GetUtcNow().AddDays(-7)));
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("C#", 6, _timeProvider.GetUtcNow()));
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        Assert.Equal(1, result.TrendCount);
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("▲ +50% this week", sent.Body);
+    }
+
+    [Fact]
+    public async Task Handle_TrendShrankSincePreviousWeek_RendersDownwardGrowthPill()
+    {
+        // 10 repos a week ago, 6 today: (6-10)/10*100 = -40%.
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Go", 10, _timeProvider.GetUtcNow().AddDays(-7)));
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Go", 6, _timeProvider.GetUtcNow()));
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("▼ -40% this week", sent.Body);
+    }
+
+    [Fact]
+    public async Task Handle_TrendHasNoPreviousBaselineAtAll_RendersNoChangePill_NotAMisleadingInfinitePercent()
+    {
+        // No TrendAggregate row at all before today for this category - must not divide by zero or
+        // claim a fabricated growth figure for a category with no prior baseline to compare against.
+        // A pill must still render (never a blank gap) - just a neutral "No change" one.
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Rust", 5, _timeProvider.GetUtcNow()));
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("Rust", sent.Body);
+        Assert.Contains("No change", sent.Body);
+        Assert.DoesNotContain("this week", sent.Body);
+    }
+
+    [Fact]
+    public async Task Handle_TrendUnchangedSincePreviousWeek_RendersNoChangePill_FlatIsNotUpOrDown()
+    {
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Python", 8, _timeProvider.GetUtcNow().AddDays(-7)));
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Python", 8, _timeProvider.GetUtcNow()));
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("No change", sent.Body);
+        Assert.DoesNotContain("this week", sent.Body);
+    }
+
+    [Fact]
+    public async Task Handle_BaselineYoungerThanAWeek_RendersNoChangePill_NotANoisyShortWindowPercent()
+    {
+        // Only 2 days of history so far (a brand-new pipeline/category) - a 4->6 swing over 2 days
+        // is not meaningful "+50%" week-over-week growth, so this must render the same neutral
+        // "No change" pill as having no baseline at all, not a computed percentage from too thin a
+        // window.
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Zig", 4, _timeProvider.GetUtcNow().AddDays(-2)));
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Zig", 6, _timeProvider.GetUtcNow()));
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("No change", sent.Body);
+        Assert.DoesNotContain("+50%", sent.Body);
+        Assert.DoesNotContain("in 2d", sent.Body);
+    }
+
+    [Fact]
+    public async Task Handle_NoExactSevenDayBaseline_FallsBackToClosestPriorRowOlderThanAWeek_LabeledWithRealElapsedDays()
+    {
+        // No row from exactly 7 days ago, but there is one from 10 days back - old enough to still
+        // be a meaningful comparison, so unlike the under-a-week case this should render a real
+        // computed percentage, just labeled with its actual elapsed days instead of "this week".
+        // (4 -> 6 repos over 10 days = +50%.)
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Kotlin", 4, _timeProvider.GetUtcNow().AddDays(-10)));
+        _dbContext.TrendAggregates.Add(NewTrendAggregate("Kotlin", 6, _timeProvider.GetUtcNow()));
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("▲ +50% in 10d", sent.Body);
+        Assert.DoesNotContain("this week", sent.Body);
+    }
+
 }

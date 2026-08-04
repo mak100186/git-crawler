@@ -1,0 +1,98 @@
+<!--
+  Static chrome for the F-013 daily digest email. SendDigestCommand.ComposeHtmlBody loads this file
+  as an embedded resource (see GitCrawler.Api.csproj) and replaces the {{TOKEN}} placeholders below
+  with per-run content: the two repeating sections (gem cards, trend cards, one <td> per item via
+  BuildGemCardCell/BuildTrendCardCell - their count varies per run) and the How We Score section
+  (BuildHowWeScoreContent - a fixed five rows read live from ScoringWeights, not per-run data, but
+  still C#-generated so it can't drift out of sync with the real scoring formula). Everything else -
+  head, style, wrapper table, header - lives here as plain HTML/CSS, editable without touching C#
+  string-escaping.
+
+  Table-based layout throughout (no CSS Grid/Flexbox/gap - near-zero email-client support per
+  Mailpit's own caniemail-backed HTML check) and flat hex colors instead of color-mix()/rgba() -
+  color-mix() has near-zero support, and rgba() itself later turned out to have real gaps too (all
+  of Outlook Windows 2007-2019, Yahoo, AOL, WEB.DE, GMX, Apple Mail iOS 11, Orange; Gmail strips the
+  whole style attribute/<style> block outright on rgba()'s whitespace syntax) - a flat hex renders
+  identically everywhere with zero risk of an ignored-alpha or stripped-block surprise.
+  box-shadow is likewise dropped everywhere (SendDigestCommand.cs's cards included) rather than kept
+  as a "harmless" progressive enhancement - caniemail shows it unsupported or partially supported
+  across most of Gmail/Yahoo/Outlook/AOL/GMX/Orange, i.e. the majority of this digest's real
+  audience, not just the usual single-holdout client - so a plain 1px border alone now carries card
+  definition. Icons are plain Unicode glyphs (★, ↗, ③), not inline <svg> - caniemail shows embedded
+  <svg> support is worse still (58% none) and, unlike box-shadow, several of those clients (Outlook
+  Windows, Gmail, Yahoo, AOL) don't just ignore an unsupported <svg> but strip the element and any
+  fallback content entirely, so a plain-text glyph is the only choice that's guaranteed to render
+  everywhere rather than vanish outright.
+  The <style> block's @media query is the standard "stack these <td>s vertically under 600px"
+  responsive-email technique (MJML, Foundation for Emails use the same trick) - the one real holdout
+  is Outlook desktop's Word engine, which ignores media queries/border-radius alike and falls back
+  to the fixed 760px layout with square corners: an accepted degradation for that one client rather
+  than something worth deep MSO-conditional-comment hackery for a single-operator daily digest.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>GitCrawler Daily Digest</title>
+  <style>
+    body, table, td { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    body { margin: 0; padding: 0; width: 100% !important; }
+    table { border-collapse: collapse; }
+    a { text-decoration: none; }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; border-radius: 0 !important; }
+      .header-pad, .body-pad { padding-left: 18px !important; padding-right: 18px !important; }
+      .header-title { font-size: 22px !important; }
+      .gem-col, .trend-col { display: block !important; width: 100% !important; padding: 6px 0 !important; }
+    }
+  </style>
+</head>
+<!-- Most webmail clients (Gmail, Yahoo, AOL, Outlook.com, Orange, ProtonMail, HEY, Fastmail per
+     Mailpit's HTML check) strip <body> entirely and replace it with a plain <div>, carrying over
+     only a limited attribute whitelist - inline styles here are not a reliable place to anchor the
+     email's actual look. The style attribute below is left in place for the minority of clients
+     that do honor it (Apple Mail, Outlook desktop), but background/font-family/color are also set
+     directly on the wrapper table and its <td> right below, which stay in the DOM verbatim
+     regardless of what happens to <body> - that duplication is what actually keeps the digest
+     legible everywhere, not this attribute. -->
+<body style="margin:0;padding:0;background:#f5ead8;font-family:Arial, Helvetica, sans-serif;color:#201e1d;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5ead8;font-family:Arial, Helvetica, sans-serif;color:#201e1d;">
+    <tr>
+      <td align="center" style="padding:24px 16px;font-family:Arial, Helvetica, sans-serif;color:#201e1d;">
+        <!-- border-collapse:separate overrides the table{} reset above - a <table>'s border-radius
+             doesn't clip a collapsed border reliably in Chromium/most email renderers, painting a
+             sharp rectangle underneath the rounded box otherwise (same fix SendDigestCommand's
+             BuildGemCardCell/BuildTrendCardCell apply to the per-item cards below). -->
+        <table role="presentation" class="container" width="760" cellpadding="0" cellspacing="0" style="width:760px;max-width:760px;background:#f5ead8;border:1px solid #dcd3c4;border-radius:28px;border-collapse:separate;">
+          <tr>
+            <td class="header-pad" style="background:#2e2b25;padding:24px 28px;">
+              <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#a19786;">git-crawler</div>
+              <div class="header-title" style="font-family:Georgia, 'Times New Roman', serif;font-size:28px;font-weight:bold;color:#f9f4ed;margin-top:6px;">Daily Digest &middot; {{DIGEST_DATE}}</div>
+            </td>
+          </tr>
+          <tr>
+            <td class="body-pad" style="padding:20px 28px 16px;border-bottom:1px solid #dcd3c4;">
+              <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#645c50;margin-bottom:8px;">How We Score</div>
+              {{HOW_WE_SCORE_CONTENT}}
+            </td>
+          </tr>
+          <tr>
+            <td class="body-pad" style="padding:24px 28px;">
+              <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#645c50;margin-bottom:8px;">Top Hidden Gems</div>
+              {{TOP_GEMS_CONTENT}}
+            </td>
+          </tr>
+          <tr>
+            <td class="body-pad" style="padding:0 28px 24px;">
+              <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#645c50;margin-bottom:8px;">Trend Summary</div>
+              {{TREND_CONTENT}}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -30,6 +30,19 @@
   </ItemGroup>
 
   <!--
+    F-013 Digest Service: the daily-digest email's HTML chrome lives in a plain .html file (not
+    built up via C# StringBuilder calls) so it's editable/regenerable as ordinary markup - by hand,
+    or by a design tool - without C# string-escaping getting in the way. Embedded (not
+    CopyToOutputDirectory) so it's baked into the assembly itself and doesn't depend on a
+    runtime-relative file path surviving whatever way this gets deployed (bare dotnet run, Docker
+    image, published output) - the same reliability goal CopyAngularApp's wwwroot copy below serves
+    for the dashboard, via a mechanism suited to a single file instead of a whole build output tree.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Features\Digest\SendDigest\DigestEmailTemplate.html" />
+  </ItemGroup>
+
+  <!--
     Angular build wiring (F-003 AC4 / TC-003-03): the Angular workspace at src/frontend is a
     separate npm-managed project, not an MSBuild-referenced one. On `dotnet publish` only (not
     plain `dotnet build`, so a Node-less machine can still build the backend alone) this runs the

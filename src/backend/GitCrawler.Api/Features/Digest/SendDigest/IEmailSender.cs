@@ -11,8 +11,9 @@ public interface IEmailSender
     Task SendAsync(EmailMessage message, CancellationToken cancellationToken);
 }
 
-// Exactly the content a digest send needs - a plain To/Subject/Body, not a
+// Exactly the content a digest send needs - a plain To/Subject/Body(/IsHtml), not a
 // System.Net.Mail.MailMessage - so this contract stays decoupled from the specific mail client
 // SmtpEmailSender happens to use underneath (same "expose only what the caller needs" rationale as
-// RepositorySummarizationContext's own comment).
-public record EmailMessage(string To, string Subject, string Body);
+// RepositorySummarizationContext's own comment). IsHtml defaults to false so any future plain-text
+// caller doesn't have to think about it.
+public record EmailMessage(string To, string Subject, string Body, bool IsHtml = false);

@@ -46,7 +46,14 @@ public class SmtpEmailSender(IConfiguration configuration) : IEmailSender
             client.Credentials = new NetworkCredential(username, password);
         }
 
-        using var mailMessage = new MailMessage(fromAddress, message.To, message.Subject, message.Body);
+        using var mailMessage = new MailMessage(fromAddress, message.To, message.Subject, message.Body)
+        {
+            // MailMessage defaults IsBodyHtml to false regardless of the body content itself - an
+            // HTML body sent without this set renders as literal markup text in Mailpit/any real
+            // client instead of being parsed, which is exactly what EmailMessage.IsHtml exists to
+            // avoid getting wrong silently.
+            IsBodyHtml = message.IsHtml,
+        };
 
         await client.SendMailAsync(mailMessage, cancellationToken);
     }
