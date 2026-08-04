@@ -76,7 +76,7 @@ read/write shared state, which keeps each stage independently testable and resta
   summaries: short that show on the repo card and then the detailed one"). Both are plain-text (no
   Markdown headings/bullet points/section labels), generated via two separate LM Studio calls per
   repo rather than one call producing both: a short one (`Summarization:MaxSummaryLength`
-  characters, default 220 — sized to fit the dashboard card's 3-line clamp without server-side
+  characters, default 180 — sized to fit the dashboard card's 3-line clamp without server-side
   truncation) and a detailed one (`Summarization:MaxDetailedSummaryLength`, default 900, 2-4 short
   paragraphs — shown in full in the click-through detail dialog, which has no line clamp). Both
   length constraints are enforced by asking the model for them, not by trimming the response
@@ -172,7 +172,8 @@ read/write shared state, which keeps each stage independently testable and resta
   operator monitoring. The Summarizer additionally has its own standalone, more-frequent recurring
   trigger (hourly by default, `Hangfire:SummarizationCronSchedule`) alongside its chain
   attachment — the chain alone only gives it one chance to run per daily crawl cycle, which left a
-  backlog of scored-but-not-yet-summarized repos (larger than one `Summarization:BatchSize` batch)
+  backlog of scored-but-not-yet-summarized repos (larger than one `Summarization:BatchSize`, default
+  200, batch)
   sitting unsummarized for days; both triggers converge on the same "no Summary row yet" selection,
   so the extra trigger is a no-op once the backlog clears.
 - **Inputs:** Configured recurring schedules and stage-continuation chain.

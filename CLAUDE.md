@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-GitHub Hidden Gems Discovery Platform — a self-hosted .NET 10 / Angular 22 modular monolith. Phase
-0 (scaffolding) is complete; Phase 1 (data pipeline) has not started. See `docs/handoff.md` for the
-current build state and what's next, and `docs/project-management.md` for the full feature backlog.
+GitHub Hidden Gems Discovery Platform — a self-hosted .NET 10 / Angular 22 modular monolith. Phases
+0-3 (scaffolding, data pipeline, AI summarization/trends, dashboard/API/bookmarking) are complete;
+Phase 4 (daily digest, observability) and Phase 5 (security/reliability hardening) have not started.
+See `docs/handoff.md` for the current build state and what's next, and `docs/project-management.md`
+for the full feature backlog.
 
 ## Starting the stack — always use `make`, not `docker compose` directly
 
