@@ -7,8 +7,17 @@ namespace GitCrawler.Api.Features.Summarization.GenerateSummaries;
 // the calling code.
 public interface IRepositorySummarizer
 {
-    Task<string> SummarizeAsync(RepositorySummarizationContext context, CancellationToken cancellationToken);
+    Task<RepositorySummaryResult> SummarizeAsync(RepositorySummarizationContext context, CancellationToken cancellationToken);
 }
+
+// Two distinct summaries per repo (operator direction: "there should be two kinds of summaries:
+// short that show on the repo card and then the detailed one") - deliberately one call producing
+// both rather than two separate interface methods, so GenerateSummariesCommandHandler's call site
+// stays a single "summarize this repo" operation. The two texts are still generated via two
+// separate LM Studio calls under LmStudioRepositorySummarizer (operator-confirmed choice over a
+// single call with a parsed structured response, prioritizing reliability over halving inference
+// time per repo) - that's an implementation detail this contract doesn't need to expose.
+public record RepositorySummaryResult(string ShortSummary, string DetailedSummary);
 
 // Exactly the content a summarization prompt needs - not a raw Data.Entities.Repository - so this
 // contract stays decoupled from the Data Store schema. ReadmeContent is nullable rather than

@@ -4,6 +4,173 @@
 
 ## What was done
 
+**Hidden Gems trend growth now computed per repository, not per language**
+(`docs/project-management.md` v28) — a direct, operator-directed fix via Claude Code, not run through
+`orchestrator-development-pattern` (an isolated computation-logic fix to an existing Done feature, not
+a new Task Packet; verified directly instead, see below). The prior "README-length summarizer
+failures fixed; bookmark toast styling filled in" entry has been moved to "README-length summarizer
+failures fixed; bookmark toast styling filled in" below now that this entry supersedes it.
+
+- **What changed and why**: operator: "Trend is currently calculated per language. I want it to be
+  calculated per repository and then shown. What is currently being shown is the trend aggregate for
+  the topic?" Confirmed by reading `GetHiddenGemsQueryHandler`: `HiddenGemCardDto.TrendGrowth` had
+  inherited the old standalone Trending view's `TrendAggregate` rollup verbatim when that view was
+  merged into Hidden Gems (see the "Trending tab decommissioned" entry further down this file) -
+  `TrendAggregate` rows are keyed by `Category` (`Repository.PrimaryLanguage`), summarizing *every*
+  repo of that language together, so every C# repo on the dashboard was showing the identical growth
+  figure regardless of its own individual standing.
+- **Fix**: `GetHiddenGemsQueryHandler` no longer queries `TrendAggregate` at all for this purpose.
+  `ComputeScoresCommandHandler` already appends a new `Score` row per repository on every re-crawl
+  (never upserts - confirmed by reading that handler directly) - `ComputeTrendGrowth` now diffs a
+  repository's own two most-recent `Score.TotalScore` values from that existing history instead, no
+  schema change needed. Same output format as before ("▲ +18%/▼ -12% vs. last period"), with the
+  no-prior-score fallback reworded from `"{avg} avg score"` to `"{score} current score"` since it's no
+  longer an average across many repos, just this one repo's sole score so far.
+- **`TrendAggregate`/`AggregateTrendsCommand` are unchanged** - they still run and still back
+  `GetCategoriesQuery`, the Language filter's option-list source. Only Hidden Gems' own per-card
+  growth display stopped reading from them.
+- **Docs updated for consistency**: `docs/architecture.md` (v22 — §3 Web Dashboard),
+  `docs/project-management.md` (v28 — F-009's/F-010's rows amended).
+- **Verification**: backend 85/85 (`GetHiddenGemsQueryHandlerTests`'s three `TrendAggregate`-fixture
+  cases replaced with score-history fixtures - one new case explicitly adds a second, same-language
+  repository to confirm the fix is actually per-repository and not still secretly blended across a
+  language, per the operator's own framing of the bug) - `dotnet build`/`dotnet test`/`dotnet format
+  --verify-no-changes` all clean. No frontend logic changed (`repository.model.ts`/`app.routes.ts`
+  comments updated for accuracy only) - not re-verified against the live dashboard this session.
+
+---
+
+## README-length summarizer failures fixed; bookmark toast styling filled in (superseded by the above, kept for history)
+
+**README-length summarizer failures fixed; bookmark toast styling filled in**
+(`docs/project-management.md` v27) — two direct, operator-directed fixes via Claude Code, not run
+through `orchestrator-development-pattern` (small, isolated bug fixes to existing Done features, not
+new Task Packets; verified directly instead, see below). The prior "Summarizer split into short +
+detailed summaries" entry has been moved to "Summarizer split into short + detailed summaries" below
+now that this entry supersedes it.
+
+- **What changed and why (summarizer)**: a live `make dev` run against the real backlog — the exact
+  spot-check the prior entry below flagged as not yet done — surfaced an HTTP 400 from LM Studio
+  while summarizing `openclaw/openclaw`. Reproduced directly against LM Studio's `/v1/chat/
+  completions` endpoint with that repo's actual README (fetched from GitHub) to get the real error
+  body, since `LmStudioRepositorySummarizer` was discarding it via a bare `EnsureSuccessStatusCode()`
+  call: `"The number of tokens to keep from the initial prompt is greater than the context length
+  (n_keep: 35489 >= n_ctx: 8192)"`. Root cause: the README (111KB, GitHub's `size` field) was sent to
+  the model with no length cap at all — the loaded model serves an 8192-token context window, so any
+  repo with a large enough README hits this, not just this one.
+- **Fix**: `LmStudioRepositorySummarizer` now truncates `ReadmeContent` to
+  `Summarization:MaxReadmeCharacters` (new config, default 6000) before building either prompt,
+  appending `"[README truncated for length]"` when it does. 6000 was picked from the live failure's
+  own numbers (~3.1 chars/token for that README) with headroom for denser code-heavy Markdown, and
+  because a README's opening section (purpose/features/install) is where a summarizer needs the
+  most signal — truncating the tail loses far less than truncating the start would. Truncated once
+  per repo and reused for both the short and detailed calls, since the cap exists to fit the model's
+  context window, not either prompt's own target length. Also fixed the `EnsureSuccessStatusCode()`
+  swallowing the response body on any future LM Studio error — `CallLmStudioAsync` now reads and
+  includes it in the thrown exception, so a future failure is diagnosable from
+  `GenerateSummariesCommandHandler`'s existing `logger.LogWarning(ex, ...)` alone, without a manual
+  repro. `docs/architecture.md` (v21 — §3 Summarizer) updated to document the cap.
+- **What changed and why (bookmark toasts)**: operator asked to confirm the bookmark-toggle
+  toasts (`Added to bookmarks`/`Removed from bookmarks` with Undo, `Couldn't save bookmark — try
+  again` with Retry) matched a reference screenshot (dark rounded pill, bold uppercase action text,
+  a distinct brick-red variant for the error case). The `BookmarkToggle` component's `MatSnackBar
+  .open()` calls, copy, and `panelClass` wiring (`app-snackbar`/`app-snackbar-error`) were already
+  fully implemented — but `styles.scss`'s own comment claiming those panelClass rules existed
+  "above" the dialog rules was stale/inaccurate: they were never actually written, so every toast was
+  rendering as Material's stock gray rectangular bar.
+- **Fix**: added the actual `.app-snackbar`/`.app-snackbar-error` rules to `styles.scss`, targeting
+  `.mat-mdc-snackbar-surface` (confirmed via `@angular/material/fesm2022/snack-bar.mjs`'s own
+  component metadata that `panelClass` lands on an ancestor of the surface element, not the surface
+  itself — same node_modules-inspection approach used for this file's mat-select token names).
+  Standard toast: `--color-ink-900` background, matching this design's existing dark-surface tone
+  (repo-detail dialog header, app toolbar). Error toast: `--color-accent-800` — there's no dedicated
+  "danger" token in this palette (see the custom-property block at the top of the file), so the
+  darkest/most saturated existing accent step doubles as this app's one danger surface rather than
+  introducing an off-palette red. Both get `--radius-pill` corners and bold/uppercase action text
+  (MDC's M3 default isn't uppercase, unlike the old M2 default the reference screenshot resembles).
+- **Verification**: backend 86/86 (`dotnet build`/`dotnet test`/`dotnet format --verify-no-changes`
+  all clean; no existing unit tests target `LmStudioRepositorySummarizer` directly — it's exercised
+  live, not via `Fakes.cs`'s `FakeRepositorySummarizer`, so the README-truncation logic itself has no
+  dedicated test). Frontend 45/45, `npm run lint` clean (styling-only change, no component logic
+  touched, `bookmark-toggle.spec.ts` unchanged). The corrected summarizer behavior itself (does LM
+  Studio now succeed for `openclaw/openclaw`) wasn't re-run end-to-end against the live batch job this
+  session — worth confirming on the next `GenerateSummariesJob` run.
+
+---
+
+## Summarizer split into short + detailed summaries (superseded by the above, kept for history)
+
+**Summarizer split into short + detailed summaries** (`docs/project-management.md` v26) — a direct,
+operator-directed change via Claude Code, not run through `orchestrator-development-pattern` (a
+data-model/prompt change to an existing Done feature, not a new Task Packet; verified directly
+instead, see below). The prior "Summarizer prompt and scheduling adjusted" entry has been moved to
+"Summarizer prompt and scheduling adjusted" below now that this entry supersedes it.
+
+- **What changed and why**: F-008's Summarizer generated one summary per repo, shared by both the
+  dashboard card (clamped to 3 lines) and the click-through detail dialog (shown in full). Operator:
+  "there should be two kinds of summaries: short that show on the repo card and then the detailed
+  one." Asked which generation approach before implementing (genuine cost/reliability tradeoff, not
+  mine to pick silently) - operator chose two separate LM Studio calls per repo (one short prompt,
+  one detailed prompt) over a single call with a parsed structured response, prioritizing per-prompt
+  reliability over halving inference time.
+- **Backend**: `IRepositorySummarizer.SummarizeAsync` now returns `RepositorySummaryResult(
+  ShortSummary, DetailedSummary)` instead of a bare `string`. `LmStudioRepositorySummarizer` makes
+  two sequential calls (not `Task.WhenAll` - LM Studio serves one local model instance, so
+  concurrent requests would contend rather than actually parallelize) with two distinct system
+  prompts: the existing short one (`Summarization:MaxSummaryLength`, unchanged at 220 chars) and a
+  new detailed one (`Summarization:MaxDetailedSummaryLength`, new config, default 900 chars/2-4
+  short paragraphs, still plain-text/no-headings since the dialog interpolates it directly rather
+  than rendering Markdown). `Summary.Content` split into `Summary.ShortContent`/`Summary
+  .DetailedContent`; `GenerateSummariesCommandHandler` writes both from the one `SummarizeAsync`
+  call. `RepositoryCardDto`/`HiddenGemCardDto` gained `DetailedSummaryContent`, mapped from
+  `Summary.DetailedContent` in `GetHiddenGemsQueryHandler`.
+- **Migration deletes existing Summary rows, operator-confirmed**: "i dont mind if the existing
+  summaries are deleted in this implementation." `SplitSummaryContentIntoShortAndDetailed` renames
+  `Content` → `ShortContent`, adds `DetailedContent`, then `DELETE FROM "Summaries"` - avoids leaving
+  every pre-existing row with a permanently-empty `DetailedContent` (Summary is create-once, no
+  automatic backfill path otherwise). Affected repos aren't lost - they simply have no Summary row
+  again, so `GenerateSummariesCommandHandler`'s existing "no Summary row yet" selection filter picks
+  them back up automatically, including via the standalone hourly trigger added in the prior entry
+  below.
+- **Frontend**: `RepositoryDetailPane` now reads `item.detailedSummaryContent` instead of
+  `item.summaryContent` for its "AI summary" section (falls back to the same "Summary pending"
+  placeholder when null) - the card itself (`RepositoryCard`) is unchanged, still reads
+  `summaryContent` only.
+- **A live LM Studio run to confirm the model actually follows both new prompts wasn't done this
+  session** (same category of gap prior summarizer-touching sessions have disclosed) - worth a
+  spot-check the next time `make up`/`make dev` runs against a populated backlog, particularly
+  whether the detailed prompt's 900-character/2-4-paragraph target holds up in practice the way the
+  short prompt's 220-character one was already confirmed to.
+- **Docs updated for consistency, not just code**: `docs/architecture.md` (v20 — §3 Summarizer
+  rewritten for the two-summary/two-call design), `docs/project-management.md` (v26 — F-008's row
+  amended again).
+- **Verification**: backend 86/86 (7 tests touched: `Fakes.cs`'s `FakeRepositorySummarizer` now
+  takes two args per enqueued summary, `GenerateSummariesCommandHandlerTests`/
+  `AggregateTrendsCommandHandlerTests`/`GitCrawlerDbContextTests` updated for the renamed/added
+  entity fields) — `dotnet build`/`dotnet test`/`dotnet format --verify-no-changes` all clean.
+  Frontend 45/45 (`repository-detail-pane.spec.ts`'s two summary-content tests rewritten for the
+  swapped field; five other fixture files updated to satisfy the DTO's new required field) —
+  `npm run lint` clean. A locally running `dotnet watch` process (from an earlier `make dev` session)
+  had to be stopped mid-session so `dotnet ef migrations add` could write its build output -
+  `dotnet watch` auto-restarted itself afterward, no operator action needed to resume live iteration.
+- **Race condition caught and fixed against the live local database**: `dotnet watch`'s own
+  file-watcher detected the migration file the instant `dotnet ef migrations add` created it and
+  auto-rebuilt/re-ran `Database.Migrate()` *before* the follow-up edit adding
+  `DELETE FROM "Summaries";` to its `Up()` method landed - so this database's
+  `__EFMigrationsHistory` recorded the migration as applied using the rename+add-column-only version,
+  permanently skipping the delete on any future `Database.Migrate()` call (EF only applies a given
+  migration ID once, regardless of the file's current content). Caught by directly querying the live
+  table afterward (`docker compose exec postgres psql`) - 65 rows still had the old pre-fix
+  "**Summary**"-formatted `ShortContent` and an empty `DetailedContent` from `AddColumn`'s own
+  default, exactly the signature of a delete that never ran. Fixed by running the same
+  `DELETE FROM "Summaries";` directly against this database once, by hand - the migration file
+  itself is left as originally written (correct as-is for any fresh database that runs it from
+  scratch, where this race can't occur since there's no already-applied history to race against).
+
+---
+
+## Summarizer prompt and scheduling adjusted (superseded by the above, kept for history)
+
 **Summarizer prompt and scheduling adjusted** (`docs/project-management.md` v25) — a direct,
 operator-directed change via Claude Code, not run through `orchestrator-development-pattern` (a
 config/prompt-level tweak to an existing Done feature, not a new Task Packet; verified directly

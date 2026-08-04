@@ -25,12 +25,19 @@ public record ScoreBreakdownDto(
 // Extends the shared repo-card shape (D5) with the score breakdown Hidden Gems alone needs -
 // record inheritance instead of duplicating RepositoryCardDto's field list.
 //
-// TrendGrowth (added when the standalone Trending tab was decommissioned in favor of surfacing this
-// directly on the card): the repo's own category's trend growth, formatted identically to what the
-// old Trending view rendered per trend card - "▲ +18% vs. last period" when at least two periods
-// exist for the category, or "{avg} avg score" when only one period exists yet (no prior period to
-// diff against). Null when the repo's category has no TrendAggregate row at all yet (e.g. the
-// nightly Trend Aggregator hasn't run since this repo/category first appeared).
+// TrendGrowth: this repository's OWN score trend, not its language/category's (operator: "Trend is
+// currently calculated per language. I want it to be calculated per repository" - what had shipped
+// here originally, when the standalone Trending tab was decommissioned, reused that view's
+// per-category TrendAggregate rollup verbatim, which meant every C# repo showed the same growth
+// figure regardless of its own individual standing). Computed directly from Score's own
+// append-per-recrawl history (ComputeScoresCommandHandler adds a new row on every re-score rather
+// than upserting) - the latest two Score rows for this repo, diffed the same way the old
+// category-level computation diffed two TrendAggregate periods: "▲ +18% vs. last period" once a
+// second (re-crawl-produced) Score exists, or "{score} current score" when only the first Score
+// exists yet (no prior score to diff against). Never null once a repo has any Score - unlike the
+// category-level version, there's no "TrendAggregate row hasn't been computed yet" gap, since this
+// reads directly off the same Score row already guaranteed to exist by GetHiddenGems' own
+// Scores.Any() filter.
 public sealed record HiddenGemCardDto(
     int Id,
     string Owner,
@@ -44,10 +51,11 @@ public sealed record HiddenGemCardDto(
     IReadOnlyList<string> Topics,
     DateTimeOffset FirstDiscoveredAtUtc,
     string? SummaryContent,
+    string? DetailedSummaryContent,
     bool IsBookmarked,
     ScoreBreakdownDto ScoreBreakdown,
     string? TrendGrowth)
-    : RepositoryCardDto(Id, Owner, Name, Url, PrimaryLanguage, StarCount, ForkCount, LicenseIdentifier, LicenseName, Topics, FirstDiscoveredAtUtc, SummaryContent, IsBookmarked);
+    : RepositoryCardDto(Id, Owner, Name, Url, PrimaryLanguage, StarCount, ForkCount, LicenseIdentifier, LicenseName, Topics, FirstDiscoveredAtUtc, SummaryContent, DetailedSummaryContent, IsBookmarked);
 
 // Wolverine message + result for this slice. Reuses RepositoryCardQuery's shared D4 filter/sort/
 // paginate helper (Features/Repositories) - GetDiscoveryFeed used to share it too before that
@@ -73,29 +81,20 @@ public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
         var ranked = RepositoryCardQuery.Rank(candidates, filter.Sort, filter.Direction);
         var page = RepositoryCardQuery.Paginate(ranked, filter.Page, filter.PageSize, out var totalCount);
 
-        // Ported from the frontend's old trending.ts computeGrowthLabel (removed along with the
-        // standalone Trending tab) - same formula, now computed once per response instead of once
-        // per card client-side. One dictionary lookup per card below rather than per-repo querying.
-        var trendAggregates = await dbContext.TrendAggregates.ToListAsync(cancellationToken);
-        var growthLabelsByCategory = BuildGrowthLabelsByCategory(trendAggregates);
-
         return new PagedResult<HiddenGemCardDto>(
-            [.. page.Select(r => ToHiddenGemDto(r, growthLabelsByCategory))],
+            [.. page.Select(ToHiddenGemDto)],
             RepositoryCardQuery.ClampPage(filter.Page),
             RepositoryCardQuery.ClampPageSize(filter.PageSize),
             totalCount);
     }
 
-    private static HiddenGemCardDto ToHiddenGemDto(RankedRepository ranked, IReadOnlyDictionary<string, string> growthLabelsByCategory)
+    private static HiddenGemCardDto ToHiddenGemDto(RankedRepository ranked)
     {
         // Never null: the Scores.Any() filter above guarantees at least one Score row, so the
         // latest-by-ComputedAtUtc resolution in RepositoryCardQuery.Rank always finds one here.
         var score = ranked.LatestScore!;
 
-        var trendGrowth = ranked.Repository.PrimaryLanguage is string category
-            && growthLabelsByCategory.TryGetValue(category, out var label)
-                ? label
-                : null;
+        var trendGrowth = ComputeTrendGrowth(ranked);
 
         return new HiddenGemCardDto(
             ranked.Repository.Id,
@@ -109,7 +108,8 @@ public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
             ranked.Repository.LicenseName,
             ranked.Repository.Topics,
             ranked.Repository.FirstDiscoveredAtUtc,
-            ranked.LatestSummary?.Content,
+            ranked.LatestSummary?.ShortContent,
+            ranked.LatestSummary?.DetailedContent,
             ranked.Repository.Bookmarks.Count > 0,
             new ScoreBreakdownDto(
                 score.HasLicense,
@@ -127,32 +127,26 @@ public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
             trendGrowth);
     }
 
-    // One growth label per category: "current" is the latest-by-PeriodStart TrendAggregate row for
-    // that category, "previous" is the second-latest (if any) - same current/previous resolution the
-    // old trending.ts computeGrowthLabel used across the full /api/trending response, just scoped per
-    // category instead of per individual TrendDto row (this endpoint only ever needs one label per
-    // category, not one per historical period).
-    private static Dictionary<string, string> BuildGrowthLabelsByCategory(IReadOnlyList<TrendAggregate> trendAggregates)
+    // "Current" is ranked.LatestScore (already resolved by RepositoryCardQuery.Rank); "previous" is
+    // this same repo's next-most-recent Score row, if a re-crawl has produced one - the same
+    // OrderByDescending(ComputedAtUtc) convention used everywhere else in this codebase for
+    // latest-Score resolution (see RepositoryCardQuery.Rank/ComputeScoresCommandHandler), just
+    // Skip(1) to land on the one before latest instead of Skip(0).
+    private static string ComputeTrendGrowth(RankedRepository ranked)
     {
-        var labels = new Dictionary<string, string>();
+        var previous = ranked.Repository.Scores
+            .OrderByDescending(s => s.ComputedAtUtc)
+            .Skip(1)
+            .FirstOrDefault();
 
-        foreach (var group in trendAggregates.GroupBy(t => t.Category))
-        {
-            var periods = group.OrderBy(t => t.PeriodStart).ToList();
-            var current = periods[^1];
-            var previous = periods.Count > 1 ? periods[^2] : null;
-
-            labels[group.Key] = previous is null || previous.AverageScore == 0
-                ? $"{Math.Round(current.AverageScore)} avg score"
-                : FormatGrowthChange(current.AverageScore, previous.AverageScore);
-        }
-
-        return labels;
+        return previous is null || previous.TotalScore == 0
+            ? $"{Math.Round(ranked.LatestScore!.TotalScore)} current score"
+            : FormatGrowthChange(ranked.LatestScore!.TotalScore, previous.TotalScore);
     }
 
-    private static string FormatGrowthChange(double currentAverageScore, double previousAverageScore)
+    private static string FormatGrowthChange(double currentScore, double previousScore)
     {
-        var change = (currentAverageScore - previousAverageScore) / previousAverageScore * 100;
+        var change = (currentScore - previousScore) / previousScore * 100;
         var arrow = change >= 0 ? "▲" : "▼";
         var sign = change >= 0 ? "+" : string.Empty;
         return $"{arrow} {sign}{change:F0}% vs. last period";

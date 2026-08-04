@@ -51,7 +51,7 @@
   <div class="repo-detail__body">
     <section class="repo-detail__section">
       <h3 class="repo-detail__section-label">AI summary</h3>
-      @if (item.summaryContent; as summary) {
+      @if (item.detailedSummaryContent; as summary) {
         <p class="repo-detail__summary">{{ summary }}</p>
       } @else {
         <div class="repo-detail__summary-pending">

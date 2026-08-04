@@ -100,12 +100,13 @@ public class GenerateSummariesCommandHandler(
                     repository.LicenseName,
                     readmeContent);
 
-                var content = await summarizer.SummarizeAsync(context, cancellationToken);
+                var result = await summarizer.SummarizeAsync(context, cancellationToken);
 
                 dbContext.Summaries.Add(new Summary
                 {
                     RepositoryId = repository.Id,
-                    Content = content,
+                    ShortContent = result.ShortSummary,
+                    DetailedContent = result.DetailedSummary,
                     GeneratedAtUtc = timeProvider.GetUtcNow(),
                 });
 

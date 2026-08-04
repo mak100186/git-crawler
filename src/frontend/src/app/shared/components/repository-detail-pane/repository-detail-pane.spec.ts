@@ -20,6 +20,9 @@ const baseRepository: RepositoryCardDto = {
   topics: ['rust', 'cargo', 'build-tools'],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'Visualizes cargo dependency graphs and feature flags.',
+  detailedSummaryContent:
+    'A thorough walkthrough of cargo-lens: it renders interactive dependency graphs for any Rust ' +
+    'crate, including feature-flag combinations, and highlights version conflicts before they hit CI.',
   isBookmarked: false,
 };
 
@@ -64,14 +67,17 @@ describe('RepositoryDetailPane', () => {
     fixture = TestBed.createComponent(RepositoryDetailPane);
   }
 
-  it('renders the full summary, topics, and chips for the given item', async () => {
+  it('renders the detailed summary (not the short card summary), topics, and chips for the given item', async () => {
     await createFixture({ item: baseRepository, scoreBreakdown: null, trendGrowth: null });
     fixture.detectChanges();
 
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).toContain('cargo-lens');
     expect(el.textContent).toContain('ferrous-oss');
-    expect(el.textContent).toContain('Visualizes cargo dependency graphs and feature flags.');
+    expect(el.textContent).toContain(baseRepository.detailedSummaryContent);
+    expect(el.querySelector('.repo-detail__summary')?.textContent).not.toContain(
+      'Visualizes cargo dependency graphs and feature flags.',
+    );
     expect(el.textContent).toContain('Rust');
     expect(el.textContent).toContain('Apache-2.0');
     expect(el.textContent).toContain('1284');
@@ -82,9 +88,9 @@ describe('RepositoryDetailPane', () => {
     expect(topicChips).toEqual(['rust', 'cargo', 'build-tools']);
   });
 
-  it('renders the "Summary pending" placeholder when summaryContent is null', async () => {
+  it('renders the "Summary pending" placeholder when detailedSummaryContent is null', async () => {
     await createFixture({
-      item: { ...baseRepository, summaryContent: null },
+      item: { ...baseRepository, detailedSummaryContent: null },
       scoreBreakdown: null,
       trendGrowth: null,
     });

@@ -20,6 +20,7 @@ const repo: RepositoryCardDto = {
   topics: [],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'A tool.',
+  detailedSummaryContent: 'A detailed tool description.',
   isBookmarked: false,
 };
 

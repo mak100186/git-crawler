@@ -71,14 +71,23 @@ read/write shared state, which keeps each stage independently testable and resta
   (ADR-015).
 
 ### Summarizer
-- **Responsibility:** Generate a concise AI summary for repositories that clear the scoring
-  threshold, from README/manifest content. The prompt asks for a single plain-text passage (no
-  Markdown headings/bullet points/section labels) of about 3 sentences, capped at
-  `Summarization:MaxSummaryLength` characters (default 220) — sized to fit the dashboard card's
-  3-line clamp without server-side truncation; the length constraint is enforced by asking the
-  model for it, not by trimming the response afterward.
+- **Responsibility:** Generate two distinct AI summaries for repositories that clear the scoring
+  threshold, from README/manifest content (operator direction: "there should be two kinds of
+  summaries: short that show on the repo card and then the detailed one"). Both are plain-text (no
+  Markdown headings/bullet points/section labels), generated via two separate LM Studio calls per
+  repo rather than one call producing both: a short one (`Summarization:MaxSummaryLength`
+  characters, default 220 — sized to fit the dashboard card's 3-line clamp without server-side
+  truncation) and a detailed one (`Summarization:MaxDetailedSummaryLength`, default 900, 2-4 short
+  paragraphs — shown in full in the click-through detail dialog, which has no line clamp). Both
+  length constraints are enforced by asking the model for them, not by trimming the response
+  afterward. The two-call choice trades doubled LM Studio inference time per repo (operator-
+  confirmed) for each prompt being tuned to its own length/purpose, rather than risking a single
+  call's structured response not parsing cleanly. README content is capped at
+  `Summarization:MaxReadmeCharacters` (default 6000) before either prompt is built — found via a
+  live failure where an uncapped 111KB README exceeded the loaded model's context window outright
+  (LM Studio rejected the request rather than truncating server-side).
 - **Inputs:** Repository content (README, manifest files) for top-scored repos without a summary.
-- **Outputs:** Plain-text summary written to the Data Store.
+- **Outputs:** Two plain-text summaries (short + detailed) written to the Data Store.
 - **Dependencies:** Local LLM Runtime, via the `IRepositorySummarizer` abstraction (ADR-001).
 - **Technology:** .NET service calling LM Studio's local (OpenAI-compatible) API (ADR-007),
   running the Llama 3.2 3B Instruct model (ADR-017, supersedes ADR-013); implemented as a
@@ -124,8 +133,12 @@ read/write shared state, which keeps each stage independently testable and resta
   drill-down were removed 2026-08-03 — Repository.PrimaryLanguage, the value Category is defined as,
   remains fully filterable via the existing Language facet on Hidden Gems, so no browsing capability
   was lost. The standalone Trending view was likewise removed the same day and merged into Hidden
-  Gems — each card now shows its own category's trend growth directly, computed server-side from
-  TrendAggregate, so a separate view is no longer needed to see the same information. The standalone
+  Gems — each card shows its own trend growth directly, so a separate view is no longer needed to
+  see the same information. Initially computed server-side from TrendAggregate (the repo's
+  language/category's rollup, shared by every repo of that language); changed 2026-08-04 to be
+  computed per repository instead, from that repo's own Score history — operator: "Trend is
+  currently calculated per language. I want it to be calculated per repository." TrendAggregate
+  itself is unchanged and still backs the Language filter's option list (Categories query). The standalone
   Discovery Feed view was removed the same way too, later the same day — once Categories and Trending
   had already folded into Hidden Gems, Discovery Feed no longer offered a meaningfully distinct
   browsing experience over it. F-012's dedicated Bookmarks view was removed last, the same way again —
@@ -250,3 +263,6 @@ the dashboard and receiving the digest.
 | v17 | 2026-08-03 | §3 Web Dashboard responsibility noted a new click-to-open repository detail pane — fulfills the dashboard UX design brief's own §09 mockup (full summary, topics, score breakdown in a right-side drawer), which F-011's original implementation never built; no FR/NFR change, since no Functional Requirement committed to a detail pane in the first place — this is UX polish drawing on an already-approved design element, not new product scope | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" |
 | v18 | 2026-08-03 | F-012's dedicated Bookmarks view removed: §3 Web Dashboard responsibility now names Hidden Gems as the dashboard's sole view; §3 Web API responsibility notes `/api/bookmarks`'s GET (list) endpoint is fully removed too, same as `/api/discovery-feed`/`/api/trending`, since nothing else consumed it — create/delete stay mapped for the bookmark toggle. FR-007 itself is unaffected (still satisfied, now via Hidden Gems' existing "Bookmarked only" filter instead of a dedicated view) | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" |
 | v19 | 2026-08-04 | Summarizer changed from a "concise, structured" (headed-sections) prompt to a plain-text, ~3-sentence prompt explicitly capped at `Summarization:MaxSummaryLength` characters (default 220, new config) — §3 Summarizer updated; the prior structured output's own heading/section text was eating into the dashboard card's fixed 3-line clamp and crowding out the actual summary content. §3 Job Scheduler updated: the Summarizer now also has its own standalone hourly recurring trigger (`Hangfire:SummarizationCronSchedule`, new config) in addition to its existing chain attachment, so a backlog of scored-but-unsummarized repos no longer waits for the next full daily crawl cycle to be picked up | Operator: "we need to check more frequently for the repos that dont have a summary... summary should be x characters long... adjust prompt and ask for 3 liner (x character summary) so we dont have to truncate" |
+| v20 | 2026-08-04 | Summarizer now generates two distinct summaries per repo instead of one - §3 Summarizer rewritten: a short one (unchanged `Summarization:MaxSummaryLength`, still the card's summary) and a new detailed one (`Summarization:MaxDetailedSummaryLength`, default 900, new config), each via its own LM Studio call (two calls per repo, operator-confirmed over a single call with a parsed structured response). `Summary.Content` split into `Summary.ShortContent`/`Summary.DetailedContent` in the Data Store; the migration that added this deleted every pre-existing Summary row (operator-confirmed - Summary's create-once design means there's no backfill path for the new field otherwise) | Operator: "there should be two kinds of summaries: short that show on the repo card and then the detailed one" |
+| v21 | 2026-08-04 | §3 Summarizer updated: README content sent to LM Studio is now capped at `Summarization:MaxReadmeCharacters` (default 6000, new config) before either prompt is built. Found via a live failure — an uncapped 111KB README (`openclaw/openclaw`) exceeded the loaded model's 8192-token context window outright, which LM Studio rejects as a hard error rather than truncating server-side, so any repo with a large enough README would have failed identically | Operator pasted a live LM Studio 400 error from a `make dev` session |
+| v22 | 2026-08-04 | §3 Web Dashboard updated: each Hidden Gems card's trend growth is now computed per repository (from that repo's own Score history across re-crawls) instead of per language/category (from its shared TrendAggregate rollup) — every repo of a given language no longer shows the same growth figure. TrendAggregate itself, and the Language filter's option list it backs (Categories query), are unchanged | Operator: "Trend is currently calculated per language. I want it to be calculated per repository and then shown. What is currently being shown is the trend aggregate for the topic?" |

@@ -65,7 +65,8 @@ public class AggregateTrendsCommandHandlerTests : IDisposable
     private Summary NewSummary(int repositoryId) => new()
     {
         RepositoryId = repositoryId,
-        Content = "a summary",
+        ShortContent = "a summary",
+        DetailedContent = "a detailed summary",
         GeneratedAtUtc = _timeProvider.GetUtcNow(),
     };
 

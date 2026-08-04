@@ -192,74 +192,50 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task Handle_NoTrendAggregateForCategory_TrendGrowthIsNull()
+    public async Task Handle_OnlyOneScoreEverComputed_TrendGrowthFallsBackToCurrentScore()
     {
         var repository = await AddRepositoryAsync(1, language: "C#");
-        await AddScoreAsync(repository.Id);
+        await AddScoreAsync(repository.Id, totalScore: 72.4);
 
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
 
-        Assert.Null(result.Items.Single().TrendGrowth);
+        Assert.Equal("72 current score", result.Items.Single().TrendGrowth);
     }
 
     [Fact]
-    public async Task Handle_SinglePeriodTrendAggregate_TrendGrowthFallsBackToAverageScore()
+    public async Task Handle_TwoScoresFromSeparateRecrawls_TrendGrowthIsPercentChangeVsPreviousScore()
     {
         var repository = await AddRepositoryAsync(1, language: "C#");
-        await AddScoreAsync(repository.Id);
-        await AddTrendAggregateAsync("C#", periodStart: DateOnly.FromDateTime(DateTime.UtcNow), averageScore: 72.4);
+        var today = DateTimeOffset.UtcNow;
+        // Previous re-crawl scored 50, latest re-crawl scored 60 - a +20% increase. A second,
+        // unrelated repo of the same language is added to confirm this is now computed per-
+        // repository, not blended across every C# repo the way the old category-level rollup was
+        // (regression-shaped for the operator's own complaint: "Trend is currently calculated per
+        // language. I want it to be calculated per repository").
+        await AddScoreAsync(repository.Id, totalScore: 50.0, computedAt: today.AddDays(-1));
+        await AddScoreAsync(repository.Id, totalScore: 60.0, computedAt: today);
+        var otherRepository = await AddRepositoryAsync(2, language: "C#");
+        await AddScoreAsync(otherRepository.Id, totalScore: 10.0, computedAt: today);
 
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
 
-        Assert.Equal("72 avg score", result.Items.Single().TrendGrowth);
+        var repositoryResult = result.Items.Single(i => i.Id == repository.Id);
+        Assert.Equal("▲ +20% vs. last period", repositoryResult.TrendGrowth);
     }
 
     [Fact]
-    public async Task Handle_TwoPeriodTrendAggregate_TrendGrowthIsPercentChangeVsPreviousPeriod()
+    public async Task Handle_TwoScoresFromSeparateRecrawls_DecliningScore_ShowsDownArrow()
     {
-        var repository = await AddRepositoryAsync(1, language: "C#");
-        await AddScoreAsync(repository.Id);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        // Previous period 50, current period 60 - a +20% increase (regression-shaped: the repo's own
-        // category, not some other category, must be the one matched).
-        await AddTrendAggregateAsync("C#", periodStart: today.AddDays(-1), averageScore: 50.0);
-        await AddTrendAggregateAsync("C#", periodStart: today, averageScore: 60.0);
-        await AddTrendAggregateAsync("Go", periodStart: today, averageScore: 10.0);
-
-        var handler = CreateHandler();
-        var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
-
-        Assert.Equal("▲ +20% vs. last period", result.Items.Single().TrendGrowth);
-    }
-
-    [Fact]
-    public async Task Handle_TwoPeriodTrendAggregate_DecliningScore_ShowsDownArrow()
-    {
-        var repository = await AddRepositoryAsync(1, language: "C#");
-        await AddScoreAsync(repository.Id);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        await AddTrendAggregateAsync("C#", periodStart: today.AddDays(-1), averageScore: 80.0);
-        await AddTrendAggregateAsync("C#", periodStart: today, averageScore: 60.0);
+        var repository = await AddRepositoryAsync(1);
+        var today = DateTimeOffset.UtcNow;
+        await AddScoreAsync(repository.Id, totalScore: 80.0, computedAt: today.AddDays(-1));
+        await AddScoreAsync(repository.Id, totalScore: 60.0, computedAt: today);
 
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new GetHiddenGemsQuery(new RepositoryFilterCriteria()), CancellationToken.None);
 
         Assert.Equal("▼ -25% vs. last period", result.Items.Single().TrendGrowth);
-    }
-
-    private async Task AddTrendAggregateAsync(string category, DateOnly periodStart, double averageScore, int repositoryCount = 1)
-    {
-        _dbContext.TrendAggregates.Add(new TrendAggregate
-        {
-            Category = category,
-            PeriodStart = periodStart,
-            PeriodEnd = periodStart,
-            RepositoryCount = repositoryCount,
-            AverageScore = averageScore,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-        });
-        await _dbContext.SaveChangesAsync();
     }
 }

@@ -44,9 +44,14 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSi
 // the base record itself is never returned bare anymore now that ListBookmarks is gone (it used to be
 // this shape's other consumer; see the changelog entry for that removal), but stays as the base type
 // rather than folding its fields directly into HiddenGemCardDto, since a future second consumer of the
-// bare shape is plausible (same reasoning as this file's own header comment). SummaryContent is null
-// when no Summary row exists yet ("summary pending" client-side per the approved design, not an empty
-// string).
+// bare shape is plausible (same reasoning as this file's own header comment). SummaryContent and
+// DetailedSummaryContent (Summary.ShortContent/DetailedContent - operator direction: "two kinds of
+// summaries: short that show on the repo card and then the detailed one") are both null exactly when
+// no Summary row exists yet ("summary pending" client-side per the approved design), and both
+// populated together otherwise - the migration that added DetailedContent deleted every pre-existing
+// Summary row rather than leaving a partially-populated one to special-case (operator-confirmed).
+// DetailedSummaryContent rides on this same DTO rather than a separate one fetched on demand, since
+// the detail dialog only ever opens from a card that already has this data in hand client-side.
 public record RepositoryCardDto(
     int Id,
     string Owner,
@@ -60,6 +65,7 @@ public record RepositoryCardDto(
     IReadOnlyList<string> Topics,
     DateTimeOffset FirstDiscoveredAtUtc,
     string? SummaryContent,
+    string? DetailedSummaryContent,
     bool IsBookmarked);
 
 // A repository paired with its latest Score/Summary (or null if none exist yet) - the unit the

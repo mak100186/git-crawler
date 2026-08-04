@@ -124,7 +124,7 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         _dbContext.Scores.Add(NewScore(repository.Id, 75));
         await _dbContext.SaveChangesAsync();
 
-        _summarizer.EnqueueSummary("A concise summary.");
+        _summarizer.EnqueueSummary("A concise summary.", "A much more detailed summary.");
 
         var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
 
@@ -133,7 +133,8 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         Assert.Equal(0, result.FailedCount);
 
         var stored = await _dbContext.Summaries.SingleAsync(s => s.RepositoryId == repository.Id);
-        Assert.Equal("A concise summary.", stored.Content);
+        Assert.Equal("A concise summary.", stored.ShortContent);
+        Assert.Equal("A much more detailed summary.", stored.DetailedContent);
         Assert.Equal(_timeProvider.GetUtcNow(), stored.GeneratedAtUtc);
 
         var request = Assert.Single(_summarizer.Requests);
@@ -169,7 +170,8 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         _dbContext.Summaries.Add(new Summary
         {
             RepositoryId = repository.Id,
-            Content = "Existing summary.",
+            ShortContent = "Existing summary.",
+            DetailedContent = "Existing detailed summary.",
             GeneratedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
         });
         await _dbContext.SaveChangesAsync();
@@ -194,7 +196,7 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // Default responder (set up in the constructor) already 404s every README fetch.
-        _summarizer.EnqueueSummary("Summary without a README.");
+        _summarizer.EnqueueSummary("Summary without a README.", "Detailed summary without a README.");
 
         var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
 
@@ -216,7 +218,7 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         UseReadmeResponder(_ => ReadmeFoundResponse("# Hello World\nThis is a test repo."));
-        _summarizer.EnqueueSummary("Summary with a README.");
+        _summarizer.EnqueueSummary("Summary with a README.", "Detailed summary with a README.");
 
         await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
 
@@ -237,7 +239,7 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
 
         // Processed in descending-score order, so failingRepo (90) is attempted first.
         _summarizer.EnqueueFailure(new HttpRequestException("LM Studio unreachable"));
-        _summarizer.EnqueueSummary("Second repo's summary.");
+        _summarizer.EnqueueSummary("Second repo's summary.", "Second repo's detailed summary.");
 
         var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
 
@@ -265,7 +267,7 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         _dbContext.Scores.Add(NewScore(repository.Id, 60, _timeProvider.GetUtcNow()));
         await _dbContext.SaveChangesAsync();
 
-        _summarizer.EnqueueSummary("Summary.");
+        _summarizer.EnqueueSummary("Summary.", "Detailed summary.");
 
         var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
 
@@ -319,8 +321,8 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
             await _dbContext.SaveChangesAsync();
         }
 
-        _summarizer.EnqueueSummary("Summary A.");
-        _summarizer.EnqueueSummary("Summary B.");
+        _summarizer.EnqueueSummary("Summary A.", "Detailed summary A.");
+        _summarizer.EnqueueSummary("Summary B.", "Detailed summary B.");
 
         var result = await CreateHandler(ConfigWith(batchSize: 2)).HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
 

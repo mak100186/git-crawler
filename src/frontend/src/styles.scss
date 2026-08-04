@@ -207,6 +207,43 @@ body {
   }
 }
 
+// BookmarkToggle's snack-bars (dashboard-ux-brief.md §6.1) - the comment above the dialog rules
+// claimed these panelClass hooks already existed "above", but they were never actually written, so
+// every bookmark toast was rendering as Material's stock gray rectangular bar instead of this
+// design's dark pill. Same panelClass-on-overlay-pane / descendant-selector pattern as the dialog
+// rules above (panelClass lands on an ancestor of .mat-mdc-snackbar-surface, not the surface
+// itself - confirmed via @angular/material/fesm2022/snack-bar.mjs's own component metadata, same
+// node_modules-inspection approach used for the mat-select token names elsewhere in this file).
+// Action text is uppercased/bolded to match the reference screenshot - MDC's snack-bar action
+// isn't uppercase by default under this M3 theme, unlike the old M2 default.
+.app-snackbar .mat-mdc-snackbar-surface,
+.app-snackbar-error .mat-mdc-snackbar-surface {
+  border-radius: var(--radius-pill);
+  box-shadow: var(--elevation-md);
+}
+
+.app-snackbar .mat-mdc-snackbar-surface {
+  --mat-snack-bar-container-color: var(--color-ink-900);
+  --mat-snack-bar-supporting-text-color: var(--color-neutral-100);
+  --mat-snack-bar-button-color: var(--color-accent-400);
+}
+
+// No existing --color-danger token in this palette (see the custom-property block at the top of
+// this file) - accent-800 is the darkest, most saturated step already in the approved palette, so
+// it doubles as this app's one "danger" surface rather than introducing an off-palette red.
+.app-snackbar-error .mat-mdc-snackbar-surface {
+  --mat-snack-bar-container-color: var(--color-accent-800);
+  --mat-snack-bar-supporting-text-color: var(--color-neutral-100);
+  --mat-snack-bar-button-color: var(--color-neutral-100);
+}
+
+.app-snackbar .mat-mdc-snack-bar-action,
+.app-snackbar-error .mat-mdc-snack-bar-action {
+  font-family: var(--font-body);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 // Focus ring (dashboard-handoff.md §1): 2px solid terracotta, 2px offset, on :focus-visible only.
 :focus-visible {
   outline: 2px solid var(--color-accent);

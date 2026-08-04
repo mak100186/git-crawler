@@ -38,7 +38,13 @@ export interface RepositoryCardDto {
   licenseName: string | null;
   topics: string[];
   firstDiscoveredAtUtc: string;
+  // The card itself only ever renders summaryContent (short) - detailedSummaryContent exists on
+  // this shared DTO purely so the detail dialog (opened with the same card item as its data, see
+  // RepositoryGrid.openDetail) has it in hand without a second fetch. Both are null exactly when no
+  // Summary row exists yet ("summary pending"); never independently null otherwise, since the
+  // backend generates and persists both together in one create-once operation.
   summaryContent: string | null;
+  detailedSummaryContent: string | null;
   isBookmarked: boolean;
 }
 
@@ -57,10 +63,12 @@ export interface ScoreBreakdownDto {
   totalScore: number;
 }
 
-// trendGrowth mirrors the old standalone Trending view's growth chip text for this card's own
-// category ("▲ +18% vs. last period", or "{avg} avg score" when there's no prior period to diff
-// against) - null when the category has no TrendAggregate row yet. Added when the Trending tab was
-// merged into Hidden Gems (see the changelog entry for that removal).
+// trendGrowth is this repository's OWN score trend across re-crawls, not its language/category's
+// (operator: "Trend is currently calculated per language. I want it to be calculated per
+// repository") - "▲ +18% vs. last period" once a second Score exists from a later re-crawl, or
+// "{score} current score" when only the first Score exists yet (no prior score to diff against).
+// Effectively never null for a card that reached the dashboard at all, since GetHiddenGems only
+// returns repos that already have at least one Score.
 export interface HiddenGemCardDto extends RepositoryCardDto {
   scoreBreakdown: ScoreBreakdownDto;
   trendGrowth: string | null;

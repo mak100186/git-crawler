@@ -68,6 +68,12 @@
       padding-left: 14px !important;
       padding-right: 14px !important;
     }
+
+    // mat-select's own caret sits directly against the trigger text by default (no gap token of its
+    // own) - operator feedback: more breathing room between "Language"/"License" and the arrow.
+    ::ng-deep .mat-mdc-select-arrow-wrapper {
+      margin-left: 8px;
+    }
   }
 
   // Stars/Topic have no native trigger+panel of their own (unlike mat-select) - each is a plain
@@ -100,11 +106,12 @@
     }
   }
 
-  // Matches mat-select's native caret (Language/License) so Stars reads as a dropdown too, not a
-  // plain button - the only facet without a chevron is Topic, which uses a "+" affordance instead
-  // (dashboard-handoff.md §3 / reference screenshot). iconPositionEnd on the <mat-icon> (see .html)
-  // is what actually puts it after the label - mat-button projects icon content into a slot before
-  // or after the label based on that attribute, not the icon's position in template source order.
+  // A star glyph, not mat-select's arrow caret (operator feedback: "the svg should be a star, not
+  // arrow down") - Stars is the one facet trigger where an icon naming the facet itself reads better
+  // than a generic dropdown chevron. Topic uses a "+" affordance instead of either (dashboard-
+  // handoff.md §3 / reference screenshot). iconPositionEnd on the <mat-icon> (see .html) is what
+  // actually puts it after the label - mat-button projects icon content into a slot before or after
+  // the label based on that attribute, not the icon's position in template source order.
   &__facet-trigger-caret {
     width: 12px;
     height: 12px;

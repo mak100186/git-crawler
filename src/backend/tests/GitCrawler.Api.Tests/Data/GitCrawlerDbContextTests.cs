@@ -98,7 +98,8 @@ public class GitCrawlerDbContextTests : IDisposable
         _context.Summaries.Add(new Summary
         {
             RepositoryId = repository.Id,
-            Content = "A concise summary.",
+            ShortContent = "A concise summary.",
+            DetailedContent = "A more detailed summary.",
             GeneratedAtUtc = DateTimeOffset.UtcNow,
         });
         await _context.SaveChangesAsync();

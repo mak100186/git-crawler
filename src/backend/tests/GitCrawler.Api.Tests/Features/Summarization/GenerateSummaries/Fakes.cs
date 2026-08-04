@@ -11,15 +11,18 @@ namespace GitCrawler.Api.Tests.Features.Summarization.GenerateSummaries;
 // FakeGitHubDiscoveryClient does for F-005 (see Features/Crawling/DiscoverRepositories/Fakes.cs).
 internal class FakeRepositorySummarizer : IRepositorySummarizer
 {
-    private readonly Queue<Func<string>> _responses = new();
+    private readonly Queue<Func<RepositorySummaryResult>> _responses = new();
 
     public List<RepositorySummarizationContext> Requests { get; } = [];
 
-    public void EnqueueSummary(string content) => _responses.Enqueue(() => content);
+    // Two-arg per F-008's later short/detailed split (operator direction: "two kinds of summaries").
+    // A single-string overload isn't kept - every real call site now needs both, so tests should too.
+    public void EnqueueSummary(string shortSummary, string detailedSummary) =>
+        _responses.Enqueue(() => new RepositorySummaryResult(shortSummary, detailedSummary));
 
     public void EnqueueFailure(Exception exception) => _responses.Enqueue(() => throw exception);
 
-    public Task<string> SummarizeAsync(RepositorySummarizationContext context, CancellationToken cancellationToken)
+    public Task<RepositorySummaryResult> SummarizeAsync(RepositorySummarizationContext context, CancellationToken cancellationToken)
     {
         Requests.Add(context);
         return Task.FromResult(_responses.Dequeue()());

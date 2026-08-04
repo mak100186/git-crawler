@@ -20,6 +20,7 @@ const baseRepository: RepositoryCardDto = {
   topics: ['cli', 'tools'],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'A small, well-maintained CLI tool.',
+  detailedSummaryContent: 'A more detailed description of this small, well-maintained CLI tool.',
   isBookmarked: false,
 };
 

@@ -21,6 +21,7 @@ const hiddenGem: HiddenGemCardDto = {
   topics: [],
   firstDiscoveredAtUtc: new Date().toISOString(),
   summaryContent: 'A tool.',
+  detailedSummaryContent: 'A detailed tool description.',
   isBookmarked: false,
   trendGrowth: '▲ +18% vs. last period',
   scoreBreakdown: {

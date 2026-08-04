@@ -19,6 +19,7 @@ function repo(overrides: Partial<RepositoryCardDto>): RepositoryCardDto {
     topics: [],
     firstDiscoveredAtUtc: new Date().toISOString(),
     summaryContent: null,
+    detailedSummaryContent: null,
     isBookmarked: false,
     ...overrides,
   };
