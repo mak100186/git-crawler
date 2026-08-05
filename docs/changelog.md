@@ -1,7 +1,59 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 14
-> Last updated: 2026-08-04
+> Revision: 15
+> Last updated: 2026-08-06
+
+## Revision 15 — 2026-08-06 — Phase 5 begun: Security hardening (F-015)
+
+**Note**: this revision skips the several operator-directed changes between Revision 14 (2026-08-04,
+Phase 4) and this one (recorded in `docs/project-management.md` v29 through v33/`docs/handoff.md`'s
+Mailpit entry) — same pre-existing changelog-cadence drift noted in Revision 14, not introduced or
+fixed here.
+
+**Changes:**
+- **F-015 — Security hardening (Must, Planned → Done)**: GitHub token handling (env-var loaded via
+  `GITHUB_TOKEN` → `GitHub:Token`, never committed/logged) was already correct and required no code
+  change — verified during pre-flight, not reworked. The actual gap NFR-002 required: a repo-wide
+  secret-scan check. Closed via **gitleaks** (v8.30.1 pinned, operator-chosen), running in two modes
+  (full git history + working-tree diff) both as a new gating CI job
+  (`.github/workflows/quality.yml`'s `secret-scan` — fails the workflow on any finding, no
+  `continue-on-error`) and a local `make secret-scan` target running the identical commands. New
+  `.gitleaks.toml` at repo root extends the default ruleset with zero allowlist entries — the scan is
+  genuinely clean against this repo's current history and working tree. Deliberately scans only
+  git-tracked content (`gitleaks git`, not `gitleaks dir`/`--no-git`), since a filesystem scan would
+  flag a real, correctly-gitignored local `.env` secret — the wrong thing to check against NFR-002's
+  actual intent (preventing secrets from entering version control).
+- **Modules/files affected**: `.gitleaks.toml` (new), `.github/workflows/quality.yml` (new
+  `secret-scan` job), `Makefile` (new `secret-scan` target), `docs/setup.md` (new Prerequisites row +
+  §5), `docs/architecture.md` (v25 — NFR-002 Notes column). No `.cs`/`.ts` application source files
+  touched — this is CI/tooling configuration only.
+- **Breaking changes**: None.
+- **Docs updated**: `docs/test-cases.md` (v17 — F-015 "no executable scenario" note, since this
+  feature ships no unit-testable application code), `docs/test-runbook.md` (F-015 operator-reference
+  section on running `make secret-scan` locally and interpreting a CI failure),
+  `docs/project-management.md` (v34 — F-015 row → Done; PM-007's `npm audit` finding count/severity
+  corrected while verifying this row, unrelated to F-015's own diff).
+- **Smoke tests**:
+  1. **Happy path**: `make secret-scan` from repo root — both gitleaks passes report no leaks against
+     a clean checkout.
+  2. **Edge case**: introduce a credential-shaped string (e.g. a fake `ghp_`-prefixed token) into a
+     tracked file and re-run `make secret-scan` — gitleaks should flag it and exit non-zero; remove it
+     afterward, don't leave it committed.
+  3. **Regression-sensitive flow**: push/PR against `main` — `.github/workflows/quality.yml`'s
+     `secret-scan` job should run alongside the existing `frontend-quality`/`backend-quality` jobs and
+     gate the workflow the same way; confirm the two Snyk-based jobs are unaffected (same triggers,
+     same pass/fail behavior as before this revision).
+- **Verification**: backend 109/109 tests (`dotnet format --verify-no-changes` clean, `dotnet list
+  package --vulnerable --include-transitive` clean), frontend 45/45 tests (`npm run lint` clean; `npm
+  audit`'s pre-existing PM-007 findings confirmed dev-only/unrelated, numbers corrected). Run through
+  the full `orchestrator-development-pattern` (Feature Loop, Integration, Reviewer-Integration,
+  Finalization) — F-015 PASSed on the first Developer/Reviewer attempt; Integration and
+  Reviewer-Integration both PASS. gitleaks itself was not installed in the Integration Agent's
+  environment, so `make secret-scan` wasn't executed live during Integration — the authoritative CI
+  job is unaffected (installs its own pinned binary); worth an operator running it once locally to
+  confirm parity. graphify skipped — no code in `src/backend`/`src/frontend` was touched.
+
+---
 
 ## Revision 14 — 2026-08-04 — Phase 4: Digest Service (F-013) and Observability (F-014)
 

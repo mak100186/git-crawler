@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
 > Last updated: 2026-08-04
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 so far)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 — complete), Phase 5 (F-015 — CI-gate reference only, see below)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -700,6 +700,31 @@ manual stuck-run-diagnosability check.
    Integration Agent's environment (no live rate-limited GitHub session available) — see this
    runbook's "Known caveats" section below.
 
+## F-015 — Security hardening (secret scanning)
+
+Not a manual UI/API flow — F-015 is a CI/tooling gate, not application behavior, so there's no
+click-through or curl session to walk here (see `docs/test-cases.md`'s F-015 note for why no TC-015
+scenario exists). This section instead documents what running the gate locally looks like, matching
+this runbook's pattern of covering flows that need a human or a running environment rather than
+duplicating automated coverage.
+
+1. Confirm `gitleaks` is on your `PATH` (`gitleaks version`) — if it isn't, install it pinned to
+   v8.30.1 per `docs/setup.md` §5/Prerequisites table (`make secret-scan` fails fast with the same
+   install instructions if it's missing).
+2. Run `make secret-scan` from the repo root. This runs two passes, matching the CI job exactly: a
+   full git-history scan (`gitleaks git . -v`) and a working-tree-diff scan
+   (`gitleaks git . --pre-commit -v`).
+3. **Expect:** both passes report no leaks (`no leaks found`) against a clean checkout — this repo's
+   `.gitleaks.toml` currently has zero allowlist entries, so a clean result means the default ruleset
+   found nothing, not that something was suppressed.
+4. **What a CI failure means:** `.github/workflows/quality.yml`'s `secret-scan` job runs the identical
+   two commands on every PR/push to `main`/`master` and fails the workflow on any finding. A red
+   `secret-scan` check means gitleaks matched a rule (likely a credential-shaped string) somewhere in
+   the diff or history being scanned — treat it as a real finding to investigate first, not a flake to
+   re-run past. If it's a genuine false positive (e.g. a placeholder value in a doc or fixture), add a
+   narrowly-scoped, commented allowlist entry to `.gitleaks.toml` rather than disabling the job or the
+   rule wholesale.
+
 ---
 
 ### Known caveats to check when re-running this runbook later
@@ -761,6 +786,13 @@ manual stuck-run-diagnosability check.
   narrow-viewport GitHub-link regression check (F-011's responsive-collapse section, step 3) is
   operator-confirmed fixed, not just applied — see `docs/handoff.md`'s "Narrow-viewport filter
   sidenav" entry.
+- **F-015 (Security hardening) Integration pass**: `gitleaks` was not installed/on `PATH` in the
+  Integration Agent's environment, so `make secret-scan`'s steps above were not executed live this
+  pass — recorded as an open item rather than assumed clean; the authoritative gate for this feature
+  is the CI `secret-scan` job itself (`.github/workflows/quality.yml`), which runs on GitHub-hosted
+  runners where the job installs its own pinned gitleaks binary. An operator (or an Integration Agent
+  running in an environment with gitleaks available) should run `make secret-scan` at least once
+  locally per the steps above to confirm parity with what CI enforces.
 - **Phase 4 (F-013/F-014) Integration pass**: this runbook had no F-013/F-014 sections at all before
   this pass — the new sections above were added from scratch, not corrected in place. Neither
   feature's live-environment steps were executed in the Integration Agent's environment (no live SMTP

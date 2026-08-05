@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v16
+> Version: v17
 > Last updated: 2026-08-04
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014 so far)
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014), Phase 5 (F-015 — no scenario, see note)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -837,6 +837,18 @@ placeholder (ID not reused), same precedent as TC-011-11.
    are all identifiable from the structured output alone — directly validates NFR-005's "diagnose a
    stuck or rate-limited run without a debugger" requirement, the actual motivating scenario for F-014.
 
+## F-015 — Security hardening (no executable scenario)
+
+No TC-015 scenario exists, deliberately — F-015 shipped no unit-testable application code (`.cs`/`.ts`
+source files were not touched; see `docs/project-management.md`'s F-015 row). Its acceptance criterion
+("a repo-wide secret-scan check passes") is enforced by a CI job
+(`.github/workflows/quality.yml`'s `secret-scan`) and a local Makefile target (`make secret-scan`),
+both of which either pass/fail as a build gate or don't run at all — there is no application behavior
+for a Happy path/Edge case/Regression scenario to exercise the way TC-001 through TC-014 do for actual
+runtime code. Verifying the gate itself is covered by the Integration Agent directly re-running
+`make secret-scan` (or `.github/workflows/quality.yml`'s `secret-scan` job definition, if gitleaks
+isn't installed locally) as part of its own quality-gate pass, not by a scenario in this doc.
+
 ---
 
 ## Version History
@@ -858,3 +870,4 @@ placeholder (ID not reused), same precedent as TC-011-11.
 | v14 | 2026-08-04 | Full documentation sync pass — several rounds of direct, operator-directed UI/backend changes on 2026-08-04 had left this doc describing behavior that no longer exists. TC-008-01 amended for the two-summary split (short + detailed, one `Summary` row, two LM Studio calls); new TC-008-09 for the README-length cap (`Summarization:MaxReadmeCharacters`) added after a live `openclaw/openclaw` context-window failure. TC-010-11 rewritten: `TrendGrowth` is now computed per repository from its own `Score` history, not per language/category from `TrendAggregate` (operator: "Trend is currently calculated per language. I want it to be calculated per repository"). TC-011-02 no longer claims the card shows a "Why this score?" panel or a trend chip (both removed from the card, consolidated into the detail dialog). TC-011-04's forward-pointer and TC-011-13 both corrected/retargeted for the same per-repository trend change (TC-011-13 now describes the dialog's chip, not a card-level one). TC-011-09 corrected: there is no bottom nav to collapse (the primary nav was removed entirely once Hidden Gems became the sole page) — only the filter bar collapses; added a step 4 regression check for the narrow-viewport GitHub-link-showing-through-the-sidenav defect (operator-confirmed fixed). TC-011-14/15 updated for the drawer→`MatDialog` conversion and the removed card-level score panel. New TC-011-16 for the paginator's 24/48/64 page-size dropdown. `docs/prd.md` (v8 — US-8 reworded), `docs/architecture.md` (v22 — §3 Web Dashboard), and `docs/project-management.md` (v29+) were also found with a separate, unrelated drift while doing this pass: each doc's own header `Version` marker had silently fallen behind its own changelog table (e.g. Architecture's header still read v18 while its table already reached v22) — fixed in each file alongside its content corrections | Operator: "now update all documents for whatever has been implemented so far" |
 | v15 | 2026-08-04 | TC-010-04 rewritten: the Categories endpoint no longer reads `TrendAggregate` — it queries `Repository.PrimaryLanguage` directly, since `CategoryDto`'s only consumer (`FacetOptionsService`) had only ever read the `category` string, never the rollup fields (`RepositoryCount`/`AverageScore`/period dates) that came with it. New assertion added: a language with no scored repository behind it must not appear as a filter option (matches `GetHiddenGemsQueryHandler`'s own eligibility) — also documents a latent-bug fix, since the old version required a `Summary` too, stricter than Hidden Gems itself requires | Operator: "So for just the language filter we have the whole TrendAggregate table?" |
 | v16 | 2026-08-04 | Added Phase 4 scenarios ahead of implementation (TC-013 Digest Service: composition/send, logged-not-dropped send failure, empty-digest handling, latest-not-highest score selection, a Manual live-SMTP-delivery check; TC-014 Observability: platform-wide stage metrics, per-stage failure capture, additive-not-duplicate vs. the Hangfire dashboard, a Manual stuck-run-diagnosability check) | Orchestrator Step 0.0 gap-closure — test-cases-doc had no Phase 4 coverage before F-013/F-014's Task Packets were generated (same pattern as v2/v4/v5/v6/v7), drafted before dispatching either Developer Agent per the operator's explicit choice to draft scenarios now rather than proceed without them |
+| v17 | 2026-08-04 | Added a documentation-only F-015 note (no TC-015 scenario, deliberately — F-015 is a CI/tooling gate with no unit-testable application code, not a runtime feature); header `Covers` line updated to record Phase 5/F-015's status explicitly rather than leaving it unmentioned | F-015 Integration pass |

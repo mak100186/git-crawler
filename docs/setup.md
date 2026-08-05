@@ -1,6 +1,6 @@
 # Local Setup: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-01
+> Last updated: 2026-08-04
 
 One-time setup for running this platform locally via `make up`. See `docs/architecture.md` §7 and
 ADR-016 for why the stack is split between Docker Compose (`app` + `postgres`) and a host-installed
@@ -15,6 +15,7 @@ LM Studio.
 | LM Studio's `lms` CLI | Bundled with LM Studio but may need enabling once — open LM Studio → Settings → Developer, and enable the CLI. Confirm it's on your `PATH` with `lms --version`. |
 | `make` | Included on macOS/Linux. On Windows, install it separately (e.g. `choco install make`) — the `Makefile` itself forces its recipe shell to Git for Windows' bundled `bash.exe`, so it runs the same from PowerShell, `cmd.exe`, or Git Bash, as long as Git for Windows is installed at its default location. |
 | Llama 3.2 3B Instruct downloaded in LM Studio | Run `lms ls` to check. If it's not there, use LM Studio's "Discover" tab (or `lms get <model>`) to download it. `llama-3.2-3b-instruct` is the identifier confirmed present as of this doc's last update (ADR-017 — chosen over the original Gemma 4 E4B pin after live testing found Gemma 4 E4B wasted most of its output budget on internal reasoning; see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9-§10) — re-check with `lms ls`, since LM Studio's catalog can change. |
+| `gitleaks` (optional — only needed for `make secret-scan`) | Not required for `make up`/`make dev`. Install via `go install github.com/gitleaks/gitleaks/v8@v8.30.1` or a downloaded release binary (https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1) — pinned to match the version `.github/workflows/quality.yml`'s `secret-scan` job installs, so a local pass/fail means the same thing a CI run would. See §5 below. |
 
 ## 1. Create a GitHub Personal Access Token
 
@@ -172,6 +173,27 @@ curl http://localhost:8080/api/ping            # expect: {"status":"ok",...}
 curl http://localhost:1234/v1/models           # expect: your loaded model listed
 pg_isready -h localhost -p 5432 -U gitcrawler  # expect: accepting connections (use POSTGRES_PORT if changed)
 ```
+
+## 5. Scanning for secrets before you push
+
+`.github/workflows/quality.yml`'s `secret-scan` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
+against every pull request and push to `main`/`master` (NFR-002) — it scans the full git commit
+history plus the current working-tree diff for accidentally-committed API keys, tokens, and
+credentials, and fails the workflow on any finding. Run the identical check locally, before pushing,
+with:
+
+```bash
+make secret-scan
+```
+
+This requires `gitleaks` on your `PATH` (see the Prerequisites table above) — it isn't installed or
+invoked automatically the way Docker/LM Studio are for `make up`, since it's optional tooling for a
+pre-push check rather than something the running stack itself depends on. Config comes from
+`.gitleaks.toml` at the repo root (extends gitleaks' own default ruleset; currently has no allowlist
+entries — this repo's scan is clean as of this doc's last update). If gitleaks ever does flag a
+genuine false positive (e.g. an example/placeholder value in a doc or config fixture), add a
+narrowly-scoped, commented allowlist entry to `.gitleaks.toml` rather than disabling the rule
+outright.
 
 ## Tearing down
 

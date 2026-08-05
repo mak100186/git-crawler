@@ -74,3 +74,36 @@ jobs:
         with:
           command: test
           args: --file=src/backend/GitCrawler.sln
+
+  # Repo-wide secret scan (NFR-002, F-015) - not scoped to src/frontend or src/backend like the two
+  # jobs above, since a leaked credential could land in any tracked file (docs, config, CI YAML
+  # itself). gitleaks is language-agnostic, so this runs as its own job rather than a step bolted
+  # onto frontend-quality/backend-quality. Version pinned to match the Makefile's `secret-scan`
+  # target exactly, so CI and a local pre-push check run the identical binary/ruleset - bump both
+  # together if this is ever upgraded.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          # actions/checkout defaults to a shallow, single-commit clone - gitleaks' history scan
+          # below needs every commit, not just HEAD, to actually cover "full repository history".
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          rm gitleaks.tar.gz
+
+      - name: Scan full git history for secrets
+        run: gitleaks git . -v
+
+      - name: Scan working tree diff for secrets
+        # Redundant with the history scan right after a fresh checkout (HEAD's working tree already
+        # equals HEAD's own committed content, which the step above just scanned) - kept anyway so
+        # this job runs the exact same two commands as `make secret-scan` locally (see Makefile),
+        # rather than CI and the local check silently drifting into different coverage over time.
+        run: gitleaks git . --pre-commit -v

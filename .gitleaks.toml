@@ -1,0 +1,11 @@
+# gitleaks config (NFR-002, F-015). Extends gitleaks' own default ruleset rather than replacing it -
+# this repo's own scan (both the full git history and the working-tree diff, as of this file's
+# authoring) is clean with zero findings, so no allowlist entries exist here. Committed anyway
+# (rather than relying on gitleaks' implicit zero-config default) so the ruleset/behavior CI and
+# `make secret-scan` run is explicit and versioned, and so a future genuine false positive has an
+# obvious, already-wired-in place to add a narrowly-scoped, commented allowlist entry instead of
+# either disabling a rule wholesale or reaching for a brand-new config file under time pressure.
+title = "git-crawler gitleaks config"
+
+[extend]
+useDefault = true

@@ -1,8 +1,91 @@
 # Handoff: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-04
+> Last updated: 2026-08-06
 
 ## What was done
+
+**Phase 5 begun: F-015 (Security hardening) → Done** (`docs/project-management.md` v34) — run as a
+standalone slice of Phase 5 via a full `orchestrator-development-pattern` pass (Feature Loop, then
+Integration, then Reviewer-Integration, then this Finalization) — same "single-feature run" pattern
+used for F-010/F-011/F-012/etc. Phase 5 itself stays Planned until F-016 (Reliability/idempotency) and
+F-017 (Scalability: indexing & partitioning) also complete. The prior "Mailpit added for local F-013
+digest-email testing" entry has been moved to "Mailpit added for local F-013 digest-email testing"
+below now that this entry supersedes it.
+
+- **What changed and why**: NFR-002 ("GitHub API token stored via environment/secrets configuration,
+  never committed or logged") has two halves. The Orchestrator's own pre-flight (before generating a
+  Task Packet) verified the token-handling half was already correct and required no code change:
+  `Program.cs` bridges `GITHUB_TOKEN` (env var) into `GitHub:Token` config, `.env` is gitignored,
+  `.env.example` ships blank for it, and a repo-wide grep for GitHub-token-shaped patterns (`ghp_`,
+  `gho_`, `github_pat_`) and for any logging statement referencing the token found nothing. The
+  genuine gap was the AC's other half — "a repo-wide secret-scan check passes" — which didn't exist at
+  all: `.github/workflows/quality.yml` ran Snyk dependency-vulnerability scanning for both
+  frontend/backend, but nothing scanned for accidentally-committed secrets. Operator confirmed the
+  tool choice ahead of the Task Packet: **gitleaks**.
+- **What was built**: `.gitleaks.toml` (new, repo root) extends gitleaks' default ruleset with zero
+  allowlist entries — the scan is genuinely clean against this repo's current history, so nothing
+  needed suppressing. `.github/workflows/quality.yml` gained a new `secret-scan` job (parallel to the
+  existing `frontend-quality`/`backend-quality` jobs, not scoped to either `src/` directory since a
+  leaked credential could land in any tracked file): full-history checkout (`fetch-depth: 0`), a
+  pinned gitleaks v8.30.1 binary install (curl+tar from the GitHub release, not the composite
+  `gitleaks/gitleaks-action` — deliberately, to avoid an unverified claim about that Action's current
+  licensing terms), then two scan passes — `gitleaks git .` (full commit history) and
+  `gitleaks git . --pre-commit` (working-tree diff) — with no `continue-on-error`, so a finding fails
+  the workflow rather than just warning. `Makefile` gained a `secret-scan` target running the identical
+  two commands (added to `.PHONY` and `make help`), so a developer can catch a leak locally before
+  pushing instead of finding out from CI. `docs/setup.md` documents the new local check (Prerequisites
+  table + a new §5). `docs/architecture.md`'s NFR-002 Notes column was updated to record the
+  enforcement mechanism (v24 → v25) — no new §3 component section was added, since this is CI/tooling
+  configuration, not a system component.
+- **A deliberate scope decision, not an oversight**: `gitleaks` was run in git-aware mode
+  (`gitleaks git`) rather than a filesystem scan (`gitleaks dir`/`--no-git`). Verified directly: `dir`
+  mode ignores `.gitignore` entirely and would flag the developer's own real, correctly-gitignored
+  local `.env` secret — checking that is testing the wrong thing (whether `.env` is gitignored is
+  already true, and separately verified under AC1), not a rule-level false positive worth allowlisting.
+  The git-aware approach only ever sees git-tracked content, which is what NFR-002 actually cares about
+  — preventing secrets from entering version control, not flagging every local file that happens to
+  hold one legitimately.
+- **PASS on the Developer's first attempt** — the Reviewer verified both scan modes were actually run
+  (not just claimed) against the repo's real state: zero findings across 46 commits (history scan) and
+  the feature's own working-tree diff (pre-commit scan), each mode separately validated beforehand
+  against synthetic (non-real) GitHub-PAT-shaped test strings to confirm actual detection capability,
+  not a scan that would trivially pass regardless of content.
+- **Integration pass**: backend 109/109 tests (up from 103 — no new tests added by F-015 itself; the
+  delta reflects tests added incidentally by unrelated local iteration between the F-014 and F-015
+  Integration passes), `dotnet format --verify-no-changes` clean, `dotnet list package --vulnerable
+  --include-transitive` clean. Frontend 45/45 tests, `npm run lint` clean; `npm audit` still shows the
+  pre-existing PM-007 findings (dev-only, `@angular/cli` → `@modelcontextprotocol/sdk` chain,
+  unrelated to F-015's own diff, which touched no `package.json`) — its numbers were corrected while
+  verifying F-015's own row (5 findings now, 4 moderate + 1 high; a new `fast-uri` high-severity
+  finding had quietly appeared since PM-007 was last recorded, worth a human's attention independent of
+  this feature). One environment artifact fixed, not a code defect: a stray host-side
+  `GitCrawler.Api.exe` process left running from an earlier `make dev` session was file-locking build
+  output and breaking every `dotnet build`/`dotnet test` call until killed.
+- **Documentation Drift Check found and fixed**: `docs/test-cases.md` and `docs/test-runbook.md` had
+  zero mention of F-015/Phase 5. Since F-015 ships no unit-testable application code (a CI/tooling
+  gate, not runtime behavior), neither doc got a conventional Happy-path/Edge-case scenario — instead,
+  `docs/test-cases.md` gained an explicit "no TC-015 scenario, here's why" note, and
+  `docs/test-runbook.md` gained an operator-reference section describing what running `make
+  secret-scan` locally looks like and what a red CI `secret-scan` check means. Reviewer-Integration
+  PASS.
+- **What's still unverified live**: `gitleaks` was not installed in the Integration Agent's own
+  environment, so `make secret-scan` itself wasn't executed during Integration (recorded explicitly,
+  not silently assumed passing) — the authoritative gate is the CI `secret-scan` job, which installs
+  its own pinned binary on GitHub-hosted runners and is unaffected by this local gap. Worth an
+  operator running `make secret-scan` once locally to confirm parity with what CI enforces, same
+  category of "flag it, don't fake it" gap prior phases have disclosed for LM-Studio-dependent or
+  live-SMTP checks.
+- **graphify skipped this pass** — F-015 touched no code in `src/backend`/`src/frontend`, only
+  root-level CI/tooling config (`.gitleaks.toml`, `.github/workflows/quality.yml`, `Makefile`) and
+  docs; nothing new for the code-structure graph to capture.
+- **Docs updated for consistency, not just code**: `docs/project-management.md` (v34 — F-015 row →
+  Done, PM-007 numbers corrected), `docs/architecture.md` (v25 — NFR-002 Notes column),
+  `docs/test-cases.md` (v17), `docs/test-runbook.md` (F-015 section + Known caveats entry),
+  `docs/setup.md` (Prerequisites + §5).
+
+---
+
+## Mailpit added for local F-013 digest-email testing (superseded by the above, kept for history)
 
 **Mailpit added for local F-013 digest-email testing** — a direct, operator-directed change via Claude
 Code, not run through `orchestrator-development-pattern` (dev-tooling, not a Task Packet; verified

@@ -15,7 +15,7 @@
 # "unknown flag" style error, run `lms --help` / `lms <subcommand> --help` for your installed
 # version and adjust the recipe - don't assume the tool is broken.
 
-.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health format test
+.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health format test secret-scan
 
 # On Windows, GNU Make normally picks its recipe shell by searching the invoking process's PATH
 # for sh.exe. That search succeeds from a Git Bash session (which adds Git's own bin dirs to PATH
@@ -75,6 +75,8 @@ help:
 	@echo "make logs     - tail the app container's logs"
 	@echo "make format   - format/lint-fix everything: frontend (eslint + prettier) and backend (dotnet format)"
 	@echo "make test     - run frontend and backend tests"
+	@echo "make secret-scan - scan the full git history and working tree for accidentally-committed"
+	@echo "                   secrets (gitleaks, NFR-002) - same check CI runs, before you push"
 	@echo ""
 	@echo "Once 'make up' finishes, the web dashboard (F-011 - Hidden Gems, Bookmarks) is at"
 	@echo "http://localhost:$(APP_PORT)/ - it's the Angular build served as static assets by the"
@@ -188,6 +190,29 @@ format:
 test:
 	cd src/frontend && npm test -- --watch=false
 	cd src/backend && dotnet test GitCrawler.sln --no-restore
+
+# --- Security ---------------------------------------------------------------
+
+# gitleaks (NFR-002, F-015) scans for secrets accidentally committed to this repo - the local
+# counterpart to the `secret-scan` job in .github/workflows/quality.yml, so a developer can catch a
+# leak before pushing instead of finding out from a failed CI run. Two passes, matching that CI job
+# exactly: full commit history (catches anything already committed, even locally and not yet
+# pushed) plus the current working tree diff via --pre-commit (catches staged/unstaged changes about
+# to be committed, before they ever land in history). Config is picked up automatically from
+# .gitleaks.toml at the repo root - no -c flag needed. No Docker/env dependency, same as
+# format/test - this assumes gitleaks is already installed (see docs/setup.md's Prerequisites table)
+# rather than auto-fetching a binary, matching how format/test also assume npm/dotnet are already on
+# PATH rather than installing them. Version pinned in the install instructions below to match CI's
+# pinned v8.30.1, so a local pass/fail here means the same thing a CI run would.
+secret-scan:
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "gitleaks is not installed or not on PATH. Install it (pin to v8.30.1 to match CI):"; \
+		echo "  go install github.com/gitleaks/gitleaks/v8@v8.30.1"; \
+		echo "  (or download a release binary: https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1)"; \
+		exit 1; \
+	}
+	gitleaks git . -v
+	gitleaks git . --pre-commit -v
 
 # --- Docker ---------------------------------------------------------------
 
