@@ -1,7 +1,42 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 15
+> Revision: 16
 > Last updated: 2026-08-06
+
+## Revision 16 — 2026-08-06 — Phase 5 continued: Reliability/idempotency pass (F-016)
+
+**Changes:**
+- **F-016 — Reliability/idempotency pass (Must, Planned → Done)**: pre-flight found GitHub
+  retry/backoff (ADR-018/Polly) and repository-discovery idempotency (upsert by unique-indexed
+  `GitHubId`) already correct — untouched. Three real gaps closed, all rooted in nothing previously
+  preventing two overlapping executions of the same pipeline stage: (1) `[DisableConcurrentExecution]`
+  added to all five pipeline `*Job.RunAsync` entry points, with per-stage timeouts documented; (2) new
+  EF Core migration adds real unique indexes on `TrendAggregate(Category, PeriodStart, PeriodEnd)`
+  (replacing a non-unique index) and `Summary.RepositoryId` (previously unconstrained), defense-in-depth
+  against the race the concurrency guard already closes; (3) new `DigestSendLog` entity gives
+  `SendDigestCommandHandler` a persisted "already sent today" marker guarding against a sequential
+  Hangfire-retry-after-crash resend, independent of the concurrency guard.
+- **Modules/files affected**: `Data/Entities/DigestSendLog.cs` (new), `Data/GitCrawlerDbContext.cs`,
+  `Data/Migrations/AddF016IdempotencyConstraints` (new), all five `Features/*/*/​*Job.cs`,
+  `Features/Digest/SendDigest/SendDigestCommand.cs`, plus matching test files for each.
+- **Breaking changes**: None (additive schema constraints; `TrendAggregate`'s old non-unique index is
+  replaced by a unique composite index that's a superset of it, not removed capability).
+- **Docs updated**: `docs/architecture.md` (v26 — NFR-003/Job Scheduler/Trend Aggregator/Digest Service
+  sections), `docs/test-cases.md` (v18 — TC-009-05 corrected, new TC-016-01 through TC-016-04),
+  `docs/test-runbook.md` (F-009 section corrected, new F-016 manual-verification section),
+  `docs/project-management.md` (v35 — F-016 row → Done).
+- **Smoke tests**:
+  1. **Happy path**: trigger `discover-repositories`/`generate-summaries`/`aggregate-trends`/digest jobs
+     normally via Hangfire — pipeline completes exactly as before, no duplicate records, one digest
+     email sent.
+  2. **Edge case**: manually re-trigger `SendDigestJob` a second time for the same calendar day (e.g.
+     via the Hangfire dashboard's "Trigger now") — second invocation must log "already sent today" and
+     send no second email.
+  3. **Regression-sensitive**: re-run `aggregate-trends` twice for the same period — still exactly one
+     `TrendAggregate` row per `(Category, PeriodStart, PeriodEnd)`, now backed by a real unique DB
+     constraint rather than only the upsert query's own correctness.
+
+---
 
 ## Revision 15 — 2026-08-06 — Phase 5 begun: Security hardening (F-015)
 

@@ -4,6 +4,103 @@
 
 ## What was done
 
+**Phase 5 continued: F-016 (Reliability/idempotency pass) → Done** (`docs/project-management.md` v35)
+— run as a standalone slice of Phase 5 via a full `orchestrator-development-pattern` pass (Feature
+Loop, then Integration, then Reviewer-Integration, then this Finalization) — same "single-feature run"
+pattern used for F-015/F-010/F-011/F-012/etc. Phase 5 itself stays Planned until F-017 (Scalability:
+indexing & partitioning) also completes. The prior "Phase 5 begun: F-015 (Security hardening) → Done"
+entry has been moved to "Phase 5 begun: F-015 (Security hardening) → Done" below now that this entry
+supersedes it.
+
+- **What changed and why**: the Orchestrator's own pre-flight (before generating a Task Packet) read
+  the actual pipeline-stage handlers rather than assuming NFR-003's AC was entirely unmet, and found
+  two of its clauses already correct: GitHub retry/backoff (ADR-018/Polly) and repository-discovery
+  idempotency (`DiscoverRepositoriesCommandHandler` upserts by unique-indexed `GitHubId`, already
+  documented as such in `DiscoverRepositoriesJob.cs`'s own "Restart-safety (AC2/NFR-003)" comment).
+  What genuinely remained: `AggregateTrendsCommandHandler` upserted `TrendAggregate` by
+  `(Category, PeriodStart, PeriodEnd)` but that key had only a *non-unique* index, relying entirely on
+  an unenforced "single-threaded Hangfire job" assumption the code's own comment flagged as fragile;
+  `Summary.RepositoryId` (meant to be create-once per repo) had no unique index at all, the same
+  overlap-race gap, worse since Summary has no history-tracking excuse; and `SendDigestCommandHandler`
+  had no guard against re-sending the same day's digest email if Hangfire retried the job after a
+  mid-send crash. `GenerateSummariesJob`'s own schedule (an hourly standalone `RecurringJob` *and* a
+  chained continuation onto the same pipeline position, per F-008) made the overlap scenario real, not
+  hypothetical.
+- **What was built**: `[DisableConcurrentExecution(timeoutInSeconds: N)]` added to all five pipeline
+  `*Job.RunAsync` entry points (`DiscoverRepositoriesJob` 3600s, `GenerateSummariesJob` 1800s —
+  reflecting its two real concurrent trigger paths — `ComputeScoresJob`/`AggregateTrendsJob` 30s each
+  as pure computation, `SendDigestJob` 60s), closing the overlap window at the source uniformly across
+  every stage. A new EF Core migration (`AddF016IdempotencyConstraints`) adds real unique indexes on
+  `TrendAggregate(Category, PeriodStart, PeriodEnd)` (replacing the old non-unique
+  `(Category, PeriodStart)` index, now a redundant left-prefix) and on `Summary.RepositoryId` (mirroring
+  `Bookmark.RepositoryId`'s existing pattern) — defense-in-depth the concurrency guard makes practically
+  unreachable in normal operation, deliberately without elaborate exception-handling built around it. A
+  new `DigestSendLog` entity (unique index on `SentForDate`) gives `SendDigestCommandHandler` a
+  persisted "already sent today" marker, checked first in `HandleAsync` and written only after a
+  confirmed successful send — an independent guard from the concurrency attribute, since it covers a
+  *sequential* Hangfire-retry-after-crash scenario the attribute can't reach.
+- **PASS on the Developer's first attempt** — the Reviewer independently verified the attribute is
+  present and correctly targets Hangfire's real `DisableConcurrentExecutionAttribute`, the migration
+  genuinely creates both unique indexes and the new table, the digest dedupe check is ordered before
+  any DB query beyond its own lookup and writes its marker only after a confirmed send, and
+  `DiscoverRepositoriesCommandHandler` itself was not modified (direct diff/grep, not just trusted).
+- **Integration pass**: backend 119/119 tests (up from 109 at F-015), `dotnet format --verify-no-changes`
+  clean, `dotnet build` 0 warnings/errors, `dotnet list package --vulnerable --include-transitive`
+  clean (both projects), `dotnet ef migrations has-pending-model-changes` confirms the new migration and
+  `GitCrawlerDbContextModelSnapshot.cs` are in sync. No stray `GitCrawler.Api.exe` lock this time
+  (checked via `tasklist` before building, unlike the F-015 pass). Reviewer-Integration independently
+  re-verified test names/counts and documentation-drift fixes against the actual files, not just the
+  Integration Agent's own report — PASS.
+- **Documentation Drift Check found real gaps, all fixed**: `docs/architecture.md`'s NFR-003 Notes and
+  its Job Scheduler/Trend Aggregator/Digest Service sections described only the pre-existing
+  Hangfire-persistence/upsert story, with no mention of F-016's actual mechanisms (v25 → v26).
+  `docs/test-cases.md`'s TC-009-05 claimed "there is no unique DB constraint enforcing this," no longer
+  true — corrected, plus a new TC-016-01 through TC-016-04 section (v17 → v18). `docs/test-runbook.md`
+  carried the same now-false claim in its F-009 idempotent-re-run section — corrected, plus a new F-016
+  manual-verification section. No new ADR judged warranted: compared directly against ADR-018's own bar
+  (a new direct dependency + genuine architectural alternatives weighed) — `[DisableConcurrentExecution]`
+  is a built-in attribute of an already-adopted library, the unique indexes mirror this codebase's
+  existing `Bookmark.RepositoryId` pattern, and `DigestSendLog` mirrors the existing
+  `ContributorCountFetchedAtUtc` freshness-marker pattern; the one real alternative considered (an
+  outbox/rollback pattern for digest dedupe) was a directed simplicity choice per the Task Packet, not
+  an open fork.
+- **graphify — `--update` on `src` (first run to cover both `src/backend` and `src/frontend` together;
+  prior runs were `src/backend`-only)**: found the corpus's manifest already contained frontend entries
+  from an earlier, undocumented broader run, so a naive `src/backend`-scoped `--update` would have
+  falsely pruned 223 real, currently-accurate frontend graph nodes as "deleted" — caught by checking the
+  manifest and the existing graph's actual node count before pruning, not by trusting the tool's default
+  scope blindly. Ran the incremental update against `src` instead (86 changed files re-extracted via AST
+  + 4 parallel semantic subagents, one retried once after an unrelated session-usage-limit failure). A
+  second, more consequential drift bug was then caught the same way: the standard incremental-prune step
+  compares the manifest's *absolute* deleted-file paths against each node's *relative* `source_file`
+  value, and this graph has accumulated at least four different relative-path conventions across past
+  sessions (`src/app/...`, `frontend/src/app/...`, bare `GitCrawler.Api/...`, etc.) — so the standard
+  prune silently matched nothing at all, leaving 247 genuine ghost nodes (every file from the four
+  decommissioned frontend views — Bookmarks list, Categories, Discovery Feed, Trending — plus their
+  backend counterparts, all removed in earlier direct-edit sessions per this file's own history further
+  below) sitting in the graph undetected. Fixed by reconciling every node's `source_file` directly
+  against the live filesystem (suffix-matching to tolerate the mixed conventions) rather than trusting
+  the manifest-diff's silent no-op. Final graph: 2058 nodes, 3223 edges, 191 communities (top 30 hand
+  labeled; one hallucinated node path — a semantic subagent's guessed `RepositoryFilterCriteria.cs` for
+  a type that actually lives inside `RepositoryCardQuery.cs` — was also caught and dropped during the
+  same reconciliation, since correct nodes for that type already existed from AST extraction). Worth a
+  note for a future session: this graph's historical path-convention drift is bigger than just these two
+  bugs — a full non-incremental rebuild would be the clean fix, not something this pass attempted.
+- **Docs updated for consistency, not just code**: `docs/project-management.md` (v35 — F-016 row →
+  Done), `docs/architecture.md` (v26 — NFR-003/Job Scheduler/Trend Aggregator/Digest Service sections),
+  `docs/test-cases.md` (v18 — TC-009-05 corrected, TC-016 section added), `docs/test-runbook.md` (F-009
+  section corrected, F-016 section added).
+- **What's still unverified live**: the genuine concurrent-trigger timing (two real Hangfire workers
+  racing on the same job) and live same-day digest-retry dedupe were exercised via unit tests
+  (reflection-based attribute checks, a fake-email-sender call-count assertion), not against a running
+  `make dev`/`make up` stack with actual overlapping Hangfire workers — same category of "flag it, don't
+  fake it" gap prior phases have disclosed for LM-Studio-dependent or live-SMTP checks. Worth an
+  operator spot-check per the new `docs/test-runbook.md` F-016 section.
+
+---
+
+## Phase 5 begun: F-015 (Security hardening) → Done (superseded by the above, kept for history)
+
 **Phase 5 begun: F-015 (Security hardening) → Done** (`docs/project-management.md` v34) — run as a
 standalone slice of Phase 5 via a full `orchestrator-development-pattern` pass (Feature Loop, then
 Integration, then Reviewer-Integration, then this Finalization) — same "single-feature run" pattern

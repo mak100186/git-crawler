@@ -1,3 +1,5 @@
+using System.Reflection;
+
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
 using GitCrawler.Api.Features.Trends.AggregateTrends;
 
@@ -19,6 +21,22 @@ namespace GitCrawler.Api.Tests.Features.Summarization.GenerateSummaries;
 // left to the Integration Agent's live Postgres+Hangfire check.
 public class GenerateSummariesJobTests
 {
+    [Fact]
+    public void RunAsync_IsDecoratedWithDisableConcurrentExecution()
+    {
+        // F-016/NFR-003: same reflection-based attribute-presence check as
+        // DiscoverRepositoriesJobTests (see that file's own comment for why this is a static check
+        // rather than exercising Hangfire's real distributed lock). This is the one stage with two
+        // real concurrent trigger paths (its own hourly RecurringJob and the chained continuation
+        // from ComputeScoresJob), hence the longer documented timeout.
+        var attribute = typeof(GenerateSummariesJob)
+            .GetMethod(nameof(GenerateSummariesJob.RunAsync))!
+            .GetCustomAttribute<DisableConcurrentExecutionAttribute>();
+
+        Assert.NotNull(attribute);
+        Assert.Equal(30 * 60, attribute!.TimeoutSec);
+    }
+
     [Fact]
     public async Task RunAsync_InvokesGenerateSummariesCommandOnMessageBus()
     {

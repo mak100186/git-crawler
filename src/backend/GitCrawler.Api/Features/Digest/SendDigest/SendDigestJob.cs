@@ -1,3 +1,5 @@
+using Hangfire;
+
 using Wolverine;
 
 namespace GitCrawler.Api.Features.Digest.SendDigest;
@@ -22,6 +24,14 @@ namespace GitCrawler.Api.Features.Digest.SendDigest;
 // about it".
 public class SendDigestJob(IMessageBus messageBus)
 {
+    // F-016/NFR-003: same overlap-window closure as every other pipeline-stage job (see
+    // DiscoverRepositoriesJob.RunAsync's own comment for the full rationale, including why this is
+    // applied to the method rather than the class). 60s: a single SMTP send plus a handful of DB
+    // reads - the actual "never send the same day's digest twice" guarantee comes from
+    // SendDigestCommandHandler's own persisted DigestSendLog marker (part C, which also covers the
+    // sequential-retry case this attribute alone can't reach), this is just the same uniform
+    // simultaneous-overlap guard every other stage gets.
+    [DisableConcurrentExecution(timeoutInSeconds: 60)]
     // Typed InvokeAsync<SendDigestResult>, not the bare object overload - see AggregateTrendsJob's
     // own RunAsync comment for why the bare overload logs a routing warning.
     public Task RunAsync() => messageBus.InvokeAsync<SendDigestResult>(new SendDigestCommand());

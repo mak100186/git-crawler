@@ -1,8 +1,8 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v25
-> Last updated: 2026-08-04
+> Version: v26
+> Last updated: 2026-08-06
 > PRD: docs/prd.md (built against v8)
 
 ## 1. System Context
@@ -100,7 +100,9 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Outputs:** Trend aggregate records written to the Data Store.
 - **Dependencies:** Data Store.
 - **Technology:** .NET background service, scheduled batch job; implemented as a Wolverine
-  command/handler slice (ADR-015).
+  command/handler slice (ADR-015). F-016: the upsert key (`Category`, `PeriodStart`, `PeriodEnd`)
+  is now also a unique DB index (previously the pair `Category`/`PeriodStart` was only
+  non-uniquely indexed), and the job carries `[DisableConcurrentExecution]` — see NFR-003 Notes.
 - **Current status (2026-08-04):** still runs on its own schedule and still writes `TrendAggregate`
   rows correctly, but has no UI-facing consumer of that data right now — the standalone Trending view
   it originally fed was decommissioned, the per-category trend chip that replaced it was itself later
@@ -116,7 +118,10 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Outputs:** Outbound digest email.
 - **Dependencies:** Data Store; Email Provider (SMTP).
 - **Technology:** .NET background service, SMTP client; implemented as a Wolverine
-  command/handler slice (ADR-015).
+  command/handler slice (ADR-015). F-016: send-once-per-day is now backed by a persisted
+  `DigestSendLog` marker (checked first in the handler, written only after a confirmed successful
+  send) so a Hangfire retry-after-crash can't re-send the same day's email; the job itself also
+  carries `[DisableConcurrentExecution]` for the simultaneous-overlap case — see NFR-003 Notes.
 
 ### Observability (cross-cutting, not a pipeline stage)
 - **Responsibility:** Emit structured stage-level logs/metrics (records processed, duration,
@@ -192,7 +197,12 @@ read/write shared state, which keeps each stage independently testable and resta
 
 ### Job Scheduler
 - **Responsibility:** Trigger each pipeline stage on its schedule, recover in-flight/misfired jobs
-  after a restart, and expose run history/failures for operator monitoring. Crawl → score →
+  after a restart, and expose run history/failures for operator monitoring. F-016: every one of the
+  five pipeline `*Job.RunAsync` entry points now also carries Hangfire's
+  `[DisableConcurrentExecution(timeoutInSeconds: N)]`, closing the overlap window between two
+  triggers of the same stage landing simultaneously (e.g. a chain continuation firing while that
+  stage's own standalone recurring trigger is still mid-run) — see NFR-003 Notes for the full
+  per-stage timeout rationale. Crawl → score →
   summarize → aggregate trends is a true `ContinueJobWith` dependency chain (each link fires only
   once its predecessor completes). Digest Service (F-013) is deliberately NOT chain link 5 onto
   Trend Aggregator: Trend Aggregator itself fires on Summarizer's own hourly cadence (see below), so
@@ -248,7 +258,7 @@ the dashboard and receiving the digest.
 |----|----------|-------------|-------|
 | NFR-001 | Performance | Summary generation completes on the order of seconds per repository; dashboard interactions feel interactive (target p95 page response < 2s) | Formalizes PRD's "Responsiveness assumption"; local LLM throughput (ADR-001) is the primary risk to this — see A2 |
 | NFR-002 | Security | GitHub API token stored via environment/secrets configuration, never committed or logged; no AI provider credential exists in v1 since summarization is local (ADR-001); repo-wide secret-scanning (gitleaks) enforced in CI and locally to catch any credential that slips past that discipline | Formalizes PRD's Security assumption; scanning piece added by F-015 (`.github/workflows/quality.yml`'s `secret-scan` job, `make secret-scan`) |
-| NFR-003 | Reliability | Every pipeline stage is idempotent and resumable after a container restart mid-run; GitHub API failures retry with backoff rather than aborting the run | Enabled by Hangfire's persistent job storage (ADR-009) |
+| NFR-003 | Reliability | Every pipeline stage is idempotent and resumable after a container restart mid-run; GitHub API failures retry with backoff rather than aborting the run | Enabled by Hangfire's persistent job storage (ADR-009). F-016 closed the remaining overlap/duplicate-record gaps: `[DisableConcurrentExecution]` on all five pipeline `*Job.RunAsync` entry points closes the *simultaneous*-overlap window at the source; unique DB constraints on `TrendAggregate(Category, PeriodStart, PeriodEnd)` and `Summary.RepositoryId` back each stage's once-only invariant at the schema level (defense-in-depth behind the concurrency guard, not the primary fix); a persisted `DigestSendLog` "already sent today" marker independently covers the *sequential* Hangfire-retry-after-crash case the concurrency attribute can't reach. Repository-discovery idempotency (upsert by unique-indexed `GitHubId`) and GitHub retry/backoff (ADR-018/Polly) were already correct pre-F-016 |
 | NFR-004 | Scalability | Schema and indexing support 100k+ repositories and 1M+ analysis records without a redesign | Formalizes PRD's processing volume assumption; partitioning/archiving strategy is an open risk — see A5 |
 | NFR-005 | Observability | Each pipeline stage emits structured logs and stage-level metrics (records processed, duration, failures) so a solo operator can diagnose a stuck or rate-limited run without attaching a debugger | Not sourced from an explicit PRD line item; job-level piece (history, retries, failures) now covered by the Hangfire dashboard (ADR-009) — F-014 still needed for stage-level detail (e.g. per-signal scoring breakdowns) the dashboard doesn't capture |
 
@@ -311,3 +321,4 @@ the dashboard and receiving the digest.
 | v23 | 2026-08-04 | v22's own "TrendAggregate... unchanged" note is superseded: operator asked whether the Language filter really needed the whole TrendAggregate table, and it turned out not to — `FacetOptionsService` (the filter's only consumer) had only ever read the `Category` string off each `CategoryDto`, discarding `RepositoryCount`/`AverageScore`/`PeriodStart`/`PeriodEnd`. §3 Web API and §3 Trend Aggregator both updated: `/api/categories` now queries `Repository.PrimaryLanguage` directly (also fixing a latent gap — the old version required both a Score and a Summary before a language appeared as a filter option, stricter than Hidden Gems' own Score-only eligibility). `TrendAggregate`/`AggregateTrendsCommand` are still run deliberately, not removed — reserved for F-013's planned digest, now their only remaining documented consumer | Operator: "So for just the language filter we have the whole TrendAggregate table?" — presented as a 3-way tradeoff (simplify Categories only / remove the Trend Aggregator entirely / leave as-is), operator chose "simplify Categories only" |
 | v24 | 2026-08-04 | Phase 4 (F-013 Digest Service, F-014 Observability) built and integrated. New §3 "Observability (cross-cutting, not a pipeline stage)" component added — this section never existed before; NFR-005's own gap note previously described the need but §3 had no component entry for the actual `Infrastructure/Observability/` middleware once it was built. §3 Job Scheduler corrected: its dependency-order prose previously implied "trend rollup before digest" was a `ContinueJobWith` chain link like the other four stages, which contradicts F-013's actual implementation (an independent daily `RecurringJob`, deliberately not chained onto Trend Aggregator — see `SendDigestJob`'s own header comment) | Integration Agent — documentation drift check found §3 hadn't been updated for either newly-built Phase 4 component |
 | v25 | 2026-08-04 | Phase 5 begins (F-015 Security hardening). NFR-002's Notes column updated to record that repo-wide secret-scanning (gitleaks) is now enforced in CI (`.github/workflows/quality.yml`'s `secret-scan` job) and locally (`make secret-scan`), closing the gap this NFR previously only described for the GitHub token's own storage/logging discipline. No §3 component change — this is CI/tooling configuration, not a new or altered system component, so no new component section was warranted | F-015 Developer |
+| v26 | 2026-08-06 | F-016 Reliability/idempotency pass integrated. NFR-003's Notes column updated to record the three real gaps closed (concurrency guard on all five pipeline jobs, unique DB constraints on `TrendAggregate`'s natural key and `Summary.RepositoryId`, persisted `DigestSendLog` sequential-retry dedupe) alongside the two pre-flight findings already correct (discovery upsert idempotency, GitHub retry/backoff). §3 Job Scheduler, Trend Aggregator, and Digest Service updated with the same mechanisms in context — none of this introduced a new system component, so no new §3 section was warranted | Integration Agent — documentation drift check found NFR-003/§3 hadn't been updated for F-016's actual mechanism (unique DB index, concurrency guard, dedupe log), only the pre-existing upsert/persistent-storage description |

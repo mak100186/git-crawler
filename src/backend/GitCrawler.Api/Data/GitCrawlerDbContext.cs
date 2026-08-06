@@ -28,6 +28,8 @@ public class GitCrawlerDbContext(DbContextOptions<GitCrawlerDbContext> options) 
 
     public DbSet<Bookmark> Bookmarks => Set<Bookmark>();
 
+    public DbSet<DigestSendLog> DigestSendLogs => Set<DigestSendLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -57,7 +59,17 @@ public class GitCrawlerDbContext(DbContextOptions<GitCrawlerDbContext> options) 
                 .HasForeignKey(s => s.RepositoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(s => s.RepositoryId);
+            // F-016/NFR-003: unique, not just indexed - a Summary is create-once, never regenerated
+            // (GenerateSummariesCommandHandler's own comment: "a Summary is never regenerated once
+            // created"), so at most one row should ever exist per repository. Mirrors
+            // Bookmark.RepositoryId's own unique index below exactly. This used to be a plain
+            // (non-unique) index, correctness resting entirely on GenerateSummariesJob's Hangfire
+            // execution being single-threaded - [DisableConcurrentExecution] (added on that job
+            // alongside this migration) now makes a concurrent double-insert practically
+            // unreachable in normal operation; this constraint is the defense-in-depth backstop,
+            // not the primary fix (see that job's own comment, and this feature's Task Packet
+            // Constraints on not over-building exception handling around it).
+            entity.HasIndex(s => s.RepositoryId).IsUnique();
         });
 
         modelBuilder.Entity<Bookmark>(entity =>
@@ -74,7 +86,29 @@ public class GitCrawlerDbContext(DbContextOptions<GitCrawlerDbContext> options) 
 
         modelBuilder.Entity<TrendAggregate>(entity =>
         {
-            entity.HasIndex(t => new { t.Category, t.PeriodStart });
+            // F-016/NFR-003: unique on the handler's actual natural key (Category, PeriodStart,
+            // PeriodEnd) - AggregateTrendsCommandHandler upserts on exactly this triple (see that
+            // class's own comment), but correctness previously rested entirely on this Hangfire
+            // job being single-threaded, with no schema-level guarantee behind it.
+            // [DisableConcurrentExecution] (added on that job alongside this migration) now makes a
+            // concurrent double-insert practically unreachable in normal operation; this constraint
+            // is the defense-in-depth backstop, not the primary fix (this feature's Task Packet
+            // Constraints explicitly rule out over-building exception handling around it).
+            // Replaces the old (Category, PeriodStart) index outright rather than keeping both -
+            // that pair is already a left-prefix of this composite key, so Postgres can still use
+            // this same index for a query filtered on just those two columns; a separate narrower
+            // index would only add write overhead with no query benefit the composite doesn't
+            // already cover.
+            entity.HasIndex(t => new { t.Category, t.PeriodStart, t.PeriodEnd }).IsUnique();
+        });
+
+        modelBuilder.Entity<DigestSendLog>(entity =>
+        {
+            // One row per calendar day the digest was actually sent (SendDigestCommandHandler's own
+            // sequential-retry dedupe guard - see DigestSendLog's header comment for why this is a
+            // separate mechanism from TrendAggregate/Summary's own unique indexes above, which only
+            // guard against *simultaneous* overlap, not a sequential Hangfire retry).
+            entity.HasIndex(d => d.SentForDate).IsUnique();
         });
     }
 }

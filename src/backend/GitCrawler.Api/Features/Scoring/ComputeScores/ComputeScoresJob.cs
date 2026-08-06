@@ -1,5 +1,6 @@
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
 
+using Hangfire;
 using Hangfire.Server;
 
 using Wolverine;
@@ -25,6 +26,12 @@ namespace GitCrawler.Api.Features.Scoring.ComputeScores;
 // scoring run does not trigger summarization over incomplete data.
 public class ComputeScoresJob(IMessageBus messageBus, GenerateSummariesJob summarizationJob, ISummarizationContinuationLink continuationLink)
 {
+    // F-016/NFR-003: same overlap-window closure as every other pipeline-stage job (see
+    // DiscoverRepositoriesJob.RunAsync's own comment for the full rationale, including why this is
+    // applied to the method rather than the class). 30s: pure computation, no external calls (this
+    // class's own header comment above) - a lock held longer than that means something is genuinely
+    // stuck, not just slow I/O, so failing a concurrent trigger fast is the right call here.
+    [DisableConcurrentExecution(timeoutInSeconds: 30)]
     public async Task RunAsync(PerformContext context)
     {
         // Typed InvokeAsync<ComputeScoresResult>, not the bare object overload - see

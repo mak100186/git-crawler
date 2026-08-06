@@ -47,6 +47,7 @@ public class GitCrawlerDbContextTests : IDisposable
         Assert.NotNull(_context.Summaries);
         Assert.NotNull(_context.TrendAggregates);
         Assert.NotNull(_context.Bookmarks);
+        Assert.NotNull(_context.DigestSendLogs);
     }
 
     [Fact]
@@ -59,6 +60,7 @@ public class GitCrawlerDbContextTests : IDisposable
         Assert.NotNull(model.FindEntityType(typeof(Summary)));
         Assert.NotNull(model.FindEntityType(typeof(TrendAggregate)));
         Assert.NotNull(model.FindEntityType(typeof(Bookmark)));
+        Assert.NotNull(model.FindEntityType(typeof(DigestSendLog)));
     }
 
     [Fact]
@@ -153,6 +155,87 @@ public class GitCrawlerDbContextTests : IDisposable
         await _context.SaveChangesAsync();
 
         _context.Bookmarks.Add(new Bookmark { RepositoryId = repository.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => _context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Summary_DuplicateRepositoryId_ViolatesUniqueConstraint()
+    {
+        // F-016/NFR-003: Summary is create-once, never regenerated
+        // (GenerateSummariesCommandHandler's own comment) - this proves the schema itself now
+        // enforces at most one row per repository, not just application code / the
+        // [DisableConcurrentExecution] guard on GenerateSummariesJob. Same shape as
+        // Bookmark_DuplicateRepositoryId_ViolatesUniqueConstraint above.
+        var repository = NewRepository(gitHubId: 100);
+        _context.Repositories.Add(repository);
+        await _context.SaveChangesAsync();
+
+        _context.Summaries.Add(new Summary
+        {
+            RepositoryId = repository.Id,
+            ShortContent = "first summary",
+            DetailedContent = "first detailed summary",
+            GeneratedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await _context.SaveChangesAsync();
+
+        _context.Summaries.Add(new Summary
+        {
+            RepositoryId = repository.Id,
+            ShortContent = "second summary",
+            DetailedContent = "second detailed summary",
+            GeneratedAtUtc = DateTimeOffset.UtcNow,
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => _context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task TrendAggregate_DuplicateNaturalKey_ViolatesUniqueConstraint()
+    {
+        // F-016/NFR-003: AggregateTrendsCommandHandler upserts by (Category, PeriodStart, PeriodEnd)
+        // - this proves the schema itself now enforces that natural key, not just the handler's own
+        // query-then-upsert logic / the [DisableConcurrentExecution] guard on AggregateTrendsJob.
+        var periodStart = new DateOnly(2026, 8, 1);
+        var periodEnd = new DateOnly(2026, 8, 1);
+
+        _context.TrendAggregates.Add(new TrendAggregate
+        {
+            Category = "C#",
+            PeriodStart = periodStart,
+            PeriodEnd = periodEnd,
+            RepositoryCount = 1,
+            AverageScore = 50,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await _context.SaveChangesAsync();
+
+        _context.TrendAggregates.Add(new TrendAggregate
+        {
+            Category = "C#",
+            PeriodStart = periodStart,
+            PeriodEnd = periodEnd,
+            RepositoryCount = 2,
+            AverageScore = 60,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => _context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task DigestSendLog_DuplicateSentForDate_ViolatesUniqueConstraint()
+    {
+        // F-016/NFR-003: SendDigestCommandHandler's own sequential-retry dedupe guard relies on at
+        // most one DigestSendLog row existing per calendar day - this proves the schema itself
+        // enforces that, not just the handler's own read-then-write check.
+        var sentForDate = new DateOnly(2026, 8, 1);
+
+        _context.DigestSendLogs.Add(new DigestSendLog { SentForDate = sentForDate, SentAtUtc = DateTimeOffset.UtcNow });
+        await _context.SaveChangesAsync();
+
+        _context.DigestSendLogs.Add(new DigestSendLog { SentForDate = sentForDate, SentAtUtc = DateTimeOffset.UtcNow });
 
         await Assert.ThrowsAsync<DbUpdateException>(() => _context.SaveChangesAsync());
     }

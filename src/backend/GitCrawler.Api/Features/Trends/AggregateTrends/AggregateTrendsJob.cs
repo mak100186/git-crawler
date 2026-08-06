@@ -25,6 +25,12 @@ namespace GitCrawler.Api.Features.Trends.AggregateTrends;
 // re-triggers it far more often than once a day).
 public class AggregateTrendsJob(IMessageBus messageBus)
 {
+    // F-016/NFR-003: same overlap-window closure as every other pipeline-stage job (see
+    // DiscoverRepositoriesJob.RunAsync's own comment for the full rationale, including why this is
+    // applied to the method rather than the class). 30s: pure computation only (Architecture §3,
+    // same constraint as Scoring Engine's own handler comment) - same fast-fail reasoning as
+    // ComputeScoresJob.
+    [DisableConcurrentExecution(timeoutInSeconds: 30)]
     // Typed InvokeAsync<AggregateTrendsResult>, not the bare object overload: HandleAsync returns a
     // result record, and Wolverine treats a handler's return value as a cascading outgoing message
     // unless the call is a typed request/reply - with no subscriber for AggregateTrendsResult, the

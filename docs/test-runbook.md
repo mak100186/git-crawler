@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-04
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 — complete), Phase 5 (F-015 — CI-gate reference only, see below)
+> Last updated: 2026-08-06
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 — complete), Phase 5 (F-015 — CI-gate reference only, see below; F-016)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -289,9 +289,10 @@ the README before that point.
    through, or manually re-trigger `AggregateTrendsCommand` if a test harness is available).
 3. **Expect:** `SELECT COUNT(*) FROM "TrendAggregates" WHERE "PeriodStart" = CURRENT_DATE AND "PeriodEnd" = CURRENT_DATE;`
    is unchanged (still one row per category) and the previously-noted row's `Id` is the same —
-   updated in place, not duplicated. There is no unique DB constraint enforcing this (a deliberate
-   Task Packet choice); this depends on the single-threaded Hangfire job's query-then-upsert logic,
-   so it's worth re-checking after any change that might make this job run concurrently.
+   updated in place, not duplicated. As of F-016, `(Category, PeriodStart, PeriodEnd)` is now a real
+   unique DB index (previously non-unique — see F-016 below), backed by `AggregateTrendsJob`'s own
+   `[DisableConcurrentExecution]` guard on top; a concurrent double-insert is now expected to be
+   unreachable rather than merely relying on the job being single-threaded.
 
 ---
 
@@ -724,6 +725,39 @@ duplicating automated coverage.
    re-run past. If it's a genuine false positive (e.g. a placeholder value in a doc or fixture), add a
    narrowly-scoped, commented allowlist entry to `.gitleaks.toml` rather than disabling the job or the
    rule wholesale.
+
+---
+
+## F-016 — Reliability/idempotency pass
+
+Automated coverage lives in `GitCrawlerDbContextTests` (unique-constraint checks against a real
+SQLite engine, not the weaker EF Core InMemory provider — see that file's own header comment),
+`SendDigestCommandHandlerTests` (same-day dedupe), and each `*JobTests.cs`'s reflection check for
+`[DisableConcurrentExecution]`, matching TC-016-01 through TC-016-04. The steps below are for
+confirming the same guarantees against the real running stack, which no automated test can do for
+genuine simultaneous-execution timing.
+
+### Regression-sensitive — pipeline jobs reject a genuinely simultaneous trigger (TC-016-01)
+1. With `make up` running, manually trigger the same job twice back-to-back from the Hangfire
+   dashboard (`/hangfire` → Recurring Jobs → "Trigger now") fast enough that the first invocation is
+   still mid-run when the second starts — `GenerateSummariesJob` is the easiest to reproduce this
+   against live, since LM Studio inference across a batch takes long enough to trigger a second
+   invocation into the same window.
+2. **Expect:** the second invocation's Hangfire job history entry shows it waited for (or, past its
+   stage-specific timeout, failed against) the lock held by the first, rather than both running
+   concurrently and racing each other's writes. Cross-check no duplicate `Summary`/`TrendAggregate`
+   rows resulted (`SELECT "RepositoryId", COUNT(*) FROM "Summaries" GROUP BY "RepositoryId" HAVING COUNT(*) > 1;`
+   should return zero rows).
+
+### Regression-sensitive — a same-day digest retry after a crash does not re-send (TC-016-04)
+1. Trigger `send-digest` once (see F-013 above) and confirm the email arrives. Then check
+   `SELECT * FROM "DigestSendLogs" WHERE "SentForDate" = CURRENT_DATE;` — expect exactly one row.
+2. Trigger `send-digest` again the same day (simulating a Hangfire retry firing after a crash between
+   the confirmed send and the job being marked Succeeded).
+3. **Expect:** no second email arrives (check Mailpit at `http://localhost:8025/` per F-013's Manual
+   step) — the handler's first action in `HandleAsync` is checking for an existing `DigestSendLog` row
+   for today, before any composition/query work runs at all. `DigestSendLogs` still has exactly one
+   row for today afterward.
 
 ---
 

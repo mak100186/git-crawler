@@ -45,13 +45,28 @@ public class SendDigestCommandHandler(
 
     public async Task<SendDigestResult> HandleAsync(SendDigestCommand command, CancellationToken cancellationToken)
     {
+        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+
+        // F-016/NFR-003: sequential-retry dedupe, checked first and before any composition/query
+        // work below - Hangfire's own automatic-retry (default 10 attempts, unconfigured anywhere
+        // in this codebase) re-invokes this command if the process dies right after
+        // emailSender.SendAsync succeeds further down but before the job is marked Succeeded.
+        // [DisableConcurrentExecution] (F-016 part A, on SendDigestJob) only closes the
+        // *simultaneous*-overlap window between two truly concurrent executions; this is a
+        // different, sequential scenario, so it needs its own independent guard - see
+        // DigestSendLog's own header comment. Mirrors the early-return shape of the "no recipient
+        // configured" check just below.
+        if (await dbContext.DigestSendLogs.AnyAsync(d => d.SentForDate == today, cancellationToken))
+        {
+            logger.LogInformation("Daily digest for {Date} was already sent; skipping this invocation.", today);
+            return new SendDigestResult(Sent: false, RepositoryCount: 0, TrendCount: 0);
+        }
+
         if (string.IsNullOrWhiteSpace(_recipientEmail))
         {
             logger.LogWarning("Digest:RecipientEmail is not configured; skipping the daily digest send.");
             return new SendDigestResult(Sent: false, RepositoryCount: 0, TrendCount: 0);
         }
-
-        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 
         // "Scored + summarized" eligibility - the same rule AggregateTrendsCommandHandler applies for
         // its own rollup (Task Packet's explicit precedent): a digest entry needs Summary.ShortContent
@@ -121,6 +136,15 @@ public class SendDigestCommandHandler(
             logger.LogError(ex, "Failed to send the daily digest email to {Recipient}", _recipientEmail);
             return new SendDigestResult(Sent: false, RepositoryCount: topGems.Count, TrendCount: trends.Count);
         }
+
+        // Marker written only after SendAsync above has already succeeded (Task Packet's explicit
+        // ordering requirement) - if this SaveChangesAsync itself fails, or the process dies before
+        // it commits, the next retry simply re-sends once more, same as this codebase's pre-F-016
+        // behavior. No elaborate outbox/rollback pattern here to close that narrower residual
+        // gap - this feature's Constraints explicitly call for not over-building the defense-in-depth
+        // around these guards.
+        dbContext.DigestSendLogs.Add(new DigestSendLog { SentForDate = today, SentAtUtc = timeProvider.GetUtcNow() });
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         return new SendDigestResult(Sent: true, RepositoryCount: topGems.Count, TrendCount: trends.Count);
     }

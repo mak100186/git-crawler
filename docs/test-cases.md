@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v17
-> Last updated: 2026-08-04
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014), Phase 5 (F-015 — no scenario, see note)
+> Version: v18
+> Last updated: 2026-08-06
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014), Phase 5 (F-015 — no scenario, see note; F-016)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -361,8 +361,10 @@ context window, exceeded because nothing capped the README's length before it wa
    same period.
 2. **Expect:** still exactly one row for `(Category, PeriodStart, PeriodEnd)` — same `Id`, updated
    `RepositoryCount`/`AverageScore`/`CreatedAtUtc` in place, not a duplicate row. Satisfies NFR-003
-   idempotency; there is no unique DB constraint enforcing this (intentional, per the Task Packet),
-   so this behavior depends entirely on the single-threaded Hangfire job's query-then-upsert logic.
+   idempotency. As of F-016, this is backed by both layers, not just the handler's own
+   query-then-upsert logic: `AggregateTrendsJob` now carries `[DisableConcurrentExecution]`
+   (closing the *simultaneous*-overlap window a single-threaded assumption alone never actually
+   enforced), and `(Category, PeriodStart, PeriodEnd)` is now a real unique DB index — see TC-016-02.
 
 ### TC-009-06 (Edge case) — Configurable multi-day period
 1. Configure `Trends:PeriodDays` to a value > 1 (e.g. 3), seed an eligible repo, trigger
@@ -851,6 +853,61 @@ isn't installed locally) as part of its own quality-gate pass, not by a scenario
 
 ---
 
+## F-016 — Reliability/idempotency pass
+
+Pre-flight found two of NFR-003's clauses already correctly implemented and untouched:
+`DiscoverRepositoriesCommandHandler`'s upsert-by-`GitHubId` idempotency (see
+`Repository_DuplicateGitHubId_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`, pre-existing)
+and GitHub retry/backoff (ADR-018/Polly, TC-005 already covers this). The scenarios below cover the
+three real gaps F-016 closed.
+
+### TC-016-01 (Regression-sensitive) — Every pipeline job rejects a simultaneous concurrent trigger
+1. Inspect (or attempt to concurrently invoke) each of the five pipeline `*Job.RunAsync` entry points:
+   `DiscoverRepositoriesJob`, `ComputeScoresJob`, `GenerateSummariesJob`, `AggregateTrendsJob`,
+   `SendDigestJob`.
+2. **Expect:** each carries Hangfire's `[DisableConcurrentExecution(timeoutInSeconds: N)]` on the
+   method Hangfire actually invokes — a second simultaneous trigger for the same stage is blocked
+   rather than racing the first. Timeout is stage-appropriate (3600s discovery, 1800s summarization
+   — the one stage with two real concurrent trigger paths — 60s digest, 30s each for the two
+   pure-computation stages). Verified directly via reflection in each `*JobTests.cs` (e.g.
+   `DiscoverRepositoriesJobTests`, `SendDigestJobTests`), not just by code inspection.
+
+### TC-016-02 (Regression-sensitive) — TrendAggregate's natural key is a real unique DB constraint, not just upsert logic
+1. Insert a `TrendAggregate` row for a given `(Category, PeriodStart, PeriodEnd)`, then attempt to
+   insert a second row for the exact same triple.
+2. **Expect:** the second insert throws `DbUpdateException` — the schema itself now enforces
+   `AggregateTrendsCommandHandler`'s upsert key (replacing the old non-unique `(Category,
+   PeriodStart)` index), backing TC-009-05's upsert behavior with a real constraint rather than
+   relying solely on the job being single-threaded. Covered by
+   `TrendAggregate_DuplicateNaturalKey_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`.
+
+### TC-016-03 (Regression-sensitive) — Summary.RepositoryId is a real unique DB constraint
+1. Insert a `Summary` row for a repository, then attempt to insert a second `Summary` row for the
+   same `RepositoryId`.
+2. **Expect:** the second insert throws `DbUpdateException` — a `Summary` is create-once and never
+   regenerated (F-008's own design), and this is now enforced at the schema level (mirroring
+   `Bookmark.RepositoryId`'s existing unique index), not just by `GenerateSummariesJob`'s
+   `[DisableConcurrentExecution]` guard alone. Covered by
+   `Summary_DuplicateRepositoryId_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`.
+
+### TC-016-04 (Regression-sensitive) — A same-day digest retry after a crash does not re-send
+1. Trigger `SendDigestCommand` successfully for a given day (an outbound send occurs, and a
+   `DigestSendLog` row is written for that `SentForDate`). Trigger `SendDigestCommand` again for the
+   same day (simulating a Hangfire automatic-retry that fires after the process died between the
+   confirmed send and the job being marked `Succeeded`).
+2. **Expect:** the second invocation sends nothing — it's blocked by the persisted `DigestSendLog`
+   marker checked first in `HandleAsync`, before any composition/query work, and returns
+   `Sent: false`. Distinct from TC-016-01's `[DisableConcurrentExecution]` guard on `SendDigestJob`,
+   which only closes the *simultaneous*-overlap window between two truly concurrent executions — this
+   is a *sequential* retry of an already-completed attempt, needing its own independent guard.
+   Covered by `Handle_InvokedTwiceForSameDay_SendsOnlyOnce_SecondInvocationReportsNotSent` in
+   `SendDigestCommandHandlerTests.cs`. Also confirm a `DigestSendLog` row from a *prior* day does not
+   block today's send (`Handle_PriorDaySentMarker_DoesNotBlockTodaysSend`) and that the schema itself
+   rejects two `DigestSendLog` rows for the same `SentForDate`
+   (`DigestSendLog_DuplicateSentForDate_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`).
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
@@ -871,3 +928,4 @@ isn't installed locally) as part of its own quality-gate pass, not by a scenario
 | v15 | 2026-08-04 | TC-010-04 rewritten: the Categories endpoint no longer reads `TrendAggregate` — it queries `Repository.PrimaryLanguage` directly, since `CategoryDto`'s only consumer (`FacetOptionsService`) had only ever read the `category` string, never the rollup fields (`RepositoryCount`/`AverageScore`/period dates) that came with it. New assertion added: a language with no scored repository behind it must not appear as a filter option (matches `GetHiddenGemsQueryHandler`'s own eligibility) — also documents a latent-bug fix, since the old version required a `Summary` too, stricter than Hidden Gems itself requires | Operator: "So for just the language filter we have the whole TrendAggregate table?" |
 | v16 | 2026-08-04 | Added Phase 4 scenarios ahead of implementation (TC-013 Digest Service: composition/send, logged-not-dropped send failure, empty-digest handling, latest-not-highest score selection, a Manual live-SMTP-delivery check; TC-014 Observability: platform-wide stage metrics, per-stage failure capture, additive-not-duplicate vs. the Hangfire dashboard, a Manual stuck-run-diagnosability check) | Orchestrator Step 0.0 gap-closure — test-cases-doc had no Phase 4 coverage before F-013/F-014's Task Packets were generated (same pattern as v2/v4/v5/v6/v7), drafted before dispatching either Developer Agent per the operator's explicit choice to draft scenarios now rather than proceed without them |
 | v17 | 2026-08-04 | Added a documentation-only F-015 note (no TC-015 scenario, deliberately — F-015 is a CI/tooling gate with no unit-testable application code, not a runtime feature); header `Covers` line updated to record Phase 5/F-015's status explicitly rather than leaving it unmentioned | F-015 Integration pass |
+| v18 | 2026-08-06 | Added F-016 (Reliability/idempotency pass) scenarios: TC-016-01 (every pipeline job rejects a simultaneous concurrent trigger, `[DisableConcurrentExecution]`), TC-016-02 (`TrendAggregate`'s natural key is now a real unique DB constraint, not just upsert logic), TC-016-03 (`Summary.RepositoryId` is now a real unique DB constraint), TC-016-04 (a same-day digest retry after a crash does not re-send, via the new persisted `DigestSendLog` marker). TC-009-05 corrected: it previously asserted "there is no unique DB constraint enforcing this (intentional, per the Task Packet)" for `TrendAggregate`'s upsert — no longer accurate post-F-016, now cross-references TC-016-02 instead | F-016 Integration pass, documentation drift check |

@@ -45,6 +45,28 @@ namespace GitCrawler.Api.Data.Migrations
                     b.ToTable("Bookmarks");
                 });
 
+            modelBuilder.Entity("GitCrawler.Api.Data.Entities.DigestSendLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("SentForDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SentForDate")
+                        .IsUnique();
+
+                    b.ToTable("DigestSendLogs");
+                });
+
             modelBuilder.Entity("GitCrawler.Api.Data.Entities.Repository", b =>
                 {
                     b.Property<int>("Id")
@@ -186,7 +208,8 @@ namespace GitCrawler.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RepositoryId");
+                    b.HasIndex("RepositoryId")
+                        .IsUnique();
 
                     b.ToTable("Summaries");
                 });
@@ -220,7 +243,8 @@ namespace GitCrawler.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Category", "PeriodStart");
+                    b.HasIndex("Category", "PeriodStart", "PeriodEnd")
+                        .IsUnique();
 
                     b.ToTable("TrendAggregates");
                 });

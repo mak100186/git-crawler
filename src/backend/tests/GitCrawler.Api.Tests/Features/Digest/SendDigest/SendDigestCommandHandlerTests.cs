@@ -237,6 +237,59 @@ public class SendDigestCommandHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Handle_InvokedTwiceForSameDay_SendsOnlyOnce_SecondInvocationReportsNotSent()
+    {
+        // F-016/NFR-003: sequential-retry dedupe - simulates Hangfire re-invoking this command for
+        // the same "today" after an earlier attempt already sent successfully (e.g. the process
+        // died right after SendAsync but before the job was marked Succeeded). The
+        // [DisableConcurrentExecution] guard (part A) does not cover this - it only prevents two
+        // *simultaneous* executions - so this is exercised as two sequential HandleAsync calls
+        // against the same handler/DbContext, same as a real sequential retry would be.
+        var repository = NewRepository(gitHubId: 20);
+        _dbContext.Repositories.Add(repository);
+        await _dbContext.SaveChangesAsync();
+        _dbContext.Scores.Add(NewScore(repository.Id, 80, _timeProvider.GetUtcNow()));
+        _dbContext.Summaries.Add(NewSummary(repository.Id));
+        await _dbContext.SaveChangesAsync();
+
+        var handler = CreateHandler();
+
+        var firstResult = await handler.HandleAsync(new SendDigestCommand(), CancellationToken.None);
+        Assert.True(firstResult.Sent);
+
+        var secondResult = await handler.HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        Assert.False(secondResult.Sent);
+        Assert.Equal(0, secondResult.RepositoryCount);
+        Assert.Equal(0, secondResult.TrendCount);
+
+        // Exactly one send across both invocations - the second call never reaches composition/
+        // sending at all, it short-circuits on the persisted DigestSendLog marker instead.
+        var sent = Assert.Single(_emailSender.SentMessages);
+        Assert.Contains("octocat/repo-20", sent.Body);
+
+        Assert.Equal(1, await _dbContext.DigestSendLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task Handle_PriorDaySentMarker_DoesNotBlockTodaysSend()
+    {
+        // Edge case (Task Packet's explicit callout): yesterday's "sent" marker must not block
+        // today's send - the dedupe check is scoped to the exact calendar day, not "has ever sent".
+        _dbContext.DigestSendLogs.Add(new DigestSendLog
+        {
+            SentForDate = DateOnly.FromDateTime(_timeProvider.GetUtcNow().AddDays(-1).UtcDateTime),
+            SentAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        Assert.True(result.Sent);
+        Assert.Single(_emailSender.SentMessages);
+    }
+
+    [Fact]
     public async Task Handle_RecipientEmailNotConfigured_SkipsSend_NoOp()
     {
         var repository = NewRepository(gitHubId: 6);

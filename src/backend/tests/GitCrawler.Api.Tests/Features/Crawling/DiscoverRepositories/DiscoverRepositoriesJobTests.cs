@@ -1,3 +1,5 @@
+using System.Reflection;
+
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
@@ -25,6 +27,22 @@ namespace GitCrawler.Api.Tests.Features.Crawling.DiscoverRepositories;
 // GenerateSummariesJob (that's GenerateSummariesJobTests' responsibility).
 public class DiscoverRepositoriesJobTests
 {
+    [Fact]
+    public void RunAsync_IsDecoratedWithDisableConcurrentExecution()
+    {
+        // F-016/NFR-003: a reflection-based attribute-presence check, consistent with this
+        // codebase's existing practice of not exercising real Hangfire statics in a fast unit test
+        // (see IScoringContinuationLink's own comment above) - BackgroundJob.ContinueJobWith and
+        // Hangfire's own distributed-lock acquisition both require a live JobStorage.Current that
+        // isn't reachable here either.
+        var attribute = typeof(DiscoverRepositoriesJob)
+            .GetMethod(nameof(DiscoverRepositoriesJob.RunAsync))!
+            .GetCustomAttribute<DisableConcurrentExecutionAttribute>();
+
+        Assert.NotNull(attribute);
+        Assert.Equal(60 * 60, attribute!.TimeoutSec);
+    }
+
     [Fact]
     public async Task RunAsync_InvokesDiscoverRepositoriesCommandOnMessageBus()
     {

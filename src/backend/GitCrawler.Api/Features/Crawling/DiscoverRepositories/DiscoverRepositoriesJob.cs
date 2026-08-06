@@ -31,6 +31,18 @@ namespace GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 // data. No extra checkpoint/dedup logic is added here on top of that.
 public class DiscoverRepositoriesJob(IMessageBus messageBus, ComputeScoresJob scoringJob, IScoringContinuationLink continuationLink)
 {
+    // F-016/NFR-003: closes the *simultaneous*-overlap window at the source, on top of (not instead
+    // of) DiscoverRepositoriesCommandHandler's own upsert-by-GitHubId idempotency (pre-flight
+    // finding #1, already correct - see this method's own "Restart-safety" comment above). Applied
+    // to the method, not the class - Hangfire resolves job filters from the invoked MethodInfo
+    // itself (verified via reflection against Hangfire.Core 1.8.24: DisableConcurrentExecutionAttribute
+    // allows AttributeTargets.Class | Method | Interface), and this is the method Hangfire's
+    // RecurringJob/ContinueJobWith expressions actually target. 3600s (1 hour): a second invocation
+    // waits this long to acquire the lock before giving up. This stage does real GitHub I/O across a
+    // paginated GraphQL crawl, and its own resilience pipeline (ADR-018) can legitimately keep
+    // retrying rate-limit backoff for a long time - a short wait would fail a concurrent trigger
+    // outright even though the in-flight run is merely slow, not stuck.
+    [DisableConcurrentExecution(timeoutInSeconds: 60 * 60)]
     public async Task RunAsync(PerformContext context)
     {
         // Typed InvokeAsync<DiscoverRepositoriesResult>, not the bare object overload - see

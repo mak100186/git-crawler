@@ -28,6 +28,17 @@ namespace GitCrawler.Api.Features.Summarization.GenerateSummaries;
 // this feature chains into speculatively.
 public class GenerateSummariesJob(IMessageBus messageBus, AggregateTrendsJob trendsJob, ITrendsContinuationLink continuationLink)
 {
+    // F-016/NFR-003: same overlap-window closure as every other pipeline-stage job (see
+    // DiscoverRepositoriesJob.RunAsync's own comment for the full rationale, including why this is
+    // applied to the method rather than the class). 1800s (30 minutes): this is the one stage
+    // confirmed to have two real, currently-possible concurrent trigger paths on this exact
+    // schedule - its own hourly RecurringJob (see Program.cs's summarizationCronSchedule
+    // registration) and the chained continuation from ComputeScoresJob (F-016 Task Packet's own
+    // pre-flight finding). LM Studio inference across up to BatchSize repos is the actual
+    // bottleneck (NFR-001, "seconds per repo") - a generous wait lets the second trigger simply
+    // queue behind a legitimately still-running first one instead of erroring out on a real,
+    // expected overlap.
+    [DisableConcurrentExecution(timeoutInSeconds: 30 * 60)]
     public async Task RunAsync(PerformContext context)
     {
         // Typed InvokeAsync<GenerateSummariesResult>, not the bare object overload - see
