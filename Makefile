@@ -15,7 +15,7 @@
 # "unknown flag" style error, run `lms --help` / `lms <subcommand> --help` for your installed
 # version and adjust the recipe - don't assume the tool is broken.
 
-.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health format test secret-scan
+.PHONY: help up dev backend frontend down compose-up compose-down check-env check-docker check-lmstudio load-model stop-lmstudio logs status health format test secret-scan seed-perf
 
 # On Windows, GNU Make normally picks its recipe shell by searching the invoking process's PATH
 # for sh.exe. That search succeeds from a Git Bash session (which adds Git's own bin dirs to PATH
@@ -77,6 +77,8 @@ help:
 	@echo "make test     - run frontend and backend tests"
 	@echo "make secret-scan - scan the full git history and working tree for accidentally-committed"
 	@echo "                   secrets (gitleaks, NFR-002) - same check CI runs, before you push"
+	@echo "make seed-perf   - seed a separate scratch database (gitcrawler_perf) with ~100k repos / ~1M"
+	@echo "                   scores, then run EXPLAIN ANALYZE + timed page requests (F-017, NFR-004)"
 	@echo ""
 	@echo "Once 'make up' finishes, the web dashboard (F-011 - Hidden Gems, Bookmarks) is at"
 	@echo "http://localhost:$(APP_PORT)/ - it's the Angular build served as static assets by the"
@@ -190,6 +192,20 @@ format:
 test:
 	cd src/frontend && npm test -- --watch=false
 	cd src/backend && dotnet test GitCrawler.sln --no-restore
+
+# --- Performance seed (F-017, NFR-004) ---------------------------------------
+
+# Seeds a SEPARATE scratch database (gitcrawler_perf, never the operator's real POSTGRES_DB)
+# with ~100k repos and ~1M Score rows, then runs EXPLAIN ANALYZE and timed page-request queries
+# to prove the dashboard's filter/sort/index paths stay performant at scale. Requires Postgres
+# to be reachable (run `make dev` first, or have `make up` running). The scratch database is
+# dropped and recreated on every run - idempotent and cleanly re-creatable. POSTGRES_PASSWORD
+# and POSTGRES_PORT come from .env (same as the main app), and the scratch DB name is
+# parameterized (default gitcrawler_perf) to make it impossible to accidentally seed the real
+# database. Override the scratch DB name via command line: make seed-perf PERF_DB=my_perf_db.
+PERF_DB ?= gitcrawler_perf
+seed-perf: check-env
+	cd src/backend/tools/SeedHarness && dotnet run -- "$(PERF_DB)"
 
 # --- Security ---------------------------------------------------------------
 

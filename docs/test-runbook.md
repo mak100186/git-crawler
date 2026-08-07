@@ -1,7 +1,7 @@
 # Test Runbook: GitHub Hidden Gems Discovery Platform
 
-> Last updated: 2026-08-06
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 — complete), Phase 5 (F-015 — CI-gate reference only, see below; F-016)
+> Last updated: 2026-08-07
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009), Phase 3 (F-010, F-011, F-012 — complete), Phase 4 (F-013, F-014 — complete), Phase 5 (F-015 — CI-gate reference only, see below; F-016, F-017)
 
 Manual step-by-step verification instructions for each shipped feature. Automated coverage lives
 in `src/backend/tests/` (xUnit) and `src/frontend/src/**/*.spec.ts` (Vitest) — this runbook is for
@@ -758,6 +758,84 @@ genuine simultaneous-execution timing.
    step) — the handler's first action in `HandleAsync` is checking for an existing `DigestSendLog` row
    for today, before any composition/query work runs at all. `DigestSendLogs` still has exactly one
    row for today afterward.
+
+---
+
+## F-017 — Scalability: indexing & partitioning strategy
+
+Automated coverage lives in `GetHiddenGemsQueryHandlerTests` (23 cases, including 15 added for the
+server-side sort/pagination rewrite — TC-017-03's latest-not-highest sort, Id tie-break, total
+count, per-repo TrendGrowth, boundary requests, page-size clamping) and `GitCrawlerDbContextTests`
+(8 index-existence cases added for TC-017-04, verifying each of the six new indexes via the EF
+model metadata). The steps below are for TC-017-01/02's seeded-scale verification, which no
+automated test can cover (requires a real PostgreSQL instance with 100k+ repos / 1M+ Score rows).
+
+### Happy path — seeded-scale page requests stay fast (TC-017-01)
+1. Bring up Postgres (`make dev` or `make up` — the scratch database is separate from the real
+   `POSTGRES_DB`, so this is safe against the operator's crawled data).
+2. Run `make seed-perf` from the repo root. This invokes `src/backend/tools/SeedHarness/` which
+   drops and recreates the scratch database (`gitcrawler_perf` by default), applies all EF
+   migrations (including F-017's `AddF017DashboardIndexes`), seeds 100k repositories and 1M Score
+   rows via PostgreSQL COPY (deterministic, seed 42, skewed distributions), then runs EXPLAIN
+   ANALYZE captures and a timed page-request matrix.
+3. **Expect:** every page request in the matrix (4 sort fields × 2 directions × representative
+   facet combinations + boundary cases) completes well inside NFR-001's 2s interactive budget. The
+   Developer's measured range at seeded scale was 2–286ms (worst path: unfiltered Score/Commits
+   sort at 100k repos, ~283ms cold cache).
+4. **Expect:** EXPLAIN ANALYZE output shows index-backed plans (no unbounded sequential scan +
+   full materialization of the match set) — the `IX_Repositories_FirstDiscoveredAtUtc`,
+   `IX_Repositories_PrimaryLanguage`, `IX_Repositories_StarCount`, `IX_Repositories_LicenseIdentifier`,
+   `IX_Repositories_Topics` (GIN), and the composite covering index on `Score(RepositoryId,
+   ComputedAtUtc DESC)` are all visible in the plans.
+
+### Edge case — boundary requests at seeded scale (TC-017-02)
+1. After the seed harness completes, manually (or via the harness's own boundary checks) request:
+   a page beyond the last page, a filter combination matching zero repositories, and a combination
+   matching exactly one.
+2. **Expect:** all three return promptly with correct shapes (empty slice / empty page with
+   `TotalCount: 0` / single item with `TotalCount: 1`) — no timeout, no memory blow-up.
+
+### Regression-sensitive — new indexes exist and no F-016 constraint dropped (TC-017-04)
+1. After `make seed-perf` applies migrations to the scratch database,
+   `psql -d gitcrawler_perf -c '\di'` — expect all six F-017 indexes present:
+   `IX_Repositories_FirstDiscoveredAtUtc`, `IX_Repositories_PrimaryLanguage`,
+   `IX_Repositories_StarCount`, `IX_Repositories_LicenseIdentifier`, `IX_Repositories_Topics`,
+   and the composite `IX_Scores_RepositoryId_ComputedAtUtc` (covering, with INCLUDE columns).
+2. Confirm F-016's unique constraints are intact: `IX_TrendAggregates_Category_PeriodStart_PeriodEnd`
+   (unique), `IX_Summaries_RepositoryId` (unique), `IX_Bookmarks_RepositoryId` (unique),
+   `IX_DigestSendLogs_SentForDate` (unique) — none dropped or weakened by F-017's migration.
+   Automated coverage: `GitCrawlerDbContextTests` (the 8 F-017 index-existence tests verify the
+   new indexes via EF model metadata; F-016's own unique-constraint tests still pass — 142/142).
+
+### Regression-sensitive — the server-side rewrite preserves sort semantics (TC-017-03)
+Automated coverage only (no live-environment step needed): `GetHiddenGemsQueryHandlerTests`
+exercises latest-not-highest score sort, deterministic Id tie-break, total count accuracy,
+per-repo TrendGrowth (two-score percentage change, single-score fallback), page-size clamping,
+page clamping, topic/license/bookmarked-only filters, and boundary cases — all via the test
+suite's SQLite provider using the client-side Rank/Paginate fallback path (the production
+Npgsql provider uses the server-side path; both produce identical response shapes).
+
+**Not executed live in this Integration pass** — Docker Desktop's container networking failed to
+start the Postgres service in the Integration Agent's environment (`network ... not found`
+error), so `make seed-perf` could not run. The Developer's own seeded verification during
+development reported all index-backed EXPLAIN plans and a 2–286ms timed page-request matrix at
+100k repos / 1M scores (all inside NFR-001's budget). An operator should re-run `make seed-perf`
+at least once against a fresh Docker environment to independently confirm these numbers.
+
+**Known gap at scale-out (PM-008, operator decision 2026-08-07; measured same day):** the
+*unfiltered* Score/Commits sort paths evaluate a correlated-subquery sort key for every matching
+row before LIMIT applies — bounded by match count, not page size. **Authoritative measurement
+(Orchestrator, 2026-08-07, `make seed-perf` against 100k repos / 1M scores / 63,349 summaries /
+4,970 bookmarks in a fresh Docker environment):** Score DESC 4904ms, Score ASC 4899ms, Commits
+DESC 4816ms, Commits ASC 4796ms — exceeding NFR-001's 2s interactive budget by ~2.5×. Filtered
+queries and Newest/Stars sorts are all well within budget (12–529ms depending on selectivity);
+the Lang=Python+MinStars=10 facet combination at 16,884 matching repos is at 1.1–1.4s (within
+budget but approaching). The first action at scale-out is denormalizing
+`LatestTotalScore`/`LatestCommitsPerWeek` columns on `Repository` (maintained by
+`ComputeScoresCommandHandler`, backfilled, indexed — ADR-worthy, touches F-007's write path; see
+Architecture v29 §3 Data Store partitioning strategy). The revisit trigger is effectively firing
+at scale-out; the measurement here can be re-produced by running `make seed-perf` again (idempotent
+— drops and recreates the scratch DB).
 
 ---
 

@@ -1,9 +1,9 @@
 # Test Cases: GitHub Hidden Gems Discovery Platform
 
 > Status: ACTIVE
-> Version: v18
-> Last updated: 2026-08-06
-> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014), Phase 5 (F-015 — no scenario, see note; F-016)
+> Version: v20
+> Last updated: 2026-08-07
+> Covers: Phase 0 (F-001, F-002, F-003), Phase 1 (F-004, F-005, F-006, F-007), Phase 2 (F-008, F-009, F-018), Phase 3 (F-010, F-011, F-012), Phase 4 (F-013, F-014), Phase 5 (F-015 — no scenario, see note; F-016, F-017)
 > Source of truth for acceptance criteria: docs/project-management.md
 
 Scenarios are added per phase as features are scoped. Each scenario maps to one or more PMBook
@@ -908,6 +908,74 @@ three real gaps F-016 closed.
 
 ---
 
+## F-017 — Scalability: indexing & partitioning strategy
+
+Pre-flight (2026-08-07) found the dashboard's core filter/sort path — `GetHiddenGemsQueryHandler` —
+materialized *all* scored repositories matching the filters (with their complete `Scores`/`Summaries`/
+`Bookmarks` collections) via `.ToListAsync()`, then sorted and paginated **in application memory**
+(`RepositoryCardQuery.Rank`/`Paginate`). At the 100k+ repos / 1M+ records target that loads the entire
+match set plus full score history into process memory on every page request — no index can fix a
+query shaped that way. The scenarios below cover F-017's three deliverables: the supporting indexes,
+the server-side sort/pagination rewrite, and the documented partitioning strategy, verified against a
+seeded scratch database sized toward the NFR-004 target (never the operator's real dev/crawl data).
+
+### TC-017-01 (Happy path / performance) — Core filter/sort page requests stay fast at seeded scale
+1. Seed a **separate scratch database** (not the real dev database) toward the NFR-004 target:
+   100k+ repositories with 1M+ `Score` rows (append-per-recrawl history), plus representative
+   `Summary`/`Bookmark` coverage, via F-017's seed harness.
+2. Exercise `GetHiddenGems` across all four sort fields (Newest, Score, Stars, Commits) × both
+   directions, with representative facet combinations (language, star range, topic, license,
+   bookmarked-only), page size 24.
+3. **Expect:** every page request completes well inside NFR-001's "interactive" budget (p95 < 2s —
+   in practice these should be orders of magnitude under it), and `EXPLAIN ANALYZE` evidence shows
+   the supporting indexes are used (no unbounded sequential scan + full materialization of the match
+   set). Per-request cost is bounded by page size, not by total dataset size.
+4. **Known caveat (amended 2026-08-07; measured same day):** the *unfiltered* Score/Commits sort
+   paths evaluate a correlated-subquery sort key for every matching row before LIMIT applies —
+   that path is bounded by match count, not page size. **Authoritative measurement
+   (Orchestrator, 2026-08-07, 100k repos / 1M scores):** Score DESC 4904ms, Commits DESC 4816ms
+   — exceeding NFR-001's 2s budget by ~2.5×. Filtered queries and Newest/Stars sorts are all well
+   within budget (12–529ms depending on selectivity). Per operator decision 2026-08-07, this is a
+   disclosed gap in F-017's close (tracked as PM-008); the first action at scale-out is
+   denormalized latest-score columns on `Repository` (see Architecture v29 §3 Data Store
+   partitioning strategy).
+
+### TC-017-02 (Edge case) — Boundary requests at seeded scale don't fall back to full scans
+1. Against the same seeded scratch database: request a page beyond the last page, a filter
+   combination matching zero repositories, and a combination matching exactly one.
+2. **Expect:** all three return promptly with correct shapes (empty slice / empty page with
+   `TotalCount: 0` / single item with `TotalCount: 1`) — no timeout, no memory blow-up, no change
+   in the documented beyond-last-page behavior (empty slice, not an error).
+
+### TC-017-03 (Regression-sensitive) — The rewrite changes where sorting happens, not what it returns
+1. With fixtures covering the semantics the in-memory pipeline used to own: a repo whose
+   chronologically-latest `Score` is *lower* than an earlier one; two repos tying on the sort key;
+   a repo with no `Summary` yet; a repo with multiple `Score` rows for the per-repository
+   `TrendGrowth` computation.
+2. **Expect:** sort uses the latest (not highest-ever) score; ties break deterministically by
+   `Repository.Id` ascending (stable paging); `TotalCount` still reflects the full match count;
+   `TrendGrowth` still diffs the repo's own two most-recent scores (growth percentage,
+   single-score fallback); `SummaryContent`/`DetailedSummaryContent`/`IsBookmarked` all still
+   resolve correctly per card. Covered by `GetHiddenGemsQueryHandlerTests` (SQLite provider —
+   the rewrite must behave identically there and on Npgsql/Postgres).
+
+### TC-017-04 (Regression-sensitive) — New indexes exist at the schema level and apply cleanly
+1. Apply F-017's migration to a fresh database; inspect the resulting schema (or the EF model /
+   model snapshot).
+2. **Expect:** the new indexes F-017 introduces for the filter/sort paths exist exactly as
+   specified (covering the dashboard's actual filter columns, the star range, the Newest sort key,
+   and latest-Score resolution), no pre-existing unique constraint from F-016 or earlier is dropped
+   or weakened, and the migration applies cleanly to a fresh PostgreSQL 18.4 instance.
+
+### TC-017-05 (Documentation) — The partitioning strategy is recorded, not silently deferred
+1. Read `docs/architecture.md`'s NFR-004 treatment after F-017 completes.
+2. **Expect:** it records the partitioning/archiving decision for the one unbounded,
+   append-per-recrawl table (`Score`): why physical partitioning is not adopted at the 1M-record
+   scale, what concrete trigger(s) would reopen it (tied to risk A5 / PM-003), and what the options
+   are when that trigger fires. The strategy is documented as a decision, not left as a bare risk.
+
+---
+
 ## Version History
 | Version | Date | Change | Triggered By |
 |---------|------|--------|---------------|
@@ -929,3 +997,5 @@ three real gaps F-016 closed.
 | v16 | 2026-08-04 | Added Phase 4 scenarios ahead of implementation (TC-013 Digest Service: composition/send, logged-not-dropped send failure, empty-digest handling, latest-not-highest score selection, a Manual live-SMTP-delivery check; TC-014 Observability: platform-wide stage metrics, per-stage failure capture, additive-not-duplicate vs. the Hangfire dashboard, a Manual stuck-run-diagnosability check) | Orchestrator Step 0.0 gap-closure — test-cases-doc had no Phase 4 coverage before F-013/F-014's Task Packets were generated (same pattern as v2/v4/v5/v6/v7), drafted before dispatching either Developer Agent per the operator's explicit choice to draft scenarios now rather than proceed without them |
 | v17 | 2026-08-04 | Added a documentation-only F-015 note (no TC-015 scenario, deliberately — F-015 is a CI/tooling gate with no unit-testable application code, not a runtime feature); header `Covers` line updated to record Phase 5/F-015's status explicitly rather than leaving it unmentioned | F-015 Integration pass |
 | v18 | 2026-08-06 | Added F-016 (Reliability/idempotency pass) scenarios: TC-016-01 (every pipeline job rejects a simultaneous concurrent trigger, `[DisableConcurrentExecution]`), TC-016-02 (`TrendAggregate`'s natural key is now a real unique DB constraint, not just upsert logic), TC-016-03 (`Summary.RepositoryId` is now a real unique DB constraint), TC-016-04 (a same-day digest retry after a crash does not re-send, via the new persisted `DigestSendLog` marker). TC-009-05 corrected: it previously asserted "there is no unique DB constraint enforcing this (intentional, per the Task Packet)" for `TrendAggregate`'s upsert — no longer accurate post-F-016, now cross-references TC-016-02 instead | F-016 Integration pass, documentation drift check |
+| v19 | 2026-08-07 | Added F-017 (Scalability: indexing & partitioning strategy) scenarios ahead of implementation: TC-017-01 (core filter/sort page requests stay fast at seeded 100k+/1M+ scale, index-backed plans), TC-017-02 (beyond-last-page / zero-match / single-match boundary requests at scale), TC-017-03 (the server-side rewrite preserves latest-not-highest sort, Id tie-break, total count, and per-repo TrendGrowth semantics), TC-017-04 (new indexes exist at the schema level, apply cleanly, no F-016 constraint dropped or weakened), TC-017-05 (partitioning strategy documented as a decision with revisit triggers, not silently deferred). Header `Covers` line extended for F-017 | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-017 coverage before its Task Packet was generated; drafted before dispatching the Developer Agent (same pattern as v16), stated explicitly to avoid the F-010 run's misattribution incident |
+| v20 | 2026-08-07 | TC-017-01 amended with a known-caveat step 4: unfiltered Score/Commits sort evaluates a correlated-subquery sort key for all matching rows before LIMIT, bounded by match count not page size — may approach or exceed the NFR-001 budget at scale-out. Per operator decision 2026-08-07 (F-017 gap accepted-and-documented, tracked as PM-008; first action at scale-out = denormalized latest-score columns — Architecture v29). Operator should re-run `make seed-perf` against a stable Docker environment before relying on agent-reported measurements (same "flag it, don't fake it" pattern prior phases used for live-SMTP/live-concurrent-retry gaps) | Orchestrator (recording operator decision on F-017 gap) |

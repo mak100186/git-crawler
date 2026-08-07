@@ -81,8 +81,54 @@ public static class RepositoryCardQuery
     // generous for manual browsing while still bounding a single response's size.
     public const int MaxPageSize = 100;
 
+    // F-017: eagerly loads navigation collections for client-side Rank/Paginate. Superseded by
+    // server-side sort/pagination in GetHiddenGemsQueryHandler (the only remaining caller of the
+    // Rank/Paginate path) which fetches only page-scoped details instead. Kept rather than removed
+    // in case a future caller needs the full-materialization path again.
     public static IQueryable<Repository> IncludeForCards(IQueryable<Repository> query) =>
         query.Include(r => r.Scores).Include(r => r.Summaries).Include(r => r.Bookmarks);
+
+    // F-017: server-side sort that translates to SQL ORDER BY on the production Npgsql/PostgreSQL
+    // provider, replacing the client-side Rank method below (which materialized the entire match
+    // set before sorting). The Score/Commits sort keys use a correlated scalar subquery —
+    // `r.Scores.OrderByDescending(s => s.ComputedAtUtc).Select(s => s.TotalScore).FirstOrDefault()`
+    // — to resolve each repository's latest score inside the ORDER BY clause itself (same "latest
+    // by ComputedAtUtc, never highest-ever" convention from F-007). The Newest sort key uses
+    // `FirstDiscoveredAtUtc` (DateTimeOffset) directly, which Npgsql handles without issue.
+    // A repo with no Score rows yields NULL/default, which sorts to the end (0.0 for
+    // Score/Commits), matching Rank's own fallback.
+    //
+    // Portability caveat: the xUnit suite's SQLite provider rejects DateTimeOffset in ORDER BY
+    // (NotSupportedException) and cannot translate any DateTimeOffset member (.DateTime, .Ticks)
+    // either, so this method is unreachable on SQLite for the Newest sort. GetHiddenGemsQueryHandler
+    // detects SQLite at runtime and falls back to the client-side Rank/Paginate pipeline instead —
+    // same response contract, same semantics. The caller must add a Repository.Id tie-break
+    // (ThenBy r.Id) after this for deterministic pagination (F-010's explicit callout).
+    public static IOrderedQueryable<Repository> ApplySort(
+        IQueryable<Repository> query, RepositorySortField sort, SortDirection direction)
+    {
+        IOrderedQueryable<Repository> ordered = sort switch
+        {
+            RepositorySortField.Score => direction == SortDirection.Asc
+                ? query.OrderBy(r => r.Scores.OrderByDescending(s => s.ComputedAtUtc)
+                    .Select(s => s.TotalScore).FirstOrDefault())
+                : query.OrderByDescending(r => r.Scores.OrderByDescending(s => s.ComputedAtUtc)
+                    .Select(s => s.TotalScore).FirstOrDefault()),
+            RepositorySortField.Stars => direction == SortDirection.Asc
+                ? query.OrderBy(r => r.StarCount)
+                : query.OrderByDescending(r => r.StarCount),
+            RepositorySortField.Commits => direction == SortDirection.Asc
+                ? query.OrderBy(r => r.Scores.OrderByDescending(s => s.ComputedAtUtc)
+                    .Select(s => s.CommitsPerWeek).FirstOrDefault())
+                : query.OrderByDescending(r => r.Scores.OrderByDescending(s => s.ComputedAtUtc)
+                    .Select(s => s.CommitsPerWeek).FirstOrDefault()),
+            _ => direction == SortDirection.Asc
+                ? query.OrderBy(r => r.FirstDiscoveredAtUtc)
+                : query.OrderByDescending(r => r.FirstDiscoveredAtUtc),
+        };
+
+        return ordered;
+    }
 
     // Every facet is optional and AND-composed with the others (D4); each facet's own list of
     // values is OR-composed internally. The Topic facet uses the r.Topics.Any(t => topics.Contains
@@ -124,6 +170,13 @@ public static class RepositoryCardQuery
         return query;
     }
 
+    // F-017: superseded by ApplySort (server-side ORDER BY) for GetHiddenGems' main path, which
+    // avoids materializing the entire match set before sorting. Kept rather than removed: it's the
+    // only fully-portable (SQLite + Npgsql) reference implementation of the "latest by
+    // ComputedAtUtc, never highest-ever" ranking convention in client-side LINQ-to-Objects, and a
+    // future caller may need it for small, already-materialized candidate sets where the
+    // server-side path isn't applicable.
+    //
     // Resolves each candidate's latest Score/Summary and sorts - mirroring the exact
     // OrderByDescending(ComputedAtUtc).First()-style convention already established by
     // GenerateSummariesCommandHandler/AggregateTrendsCommandHandler (not Max() - see

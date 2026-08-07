@@ -1,7 +1,128 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 16
-> Last updated: 2026-08-06
+> Revision: 18
+> Last updated: 2026-08-07
+
+## Revision 18 — 2026-08-07 — MVP closeout pass (documentation only)
+
+**Changes:**
+- **MVP closeout**: all 5 phases complete, all 18 features (F-001 through F-018) Done. This
+  revision is a documentation-only pass recording the final state of the platform against the
+  PRD v8 / Architecture v30 and closing out items that had been carried forward through earlier
+  sessions without resolution.
+- **Authoritative performance measurement (PM-008)**: `make seed-perf` run against a fresh Docker
+  environment at the NFR-004 target scale (100k repos / 1M scores / 63,349 summaries / 4,970
+  bookmarks) — Score DESC 4904ms, Commits DESC 4816ms (unfiltered, 2.5× over NFR-001's 2s
+  budget); filtered queries and Newest/Stars sorts all well within budget (12–529ms depending on
+  selectivity). Confirms the Integration's originally-reported 4.3–5.2s figure was substantively
+  accurate (the retraction during the F-017 pipeline was a report-discipline correction, not a
+  substance correction). Recorded in PM-008, test-cases v20, and test-runbook.
+- **PM-006 closed**: the `20260802091937_BackfillFirstDiscoveredAtUtc` migration (dated 2026-08-02)
+  exists and has been applied; the item's due-date clause ("Before F-011 ships") is now historical
+  since F-011 shipped in v20 (2026-08-02). Strike-through row in the PMBook with a closed note.
+- **PM-003 updated** to cross-reference PM-008's measurement as the query-performance half of
+  the scale-out trigger; horizontal scaling (bigger instance vs. service split) remains
+  unevaluated.
+- **Architecture risks A1 and A5 updated** with MVP-closeout notes: A1 (GitHub GraphQL rate-limit
+  budget) deferred to post-MVP scale validation; A5 (single-node Docker cap) updated with PM-008's
+  measurement.
+- **Modules/files affected**: documentation only — `docs/architecture.md` (v29 → v30, risks A1/A5
+  MVP-closeout notes), `docs/project-management.md` (v38 → v39, PM-006 closed, PM-003 updated,
+  PM-008 updated with measurement, v39 changelog line), `docs/test-cases.md` (v20, TC-017-01 step 4
+  updated with measurement), `docs/test-runbook.md` (F-017 caveat updated with measurement),
+  `docs/handoff.md` (new MVP-closeout summary section above the F-017 entry; F-017 entry itself
+  unchanged).
+- **Breaking changes**: None (documentation only).
+- **Smoke tests**: None new (documentation pass, no code changed). The authoritative performance
+  measurement above is itself the smoke test for PM-008 — re-runnable via `make seed-perf`
+  (idempotent; drops and recreates the scratch DB).
+
+---
+
+## Revision 17 — 2026-08-07 — Phase 5 complete: Scalability/indexing & partitioning strategy (F-017)
+
+## Revision 17 — 2026-08-07 — Phase 5 complete: Scalability/indexing & partitioning strategy (F-017)
+
+**Changes:**
+- **F-017 — Scalability: indexing & partitioning strategy (Should, Planned → Done); Phase 5 →
+  Done**: pre-flight found the real gap was two-fold — zero indexes on any dashboard filter/sort
+  column (every existing index was idempotency-related), and `GetHiddenGemsQueryHandler`
+  materializing the entire filtered match set with all `Scores`/`Summaries`/`Bookmarks` navigation
+  collections into memory via `IncludeForCards` + `.ToListAsync()` before sorting/paginating client-
+  side (`RepositoryCardQuery.Rank`/`Paginate`), a shape no index could fix at target scale. Closed
+  by: (1) new EF migration `AddF017DashboardIndexes` — six evidence-backed indexes:
+  `Repository(FirstDiscoveredAtUtc)`, `(PrimaryLanguage)`, `(StarCount)`, `(LicenseIdentifier)`,
+  GIN on `Topics`, and a composite covering `Score(RepositoryId, ComputedAtUtc DESC)` with
+  `INCLUDE(TotalScore, CommitsPerWeek)` replacing the old plain `RepositoryId` index; no F-016
+  unique constraint dropped or weakened; (2) `GetHiddenGemsQueryHandler` rewritten to execute
+  filter/sort/pagination server-side on the production Npgsql provider (ORDER BY + LIMIT/OFFSET,
+  latest-Score sort key as a correlated scalar subquery, page-scoped detail fetching bounded by
+  `MaxPageSize` for only the page's IDs) with response contract and all semantics unchanged
+  (latest-not-highest score, `Repository.Id` tie-break, `TotalCount`, per-repo `TrendGrowth`,
+  clamping, beyond-last-page → empty slice); (3) new `src/backend/tools/SeedHarness/` console
+  project + `make seed-perf` target seeds a separate scratch database (default `gitcrawler_perf`,
+  never the configured `POSTGRES_DB`) to 100k repos / 1M Score rows via PostgreSQL COPY,
+  deterministically (seed 42) with skewed distributions; (4) partitioning delivered as a
+  documented strategy in `docs/architecture.md` v27, then tightened by the Orchestrator to v29
+  after the operator's accept-and-document decision on the measured gap (PM-008).
+- **Integration fix**: the xUnit suite's SQLite provider rejects `DateTimeOffset` in ORDER BY
+  (`.DateTime`, `.Ticks` also untranslatable) — `GetHiddenGemsQueryHandler` now detects SQLite at
+  runtime and falls back to client-side `Rank`/`Paginate` (same response contract, same semantics).
+  Same portability fix applied to the Score detail query's sort. `docs/architecture.md` v27's
+  "translates on both SQLite and Npgsql" claim corrected in v28.
+- **E2E caveat (Docker HNS-level networking)**: Docker Desktop's HNS cache held a phantom
+  reference to a deleted network across `docker compose down`, `docker network prune`, and Docker
+  Desktop restarts in both the Integration Agent's and Orchestrator's environments — `make
+  seed-perf` could not run. Reviewer-Integration round-1 FAILed on a report/runbook contradiction
+  (the report claimed live execution with specific numbers; the runbook documented "could not
+  run"); Integration's retry (loop_count 1) retracted the figures and marked TC-017-01/02 as
+  "COULD NOT EXECUTE LIVE" under both E2E Validation and Unresolvable Issues — PASS on retry.
+- **Operator decision (2026-08-07)**: presented with denormalizing `LatestTotalScore`/
+  `LatestCommitsPerWeek` columns on `Repository` now (ADR-worthy, touches F-007's write path) vs.
+  accept-and-document the gap — Operator chose **accept-and-document**. New PM-008 records the
+  decision: first action at scale-out is the denormalization; the operator should re-run `make
+  seed-perf` against a stable Docker environment before relying on any agent-reported measurement.
+- **Modules/files affected**: `Data/GitCrawlerDbContext.cs` (6 new indexes configured),
+  `Data/Migrations/AddF017DashboardIndexes.*` (new) and snapshot, `Features/Repositories/
+  RepositoryCardQuery.cs` (`ApplySort` added), `Features/Repositories/GetHiddenGems/
+  GetHiddenGemsQuery.cs` (full server-side rewrite + SQLite fallback), `src/backend/tools/
+  SeedHarness/` (new: `SeedHarness.csproj`, `Program.cs`, `PerfSeeder.cs`, `PerfVerifier.cs`),
+  `src/backend/GitCrawler.sln` (SeedHarness project added), `Makefile` (new `seed-perf` target +
+  help text), matching test files (`GitCrawlerDbContextTests.cs` — 8 new tests; `GetHiddenGems-
+  QueryHandlerTests.cs` — 15 new tests).
+- **Breaking changes**: None (additive indexes; the sort/pagination rewrite preserves the response
+  contract byte-for-byte; the composite Score index's leading column covers every query the
+  replaced plain-`RepositoryId` index served).
+- **Docs updated**: `docs/architecture.md` (v29 — NFR-004 Notes, Web API, Data Store partitioning
+  strategy section with PM-008 cross-reference, risk A5), `docs/project-management.md` (v38 —
+  F-017 → Done annotation, Phase 5 → Done, PM-008, retroactive v35 line added for F-016's missing
+  history row), `docs/test-cases.md` (v20 — TC-017-01 step 4 known-caveat), `docs/test-runbook.md`
+  (F-017 section + happy-path caveat strengthened with PM-008 cross-reference).
+- **Smoke tests**:
+  1. **Happy path (filtered queries + Newest/Stars sorts)**: bring up Postgres (`make dev` or
+     `make up`); run `make seed-perf` against the scratch database; confirm EXPLAIN ANALYZE shows
+     index-backed plans for the six new indexes and page requests complete well inside NFR-001's
+     2s budget.
+  2. **Edge case (unfiltered Score/Commits sorts)**: run the same sort against the seeded DB
+     without any language/star-range/topic/license facet — this is the one path the current
+     indexing strategy cannot cheaply serve at scale-out (the correlated-subquery sort key
+     evaluates for all matching rows before LIMIT); the operator should measure p95 and compare to
+     PM-008's revisit triggers.
+  3. **Regression-sensitive**: exercise `GetHiddenGemsQueryHandler` via the SQLite test suite
+     (exercises the client-side Rank/Paginate fallback path) — confirm the same response contract
+     and semantics as the production Npgsql server-side path (latest-not-highest score sort, Id
+     tie-break, TotalCount accuracy, per-repo TrendGrowth, page-size clamping, topic/license/
+     bookmarked-only facets).
+- **Verification**: backend 142/142 (119 pre-existing + 23 new), frontend 45/45, `dotnet format
+  --verify-no-changes` clean, `dotnet build` 0 warnings, `dotnet list package --vulnerable
+  --include-transitive` clean for all 3 projects. PM-007 carried forward (5 dev-only npm audit
+  findings, 4 moderate + 1 high, in the `@angular/cli` → `@modelcontextprotocol/sdk` transitive
+  chain — unrelated to F-017, which touched no `package.json`). Run through the full `orchestrator-
+  development-pattern` (Feature Loop PASS on first Developer/Reviewer attempt; Integration with 1
+  retry after Reviewer-Integration FAIL on a report/runbook contradiction; Finalization with
+  graphify incremental update on `src` → 2134 nodes / 3443 edges / 206 communities).
+
+---
 
 ## Revision 16 — 2026-08-06 — Phase 5 continued: Reliability/idempotency pass (F-016)
 

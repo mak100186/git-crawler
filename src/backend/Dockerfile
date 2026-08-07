@@ -20,6 +20,7 @@ COPY src/backend/GitCrawler.sln .
 COPY src/backend/Directory.Build.props .
 COPY src/backend/GitCrawler.Api/GitCrawler.Api.csproj GitCrawler.Api/
 COPY src/backend/tests/GitCrawler.Api.Tests/GitCrawler.Api.Tests.csproj tests/GitCrawler.Api.Tests/
+COPY src/backend/tools/SeedHarness/SeedHarness.csproj tools/SeedHarness/
 RUN dotnet restore GitCrawler.sln
 COPY src/backend/ .
 RUN dotnet publish GitCrawler.Api/GitCrawler.Api.csproj -c Release -o /app/publish --no-restore

@@ -65,84 +65,181 @@ public record GetHiddenGemsQuery(RepositoryFilterCriteria Filter);
 
 // Wolverine discovers this handler by convention (a public Handle/HandleAsync method on a class
 // named *Handler in the same assembly) - no manual registration required.
+//
+// F-017/NFR-004: filtering, sorting, and pagination execute entirely server-side on the production
+// Npgsql/PostgreSQL provider. The pre-F-017 shape (IncludeForCards → ToListAsync → Rank →
+// Paginate) materialized the ENTIRE scored match set with all navigation collections into process
+// memory before sorting and paginating client-side - at 100k repos × ~10 Score rows each, every
+// page request loaded ~1M rows. This rewrite pushes ORDER BY + LIMIT/OFFSET into SQL via
+// RepositoryCardQuery.ApplySort's correlated-subquery sort key (same "latest by ComputedAtUtc,
+// never highest-ever" convention from F-007). Per-request work is bounded by page size (≤
+// MaxPageSize), not total match count.
+//
+// Provider-aware: the xUnit suite's SQLite provider rejects DateTimeOffset in ORDER BY (the
+// Newest sort's FirstDiscoveredAtUtc key) and cannot translate any DateTimeOffset member. When
+// SQLite is detected at runtime, the handler falls back to the client-side Rank/Paginate
+// pipeline (IncludeForCards → materialize filtered set → Rank → Paginate) — same response
+// contract and all semantics preserved, just client-side sort on the filtered candidates. The
+// Score history detail query also sorts client-side after fetch for the same portability reason.
+// Detail data (latest Score for the breakdown, second-latest for TrendGrowth, Summary, Bookmark
+// flag) is fetched in narrow queries scoped to the page's repository IDs, not the full match set.
 public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
 {
     public async Task<PagedResult<HiddenGemCardDto>> HandleAsync(GetHiddenGemsQuery query, CancellationToken cancellationToken)
     {
         var filter = query.Filter;
+        var page = RepositoryCardQuery.ClampPage(filter.Page);
+        var pageSize = RepositoryCardQuery.ClampPageSize(filter.PageSize);
 
         // Hidden Gems can only show a score breakdown for repos that have actually been scored -
         // this Scores.Any() filter is specific to this slice, not part of the shared D4 contract.
-        var scoredRepositories = dbContext.Repositories.Where(r => r.Scores.Any());
+        // Applied BEFORE filters so TotalCount reflects the same eligible set.
+        var filtered = RepositoryCardQuery.ApplyFilters(
+            dbContext.Repositories.Where(r => r.Scores.Any()), filter);
 
-        var candidates = await RepositoryCardQuery.ApplyFilters(RepositoryCardQuery.IncludeForCards(scoredRepositories), filter)
+        // TotalCount: full match count across all pages (not just the current page), so the
+        // dashboard's paginator shows the correct total. CountAsync translates to SELECT COUNT(*).
+        var totalCount = await filtered.CountAsync(cancellationToken);
+
+        // Provider-aware sort/pagination: the production Npgsql/PostgreSQL provider translates
+        // ApplySort (including its DateTimeOffset FirstDiscoveredAtUtc key for the "Newest" sort)
+        // to SQL ORDER BY + LIMIT/OFFSET without issue. The EF Core SQLite provider (used by the
+        // xUnit test suite) rejects DateTimeOffset in ORDER BY with NotSupportedException and
+        // cannot translate any DateTimeOffset member (.DateTime, .Ticks) either, so the
+        // server-side path is unreachable on SQLite. Fall back to the client-side Rank/Paginate
+        // pipeline (IncludeForCards → materialize → Rank → Paginate), which already works
+        // correctly on both providers via LINQ-to-Objects.
+        var isSqlite = dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
+
+        List<int> pageRepositoryIds;
+        if (isSqlite)
+        {
+            var candidates = await RepositoryCardQuery.IncludeForCards(filtered)
+                .ToListAsync(cancellationToken);
+            var ranked = RepositoryCardQuery.Rank(candidates, filter.Sort, filter.Direction);
+            var paginated = RepositoryCardQuery.Paginate(ranked, page, pageSize, out _);
+            pageRepositoryIds = paginated.Select(r => r.Repository.Id).ToList();
+        }
+        else
+        {
+            // Sort + paginate server-side. ApplySort translates to ORDER BY with a correlated
+            // subquery for Score/Commits sort keys; ThenBy(r.Id) is the deterministic tie-break
+            // (F-010). Skip/Take translate to LIMIT/OFFSET, bounding per-request work to pageSize.
+            pageRepositoryIds = await RepositoryCardQuery.ApplySort(filtered, filter.Sort, filter.Direction)
+                .ThenBy(r => r.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(r => r.Id)
+                .ToListAsync(cancellationToken);
+        }
+
+        // Beyond-last-page: the match set has results (totalCount > 0) but Skip past the end
+        // yields no IDs. Return an empty slice with the accurate totalCount - not an error (F-010).
+        if (pageRepositoryIds.Count == 0)
+        {
+            return new PagedResult<HiddenGemCardDto>([], page, pageSize, totalCount);
+        }
+
+        // Detail fetch: three narrow queries scoped to the page's repository IDs (≤ MaxPageSize),
+        // not the full match set. This replaces the pre-F-017 IncludeForCards pattern that loaded
+        // Scores/Summaries/Bookmarks for every matched repository before pagination.
+
+        // Repository entities for the page's IDs - needed for Owner/Name/Url/etc. on the DTO.
+        var pageRepositories = await dbContext.Repositories
+            .Where(r => pageRepositoryIds.Contains(r.Id))
             .ToListAsync(cancellationToken);
 
-        var ranked = RepositoryCardQuery.Rank(candidates, filter.Sort, filter.Direction);
-        var page = RepositoryCardQuery.Paginate(ranked, filter.Page, filter.PageSize, out var totalCount);
+        // Score history for the page's repos - needed for the score breakdown (latest row) and
+        // TrendGrowth (latest two rows). ~10 rows per repo × ≤100 repos = ~1000 rows max.
+        // Sort is done client-side after fetch because the SQLite provider (xUnit suite) rejects
+        // DateTimeOffset in ORDER BY; the production Npgsql provider handles it server-side, but
+        // the result is identical either way (LINQ-to-Objects on a bounded page-scoped set).
+        var pageScores = (await dbContext.Scores
+            .Where(s => pageRepositoryIds.Contains(s.RepositoryId))
+            .ToListAsync(cancellationToken))
+            .OrderByDescending(s => s.ComputedAtUtc)
+            .ToList();
 
-        return new PagedResult<HiddenGemCardDto>(
-            [.. page.Select(ToHiddenGemDto)],
-            RepositoryCardQuery.ClampPage(filter.Page),
-            RepositoryCardQuery.ClampPageSize(filter.PageSize),
-            totalCount);
+        // Summary (if any) for each page repo - at most one per repo (unique index, F-016).
+        var pageSummaries = await dbContext.Summaries
+            .Where(s => pageRepositoryIds.Contains(s.RepositoryId))
+            .ToListAsync(cancellationToken);
+
+        // Bookmark existence for each page repo - using Any() instead of loading the entity, since
+        // the DTO only needs the boolean, not the bookmark's own fields.
+        var bookmarkedRepositoryIds = await dbContext.Bookmarks
+            .Where(b => pageRepositoryIds.Contains(b.RepositoryId))
+            .Select(b => b.RepositoryId)
+            .ToHashSetAsync(cancellationToken);
+
+        // Assemble DTOs from the page-scoped detail data, preserving the server-side sort order
+        // (pageRepositoryIds is already in the correct order from the SQL ORDER BY).
+        var scoreLookup = pageScores.GroupBy(s => s.RepositoryId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var summaryLookup = pageSummaries.ToDictionary(s => s.RepositoryId);
+
+        var items = pageRepositoryIds.Select(id =>
+        {
+            var repository = pageRepositories.First(r => r.Id == id);
+            var scores = scoreLookup.GetValueOrDefault(id) ?? [];
+            var summary = summaryLookup.GetValueOrDefault(id);
+
+            // Never null: the Scores.Any() filter above guarantees at least one Score row, and
+            // scores are ordered by ComputedAtUtc DESC from the query above.
+            var latestScore = scores[0];
+            var previousScore = scores.Count > 1 ? scores[1] : null;
+
+            return ToHiddenGemDto(repository, latestScore, previousScore, summary, bookmarkedRepositoryIds.Contains(id));
+        }).ToList();
+
+        return new PagedResult<HiddenGemCardDto>(items, page, pageSize, totalCount);
     }
 
-    private static HiddenGemCardDto ToHiddenGemDto(RankedRepository ranked)
+    private static HiddenGemCardDto ToHiddenGemDto(
+        Repository repository, Score latestScore, Score? previousScore, Summary? summary, bool isBookmarked)
     {
-        // Never null: the Scores.Any() filter above guarantees at least one Score row, so the
-        // latest-by-ComputedAtUtc resolution in RepositoryCardQuery.Rank always finds one here.
-        var score = ranked.LatestScore!;
-
-        var trendGrowth = ComputeTrendGrowth(ranked);
+        var trendGrowth = ComputeTrendGrowth(latestScore, previousScore);
 
         return new HiddenGemCardDto(
-            ranked.Repository.Id,
-            ranked.Repository.Owner,
-            ranked.Repository.Name,
-            ranked.Repository.Url,
-            ranked.Repository.PrimaryLanguage,
-            ranked.Repository.StarCount,
-            ranked.Repository.ForkCount,
-            ranked.Repository.LicenseIdentifier,
-            ranked.Repository.LicenseName,
-            ranked.Repository.Topics,
-            ranked.Repository.FirstDiscoveredAtUtc,
-            ranked.LatestSummary?.ShortContent,
-            ranked.LatestSummary?.DetailedContent,
-            ranked.Repository.Bookmarks.Count > 0,
+            repository.Id,
+            repository.Owner,
+            repository.Name,
+            repository.Url,
+            repository.PrimaryLanguage,
+            repository.StarCount,
+            repository.ForkCount,
+            repository.LicenseIdentifier,
+            repository.LicenseName,
+            repository.Topics,
+            repository.FirstDiscoveredAtUtc,
+            summary?.ShortContent,
+            summary?.DetailedContent,
+            isBookmarked,
             new ScoreBreakdownDto(
-                score.HasLicense,
-                score.LicenseType,
+                latestScore.HasLicense,
+                latestScore.LicenseType,
                 ScoringWeights.LicenseWeight,
-                score.CommitsPerWeek,
+                latestScore.CommitsPerWeek,
                 ScoringWeights.CommitsPerWeekWeight,
-                score.ContributorCount,
+                latestScore.ContributorCount,
                 ScoringWeights.ContributorCountWeight,
-                score.ForkCount,
+                latestScore.ForkCount,
                 ScoringWeights.ForkCountWeight,
-                score.StarCount,
+                latestScore.StarCount,
                 ScoringWeights.StarCountWeight,
-                score.TotalScore),
+                latestScore.TotalScore),
             trendGrowth);
     }
 
-    // "Current" is ranked.LatestScore (already resolved by RepositoryCardQuery.Rank); "previous" is
-    // this same repo's next-most-recent Score row, if a re-crawl has produced one - the same
-    // OrderByDescending(ComputedAtUtc) convention used everywhere else in this codebase for
-    // latest-Score resolution (see RepositoryCardQuery.Rank/ComputeScoresCommandHandler), just
-    // Skip(1) to land on the one before latest instead of Skip(0).
-    private static string ComputeTrendGrowth(RankedRepository ranked)
-    {
-        var previous = ranked.Repository.Scores
-            .OrderByDescending(s => s.ComputedAtUtc)
-            .Skip(1)
-            .FirstOrDefault();
-
-        return previous is null || previous.TotalScore == 0
-            ? $"{Math.Round(ranked.LatestScore!.TotalScore)} current score"
-            : FormatGrowthChange(ranked.LatestScore!.TotalScore, previous.TotalScore);
-    }
+    // "Current" is latestScore (already resolved as the first row of the page-scoped Score query,
+    // ordered by ComputedAtUtc DESC); "previous" is this same repo's next-most-recent Score row
+    // (the second row), if a re-crawl has produced one. Same OrderByDescending(ComputedAtUtc)
+    // convention used everywhere else in this codebase for latest-Score resolution (see
+    // RepositoryCardQuery.Rank/ComputeScoresCommandHandler).
+    private static string ComputeTrendGrowth(Score latestScore, Score? previousScore) =>
+        previousScore is null || previousScore.TotalScore == 0
+            ? $"{Math.Round(latestScore.TotalScore)} current score"
+            : FormatGrowthChange(latestScore.TotalScore, previousScore.TotalScore);
 
     private static string FormatGrowthChange(double currentScore, double previousScore)
     {

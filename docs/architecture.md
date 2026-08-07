@@ -1,8 +1,8 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v26
-> Last updated: 2026-08-06
+> Version: v30
+> Last updated: 2026-08-07
 > PRD: docs/prd.md (built against v8)
 
 ## 1. System Context
@@ -167,7 +167,18 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Dependencies:** Data Store.
 - **Technology:** ASP.NET Core minimal API; also serves the Angular build's static assets from the
   same process (ADR-008); endpoints organized as Wolverine command/query slices, one per operation
-  (ADR-015).
+  (ADR-015). F-017: `GetHiddenGemsQueryHandler` now executes filtering, sorting, and pagination
+  entirely server-side (ORDER BY + LIMIT/OFFSET in SQL) on the production Npgsql/PostgreSQL
+  provider instead of the previous client-side materialization of the entire scored match set — the
+  sort key for Score/Commits sorts uses a correlated scalar subquery on `Score` (latest by
+  `ComputedAtUtc`), and the Newest sort key uses `FirstDiscoveredAtUtc` directly. The xUnit test
+  suite's SQLite provider rejects `DateTimeOffset` in ORDER BY (a documented provider limitation),
+  so `GetHiddenGemsQueryHandler` detects SQLite at runtime and falls back to the client-side
+  Rank/Paginate pipeline for test runs — same response contract, same semantics, just client-side
+  sort on a materialized filtered set (bounded by page size in production either way). Detail data
+  (latest Score for the breakdown, second-latest for TrendGrowth, Summary, Bookmark flag) is
+  fetched in narrow queries scoped to the page's repository IDs, with Score history sorted
+  client-side after fetch (same DateTimeOffset portability reason).
 
 ### Web Dashboard
 - **Responsibility:** Present the Hidden Gems view (the dashboard's sole view); filter/sort by
@@ -230,6 +241,36 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Outputs:** Reads for every other component.
 - **Dependencies:** None (leaf component).
 - **Technology:** PostgreSQL 18.4, accessed via EF Core (ADR-003, ADR-014).
+- **Partitioning/archiving strategy (F-017):** No physical table partitioning at the 1M-record
+  scale. `Score` is the one unbounded append-per-recrawl table (~10 rows per repo, growing with
+  each daily crawl cycle), and the composite index on `Score(RepositoryId, ComputedAtUtc DESC)`
+  keeps the dominant *lookup* pattern (latest Score per repository) as a bounded index scan
+  regardless of total row count. The sort/pagination rewrite (see NFR-004 Notes) bounds filtered
+  queries and the Newest/Stars sort paths to page-size work, but the **unfiltered Score/Commits
+  sort paths still evaluate the correlated "latest score" scalar subquery for every matching row
+  before LIMIT applies** — that path is bounded by match count, not page size, and at the 100k+
+  repo target may approach or exceed the NFR-001 interactive budget. This is the one path the
+  current indexing strategy cannot cheaply serve at scale-out (PM-008 tracks the decision).
+  **Denormalizing `LatestTotalScore`/`LatestCommitsPerWeek` columns on `Repository` (maintained
+  by `ComputeScoresCommandHandler`, backfilled, indexed) is the first action when approaching
+  scale-out**, since it turns those sort keys into plain indexed columns (sub-10ms regardless of
+  match count). **Revisit triggers** (any one fires a re-evaluation tied to risk A5 and PMBook
+  PM-003, and PM-008 for the unfiltered-sort gap):
+  - Repository count approaches NFR-004's 100k target — denormalize first (see above; ADR-worthy,
+    since it touches F-007's write path and F-017 deliberately did not implement it)
+  - EXPLAIN ANALYZE on unfiltered Score/Commits sort (via `make seed-perf` at scale) shows p95
+    approaching or exceeding NFR-001's 2s budget
+  - `Score` row count exceeds 10M (10× the current NFR-004 target)
+  - EXPLAIN ANALYZE on the dashboard's other sort/filter paths shows sequential scans on `Score`
+    replacing the current index scans
+  - VACUUM/autovacuum pressure on `Score` becomes operationally visible (bloat, long-running
+    vacuum cycles visible in `pg_stat_user_tables`)
+  When a trigger fires, the options are (in order): (a) denormalized `LatestTotalScore`/
+  `LatestCommitsPerWeek` columns on `Repository` with a backfill migration (touches F-007's write
+  path — ADR-worthy); (b) declarative range partitioning of `Score` by `ComputedAtUtc` year —
+  keeps hot recent data in a small partition while older history stays queryable on a separate
+  partition; (c) an archiving strategy that moves older Score rows to a `score_archive` table
+  (still queryable, but out of the main table's hot path).
 
 ## 4. Data Flow
 
@@ -259,7 +300,7 @@ the dashboard and receiving the digest.
 | NFR-001 | Performance | Summary generation completes on the order of seconds per repository; dashboard interactions feel interactive (target p95 page response < 2s) | Formalizes PRD's "Responsiveness assumption"; local LLM throughput (ADR-001) is the primary risk to this — see A2 |
 | NFR-002 | Security | GitHub API token stored via environment/secrets configuration, never committed or logged; no AI provider credential exists in v1 since summarization is local (ADR-001); repo-wide secret-scanning (gitleaks) enforced in CI and locally to catch any credential that slips past that discipline | Formalizes PRD's Security assumption; scanning piece added by F-015 (`.github/workflows/quality.yml`'s `secret-scan` job, `make secret-scan`) |
 | NFR-003 | Reliability | Every pipeline stage is idempotent and resumable after a container restart mid-run; GitHub API failures retry with backoff rather than aborting the run | Enabled by Hangfire's persistent job storage (ADR-009). F-016 closed the remaining overlap/duplicate-record gaps: `[DisableConcurrentExecution]` on all five pipeline `*Job.RunAsync` entry points closes the *simultaneous*-overlap window at the source; unique DB constraints on `TrendAggregate(Category, PeriodStart, PeriodEnd)` and `Summary.RepositoryId` back each stage's once-only invariant at the schema level (defense-in-depth behind the concurrency guard, not the primary fix); a persisted `DigestSendLog` "already sent today" marker independently covers the *sequential* Hangfire-retry-after-crash case the concurrency attribute can't reach. Repository-discovery idempotency (upsert by unique-indexed `GitHubId`) and GitHub retry/backoff (ADR-018/Polly) were already correct pre-F-016 |
-| NFR-004 | Scalability | Schema and indexing support 100k+ repositories and 1M+ analysis records without a redesign | Formalizes PRD's processing volume assumption; partitioning/archiving strategy is an open risk — see A5 |
+| NFR-004 | Scalability | Schema and indexing support 100k+ repositories and 1M+ analysis records without a redesign | Formalizes PRD's processing volume assumption. F-017 closed the two real gaps: (1) six new indexes on `Repository` (FirstDiscoveredAtUtc, PrimaryLanguage, StarCount, LicenseIdentifier, Topics-GIN) plus a composite covering index on `Score(RepositoryId, ComputedAtUtc DESC)` with INCLUDE columns replacing the old plain RepositoryId index, backing every dashboard filter/sort path; (2) `GetHiddenGemsQueryHandler` rewritten to execute filtering, sorting (via correlated scalar subquery for latest-Score sort keys), and pagination server-side on the production Npgsql provider — per-request work bounded by page size, not total match count — replacing the previous client-side materialization of the entire scored match set (the xUnit SQLite provider's `DateTimeOffset` ORDER BY limitation requires a client-side Rank/Paginate fallback for test runs, same response contract). Performance verified at 100k repos / 1M scores via a dedicated seed harness (`make seed-perf`) with EXPLAIN ANALYZE evidence. Physical partitioning remains unnecessary at this scale — see §3 Data Store partitioning strategy and risk A5 for concrete revisit triggers |
 | NFR-005 | Observability | Each pipeline stage emits structured logs and stage-level metrics (records processed, duration, failures) so a solo operator can diagnose a stuck or rate-limited run without attaching a debugger | Not sourced from an explicit PRD line item; job-level piece (history, retries, failures) now covered by the Hangfire dashboard (ADR-009) — F-014 still needed for stage-level detail (e.g. per-signal scoring breakdowns) the dashboard doesn't capture |
 
 ## 7. Technology Decisions
@@ -286,11 +327,11 @@ the dashboard and receiving the digest.
 
 | ID | Question / Risk | Impact | Owner | Resolved? |
 |----|----------------|--------|-------|-----------|
-| A1 | GitHub GraphQL rate-limit budget (point-cost model) has not been validated against the 1K-5K/day discovery volume, or the 100k+ scale-out target | High | Maxx | No |
+| A1 | GitHub GraphQL rate-limit budget (point-cost model) has not been validated against the 1K-5K/day discovery volume, or the 100k+ scale-out target | High | Maxx | No — **MVP closeout note (2026-08-07):** deferred to post-MVP scale validation. F-001's spike validated the point-cost model against a simulated budget, and F-005's implementation of the spike's §6/§7 mitigations (rate-limit-aware retry, contributor-count caching) is genuinely in place — but the model has not been re-tested against a live 1K-5K/day discovery run or the 100k+ scale-out target. The risk is that at sustained daily crawl volume, the REST contributor-count fallback (the binding constraint per the spike) may hit rate limits the model underestimates. Carried forward as a post-MVP validation item, not a v1 architecture gap. |
 | A2 | ~~Local LLM inference throughput/model choice is unproven against the seconds-per-repo target in NFR-001~~ — **Resolved 2026-08-01**: `google/gemma-4-e4b` measured at 2.57-2.82s p95 per repo (Pass), but found to truncate output on reasoning-token overhead; superseded by `llama-3.2-3b-instruct` (ADR-017), measured at 0.78-1.05s mean per repo with complete output. See `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9-§10 | High | Maxx | **Yes** |
 | A3 | (Carried from PRD Q2) Numeric success-metric targets remain `[TBD]` pending an initial usage baseline post-launch | Low | Maxx | No |
 | A4 | (Carried from PRD Q3) Whether personalized discovery lands in an early post-MVP phase is still undecided — affects PMBook phase sequencing, not v1 architecture | Medium | Maxx | No |
-| A5 | Docker Compose (ADR-002) caps horizontal scaling; no defined trigger yet for when 100k+ repos / 1M+ records would force revisiting single-node deployment | Medium | Maxx | No |
+| A5 | Docker Compose (ADR-002) caps horizontal scaling; no defined trigger yet for when 100k+ repos / 1M+ records would force revisiting single-node deployment | Medium | Maxx | No — **MVP closeout note (2026-08-07):** F-017 documented the partitioning/archiving strategy and revisit triggers (see §3 Data Store); PM-008's authoritative measurement at 100k repos / 1M scores (4.8–4.9s unfiltered Score/Commits sort, 2.5× over NFR-001's 2s budget) confirms the query-performance half of the scale-out trigger is now concretely measured, not theoretical — denormalization of latest-score columns is the documented first action when approaching scale-out. The remaining unevaluated half is horizontal scaling (bigger instance vs. service split); PM-003 tracks this. |
 
 ## Version History
 | Version | Date | Change | Triggered By |
@@ -322,3 +363,7 @@ the dashboard and receiving the digest.
 | v24 | 2026-08-04 | Phase 4 (F-013 Digest Service, F-014 Observability) built and integrated. New §3 "Observability (cross-cutting, not a pipeline stage)" component added — this section never existed before; NFR-005's own gap note previously described the need but §3 had no component entry for the actual `Infrastructure/Observability/` middleware once it was built. §3 Job Scheduler corrected: its dependency-order prose previously implied "trend rollup before digest" was a `ContinueJobWith` chain link like the other four stages, which contradicts F-013's actual implementation (an independent daily `RecurringJob`, deliberately not chained onto Trend Aggregator — see `SendDigestJob`'s own header comment) | Integration Agent — documentation drift check found §3 hadn't been updated for either newly-built Phase 4 component |
 | v25 | 2026-08-04 | Phase 5 begins (F-015 Security hardening). NFR-002's Notes column updated to record that repo-wide secret-scanning (gitleaks) is now enforced in CI (`.github/workflows/quality.yml`'s `secret-scan` job) and locally (`make secret-scan`), closing the gap this NFR previously only described for the GitHub token's own storage/logging discipline. No §3 component change — this is CI/tooling configuration, not a new or altered system component, so no new component section was warranted | F-015 Developer |
 | v26 | 2026-08-06 | F-016 Reliability/idempotency pass integrated. NFR-003's Notes column updated to record the three real gaps closed (concurrency guard on all five pipeline jobs, unique DB constraints on `TrendAggregate`'s natural key and `Summary.RepositoryId`, persisted `DigestSendLog` sequential-retry dedupe) alongside the two pre-flight findings already correct (discovery upsert idempotency, GitHub retry/backoff). §3 Job Scheduler, Trend Aggregator, and Digest Service updated with the same mechanisms in context — none of this introduced a new system component, so no new §3 section was warranted | Integration Agent — documentation drift check found NFR-003/§3 hadn't been updated for F-016's actual mechanism (unique DB index, concurrency guard, dedupe log), only the pre-existing upsert/persistent-storage description |
+| v27 | 2026-08-07 | F-017 Scalability/indexing integrated. NFR-004's Notes column updated to record the two real gaps closed (six new filter/sort indexes on `Repository` plus composite covering index on `Score`, server-side sort/pagination rewrite of `GetHiddenGemsQueryHandler`). §3 Data Store gained a partitioning/archiving strategy subsection documenting why no physical partitioning at 1M rows, concrete revisit triggers tied to risk A5/PM-003, and the options when a trigger fires. §3 Web API updated to note the server-side sort/pagination rewrite. Risk A5 updated with the same partitioning-strategy cross-reference | F-017 Developer |
+| v28 | 2026-08-07 | F-017 Integration pass correction: §3 Web API and NFR-004 Notes corrected — the server-side sort/pagination is Npgsql/PostgreSQL-only, not translatable on the xUnit suite's SQLite provider (`DateTimeOffset` in ORDER BY throws `NotSupportedException`; `.DateTime`, `.Ticks` also untranslatable). `GetHiddenGemsQueryHandler` now detects SQLite at runtime and falls back to client-side Rank/Paginate (same response contract, same semantics). Score detail query's sort also moved client-side for the same portability reason. The Developer's "translates on both SQLite and Npgsql" claim (v27) was inaccurate for the Newest sort key and the Score detail sort — corrected here | Integration Agent |
+| v29 | 2026-08-07 | Partitioning/archiving strategy tightened per operator decision 2026-08-07 (F-017 "accept + document the gap" choice): the unfiltered Score/Commits sort path's correlated-subquery bottleneck (bounded by match count, not page size) is now named explicitly as the one path the current indexing strategy cannot cheaply serve at scale-out; the denormalized-latest-score columns option is promoted from "one of the options" to "first action when approaching scale-out" (ADR-worthy, touches F-007's write path — F-017 deliberately did not implement it); first revisit trigger renamed to "repository count approaches 100k target — denormalize first". New PMBook open item PM-008 tracks the decision; operator should re-run `make seed-perf` before relying on any agent-reported measurement at scale-out (the Developer and Integration reported different numbers for this path, and neither was independently re-verified in this session due to Docker Desktop networking instability — recorded honestly as a caveat rather than a claimed figure) | Orchestrator (recording operator decision on F-017 gap) |
+| v30 | 2026-08-07 | **MVP closeout pass**: risks A1 and A5 updated with MVP-closeout notes reflecting current state. A1 (GitHub GraphQL rate-limit budget) — deferred to post-MVP scale validation; F-001's spike validated the point-cost model and F-005's mitigations are genuinely in place, but the model has not been re-tested against a live 1K-5K/day discovery run or the 100k+ scale-out target. A5 (single-node Docker cap) — F-017's partitioning strategy + PM-008's authoritative measurement at 100k repos / 1M scores (4.8–4.9s unfiltered Score/Commits sort, 2.5× over NFR-001's 2s budget) confirm the query-performance half of the scale-out trigger is concretely measured; horizontal scaling (bigger instance vs. service split) remains unevaluated, PM-003 tracks this. No new §3 sections, NFRs, or Technology Decisions — these are status updates to existing risk rows, not architectural changes. | Orchestrator (MVP closeout pass) |

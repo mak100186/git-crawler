@@ -40,6 +40,33 @@ public class GitCrawlerDbContext(DbContextOptions<GitCrawlerDbContext> options) 
             // (F-005) upserts by this column, and re-crawls must not create duplicates (F-001
             // spike finding).
             entity.HasIndex(r => r.GitHubId).IsUnique();
+
+            // F-017/NFR-004: indexes supporting the dashboard's filter/sort paths, measured
+            // against a seeded 100k-repo dataset via EXPLAIN ANALYZE. Each index below targets
+            // a specific column the GetHiddenGems query filters or sorts on; none are speculative.
+            //
+            // FirstDiscoveredAtUtc: the default "Newest" sort key (RepositorySortField.Newest,
+            // the codebase's original default before Score overtook it). Without this, every
+            // "Newest" page request at scale would full-scan Repositories just to ORDER BY.
+            entity.HasIndex(r => r.FirstDiscoveredAtUtc);
+
+            // PrimaryLanguage: both the Language facet filter (WHERE ... IN (...)) and
+            // GetCategoriesQueryHandler's DISTINCT PrimaryLanguage query. Without this, the
+            // Language filter dropdown's option list and every filtered page request full-scan.
+            entity.HasIndex(r => r.PrimaryLanguage);
+
+            // StarCount: the star-range facet (MinStars/MaxStars). Repositories are filtered by
+            // range in GetHiddenGems and the star-range facet, and sorted by Stars.
+            entity.HasIndex(r => r.StarCount);
+
+            // LicenseIdentifier: the License facet filter (WHERE ... IN (...)).
+            entity.HasIndex(r => r.LicenseIdentifier);
+
+            // Topics: the Topic facet filter uses array-overlap (r.Topics.Any(t => topics.Contains
+            // (t))), which Npgsql translates to the `&&` operator. A GIN index is the correct
+            // index type for array-overlap queries on PostgreSQL; HasMethod("gin") is silently
+            // ignored by the SQLite provider (used by the xUnit test suite's EnsureCreated path).
+            entity.HasIndex(r => r.Topics).HasMethod("gin");
         });
 
         modelBuilder.Entity<Score>(entity =>
@@ -49,7 +76,21 @@ public class GitCrawlerDbContext(DbContextOptions<GitCrawlerDbContext> options) 
                 .HasForeignKey(s => s.RepositoryId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(s => s.RepositoryId);
+            // F-017/NFR-004: composite covering "latest Score per repository" - the most frequent
+            // lookup pattern in the codebase (GetHiddenGems sort by Score/Commits, TrendGrowth's
+            // latest-two-rows, digest top-N selection, summarizer eligibility, trend aggregation).
+            // RepositoryId leading + ComputedAtUtc DESC gives an index-only scan for the
+            // correlated subquery `r.Scores.OrderByDescending(s => s.ComputedAtUtc)
+            // .Select(s => s.TotalScore).FirstOrDefault()` used in ApplySort. Replaces the
+            // plain non-unique RepositoryId index that existed since F-004: the composite's
+            // leading column already satisfies every query the old index covered (equality on
+            // RepositoryId), so the old index would only add write overhead as a redundant copy.
+            // The INCLUDE columns (TotalScore, CommitsPerWeek) let the sort's correlated subquery
+            // read its value from the index leaf alone without a heap fetch, measurable at the
+            // seeded 100k/1M scale.
+            entity.HasIndex(s => new { s.RepositoryId, s.ComputedAtUtc })
+                .IsDescending(false, true)
+                .IncludeProperties(s => new { s.TotalScore, s.CommitsPerWeek });
         });
 
         modelBuilder.Entity<Summary>(entity =>

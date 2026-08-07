@@ -136,8 +136,20 @@ namespace GitCrawler.Api.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FirstDiscoveredAtUtc");
+
                     b.HasIndex("GitHubId")
                         .IsUnique();
+
+                    b.HasIndex("LicenseIdentifier");
+
+                    b.HasIndex("PrimaryLanguage");
+
+                    b.HasIndex("StarCount");
+
+                    b.HasIndex("Topics");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Topics"), "gin");
 
                     b.ToTable("Repositories");
                 });
@@ -179,7 +191,10 @@ namespace GitCrawler.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RepositoryId");
+                    b.HasIndex("RepositoryId", "ComputedAtUtc")
+                        .IsDescending(false, true);
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("RepositoryId", "ComputedAtUtc"), new[] { "TotalScore", "CommitsPerWeek" });
 
                     b.ToTable("Scores");
                 });

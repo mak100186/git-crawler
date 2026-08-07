@@ -1,8 +1,11 @@
+using System.Linq.Expressions;
+
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace GitCrawler.Api.Tests.Data;
 
@@ -238,6 +241,144 @@ public class GitCrawlerDbContextTests : IDisposable
         _context.DigestSendLogs.Add(new DigestSendLog { SentForDate = sentForDate, SentAtUtc = DateTimeOffset.UtcNow });
 
         await Assert.ThrowsAsync<DbUpdateException>(() => _context.SaveChangesAsync());
+    }
+
+    // F-017: index-presence tests for the dashboard's filter/sort paths. These verify that the
+    // indexes added by AddF017DashboardIndexes exist in the EF Core model, using the same
+    // model-inspection pattern as the unique-constraint tests above (which exercise the model
+    // via EnsureCreated + actual DB constraint enforcement). The SQLite in-memory provider used
+    // here doesn't enforce non-unique indexes the way PostgreSQL does, so these tests verify the
+    // model configuration rather than the physical index existence - that's the appropriate level
+    // for a unit test (the physical indexes are verified by the seed harness's EXPLAIN ANALYZE).
+
+    [Fact]
+    public void Model_HasIndex_OnRepository_FirstDiscoveredAtUtc()
+    {
+        var index = FindIndex<Repository>(r => r.FirstDiscoveredAtUtc);
+        Assert.NotNull(index);
+        Assert.False(index.IsUnique);
+    }
+
+    [Fact]
+    public void Model_HasIndex_OnRepository_PrimaryLanguage()
+    {
+        var index = FindIndex<Repository>(r => r.PrimaryLanguage);
+        Assert.NotNull(index);
+        Assert.False(index.IsUnique);
+    }
+
+    [Fact]
+    public void Model_HasIndex_OnRepository_StarCount()
+    {
+        var index = FindIndex<Repository>(r => r.StarCount);
+        Assert.NotNull(index);
+        Assert.False(index.IsUnique);
+    }
+
+    [Fact]
+    public void Model_HasIndex_OnRepository_LicenseIdentifier()
+    {
+        var index = FindIndex<Repository>(r => r.LicenseIdentifier);
+        Assert.NotNull(index);
+        Assert.False(index.IsUnique);
+    }
+
+    [Fact]
+    public void Model_HasIndex_OnRepository_Topics()
+    {
+        // GIN index on Topics for array-overlap filtering. The index method is Postgres-specific
+        // (silently ignored by SQLite), so this test verifies the index EXISTS on the model, not
+        // the method.
+        var entityType = _context.Model.FindEntityType(typeof(Repository));
+        var topicsProperty = entityType!.FindProperty(nameof(Repository.Topics));
+        var index = entityType.GetIndexes().FirstOrDefault(i =>
+            i.Properties.Count == 1 && i.Properties[0] == topicsProperty);
+        Assert.NotNull(index);
+        Assert.False(index.IsUnique);
+    }
+
+    [Fact]
+    public void Model_HasCompositeIndex_OnScore_RepositoryIdAndComputedAtUtc()
+    {
+        // F-017 replaces the old non-unique RepositoryId-only index with a composite
+        // (RepositoryId, ComputedAtUtc DESC) covering index for "latest Score per repository"
+        // lookups - the most frequent query pattern in the codebase.
+        var entityType = _context.Model.FindEntityType(typeof(Score));
+        var repoIdProperty = entityType!.FindProperty(nameof(Score.RepositoryId));
+        var computedAtProperty = entityType!.FindProperty(nameof(Score.ComputedAtUtc));
+        var index = entityType.GetIndexes().FirstOrDefault(i =>
+            i.Properties.Count == 2
+            && i.Properties[0] == repoIdProperty
+            && i.Properties[1] == computedAtProperty);
+        Assert.NotNull(index);
+        Assert.False(index.IsUnique);
+
+        // Verify the old RepositoryId-only index no longer exists (replaced by the composite).
+        var oldIndex = entityType.GetIndexes().FirstOrDefault(i =>
+            i.Properties.Count == 1 && i.Properties[0] == repoIdProperty);
+        Assert.Null(oldIndex);
+    }
+
+    // F-016: verify pre-existing unique constraints are NOT weakened by F-017's migration.
+    // These are redundant with the unique-constraint tests above but serve as explicit regression
+    // guards for the F-017 context.
+
+    [Fact]
+    public void Model_F017_DoesNotWeaken_F016_UniqueConstraints()
+    {
+        // Repository.GitHubId must remain unique.
+        var repoIndex = FindIndex<Repository>(r => r.GitHubId);
+        Assert.NotNull(repoIndex);
+        Assert.True(repoIndex.IsUnique);
+
+        // Summary.RepositoryId must remain unique.
+        var summaryIndex = FindIndex<Summary>(s => s.RepositoryId);
+        Assert.NotNull(summaryIndex);
+        Assert.True(summaryIndex.IsUnique);
+
+        // Bookmark.RepositoryId must remain unique.
+        var bookmarkIndex = FindIndex<Bookmark>(b => b.RepositoryId);
+        Assert.NotNull(bookmarkIndex);
+        Assert.True(bookmarkIndex.IsUnique);
+
+        // TrendAggregate (Category, PeriodStart, PeriodEnd) must remain unique.
+        var trendEntityType = _context.Model.FindEntityType(typeof(TrendAggregate));
+        var categoryProp = trendEntityType!.FindProperty(nameof(TrendAggregate.Category));
+        var periodStartProp = trendEntityType!.FindProperty(nameof(TrendAggregate.PeriodStart));
+        var periodEndProp = trendEntityType!.FindProperty(nameof(TrendAggregate.PeriodEnd));
+        var trendIndex = trendEntityType.GetIndexes().FirstOrDefault(i =>
+            i.Properties.Count == 3
+            && i.Properties[0] == categoryProp
+            && i.Properties[1] == periodStartProp
+            && i.Properties[2] == periodEndProp);
+        Assert.NotNull(trendIndex);
+        Assert.True(trendIndex.IsUnique);
+
+        // DigestSendLog.SentForDate must remain unique.
+        var digestIndex = FindIndex<DigestSendLog>(d => d.SentForDate);
+        Assert.NotNull(digestIndex);
+        Assert.True(digestIndex.IsUnique);
+    }
+
+    private IReadOnlyIndex? FindIndex<TEntity>(
+        Expression<Func<TEntity, object?>> propertySelector) where TEntity : class
+    {
+        var entityType = _context.Model.FindEntityType(typeof(TEntity));
+        if (entityType is null)
+        {
+            return null;
+        }
+
+        // Extract the property name from the expression.
+        var memberExpression = propertySelector.Body switch
+        {
+            MemberExpression m => m,
+            UnaryExpression { Operand: MemberExpression m } => m,
+            _ => throw new ArgumentException("Expression must be a simple property access."),
+        };
+        var property = entityType.FindProperty(memberExpression.Member.Name);
+        return property is null ? null : entityType.GetIndexes().FirstOrDefault(i =>
+            i.Properties.Count == 1 && i.Properties[0] == property);
     }
 
     private static Repository NewRepository(long gitHubId, string name = "hello-world") => new()
