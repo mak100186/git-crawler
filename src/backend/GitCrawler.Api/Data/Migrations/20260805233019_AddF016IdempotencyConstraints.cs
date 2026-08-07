@@ -42,6 +42,18 @@ namespace GitCrawler.Api.Data.Migrations
                 columns: new[] { "Category", "PeriodStart", "PeriodEnd" },
                 unique: true);
 
+            // Installs upgrading from before the Hangfire idempotency guard (F-016) may already have
+            // duplicate Summary rows per RepositoryId from concurrent/retried generation runs - the
+            // unique index below would fail to create against that pre-existing data otherwise. Keeps
+            // the most recently generated row per repo (tie-broken by Id) and drops the rest.
+            migrationBuilder.Sql(@"
+                DELETE FROM ""Summaries"" s
+                USING ""Summaries"" s2
+                WHERE s.""RepositoryId"" = s2.""RepositoryId""
+                  AND (s.""GeneratedAtUtc"" < s2.""GeneratedAtUtc""
+                       OR (s.""GeneratedAtUtc"" = s2.""GeneratedAtUtc"" AND s.""Id"" < s2.""Id""));
+            ");
+
             migrationBuilder.CreateIndex(
                 name: "IX_Summaries_RepositoryId",
                 table: "Summaries",
