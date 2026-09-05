@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "GitCrawler — Hidden Gems Discovery Platform",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/mak100186/git-crawler",
+      "revision": "54fbfa1147fd8cb8bde11d1716fbc057dbb2d51f"
+    },
+    "views": [
+      {
+        "id": "discovery-pipeline",
+        "label": "Discovery pipeline",
+        "focus": [
+          "scheduler",
+          "crawl",
+          "score",
+          "summarize",
+          "trends",
+          "db"
+        ],
+        "note": "Four scheduled stages that integrate only through PostgreSQL, never by calling each other."
+      },
+      {
+        "id": "local-inference",
+        "label": "Local AI summarization",
+        "focus": [
+          "summarize",
+          "lmstudio",
+          "db"
+        ],
+        "note": "Summaries come from a host-installed model, so no cloud AI vendor sees the data."
+      },
+      {
+        "id": "read-and-delivery",
+        "label": "Read path and delivery",
+        "focus": [
+          "db",
+          "api",
+          "dashboard",
+          "digest"
+        ],
+        "note": "One process serves the API and the built dashboard; the digest ships on its own schedule."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub API",
+      "sublabel": "GraphQL, REST fallback",
+      "tag": "rate limited",
+      "pos": [
+        420,
+        20
+      ],
+      "size": [
+        180,
+        58
+      ]
+    },
+    {
+      "id": "lmstudio",
+      "type": "external",
+      "label": "LM Studio",
+      "sublabel": "Llama 3.2 3B Instruct",
+      "tag": "host-installed",
+      "pos": [
+        850,
+        20
+      ],
+      "size": [
+        180,
+        58
+      ]
+    },
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "Hangfire",
+      "sublabel": "in-process scheduler",
+      "pos": [
+        60,
+        165
+      ],
+      "size": [
+        170,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Program.cs",
+          "label": "recurring job registration"
+        }
+      ]
+    },
+    {
+      "id": "crawl",
+      "type": "backend",
+      "label": "Crawler",
+      "sublabel": "discover + fetch metadata",
+      "pos": [
+        420,
+        165
+      ],
+      "size": [
+        180,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/DiscoverRepositoriesCommand.cs",
+          "label": "DiscoverRepositories slice"
+        },
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs",
+          "label": "GitHub client"
+        }
+      ]
+    },
+    {
+      "id": "score",
+      "type": "backend",
+      "label": "Scoring Engine",
+      "sublabel": "weighted signals",
+      "pos": [
+        640,
+        165
+      ],
+      "size": [
+        180,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/ComputeScoresCommand.cs",
+          "label": "ComputeScores slice"
+        },
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/ScoringWeights.cs",
+          "label": "signal weights"
+        }
+      ]
+    },
+    {
+      "id": "summarize",
+      "type": "backend",
+      "label": "Summarizer",
+      "sublabel": "short + detailed",
+      "pos": [
+        850,
+        165
+      ],
+      "size": [
+        180,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs",
+          "label": "GenerateSummaries slice"
+        },
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Summarization/GenerateSummaries/LmStudioRepositorySummarizer.cs",
+          "label": "LM Studio client"
+        }
+      ]
+    },
+    {
+      "id": "trends",
+      "type": "backend",
+      "label": "Trend Aggregator",
+      "sublabel": "per-repo + per-language",
+      "pos": [
+        1060,
+        165
+      ],
+      "size": [
+        180,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Trends/AggregateTrends/AggregateTrendsCommand.cs",
+          "label": "AggregateTrends slice"
+        }
+      ]
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL 18",
+      "sublabel": "shared integration point",
+      "pos": [
+        720,
+        310
+      ],
+      "size": [
+        220,
+        60
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Data/GitCrawlerDbContext.cs",
+          "label": "EF Core model"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Web API",
+      "sublabel": "ASP.NET Core :8080",
+      "pos": [
+        740,
+        455
+      ],
+      "size": [
+        180,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Repositories/GetHiddenGems/GetHiddenGemsEndpoint.cs",
+          "label": "hidden gems endpoint"
+        }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "Angular 22 Dashboard",
+      "sublabel": "standalone, signals",
+      "pos": [
+        1060,
+        455
+      ],
+      "size": [
+        200,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/frontend/src/app/app.ts",
+          "label": "Angular root"
+        }
+      ]
+    },
+    {
+      "id": "digest",
+      "type": "backend",
+      "label": "Digest Service",
+      "sublabel": "daily email over SMTP",
+      "pos": [
+        420,
+        455
+      ],
+      "size": [
+        180,
+        58
+      ],
+      "sources": [
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Digest/SendDigest/SendDigestCommand.cs",
+          "label": "SendDigest slice"
+        },
+        {
+          "path": "src/backend/GitCrawler.Api/Features/Digest/SendDigest/SmtpEmailSender.cs",
+          "label": "SMTP sender"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker Compose — one app process + PostgreSQL",
+      "wraps": [
+        "scheduler",
+        "crawl",
+        "score",
+        "summarize",
+        "trends",
+        "db",
+        "api",
+        "dashboard",
+        "digest"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "schedule-stages",
+      "from": "scheduler",
+      "to": "crawl",
+      "label": "recurring job per stage",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fetch-repos",
+      "from": "github",
+      "to": "crawl",
+      "label": "repository metadata",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 60
+    },
+    {
+      "id": "local-inference",
+      "from": "lmstudio",
+      "to": "summarize",
+      "label": "local inference",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 60
+    },
+    {
+      "id": "write-repos",
+      "from": "crawl",
+      "to": "db",
+      "label": "raw metadata",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write-scores",
+      "from": "score",
+      "to": "db",
+      "label": "scores",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "write-summaries",
+      "from": "summarize",
+      "to": "db",
+      "label": "summaries",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "write-trends",
+      "from": "trends",
+      "to": "db",
+      "label": "trend rollups"
+    },
+    {
+      "id": "api-queries",
+      "from": "db",
+      "to": "api",
+      "label": "sorted, paged queries",
+      "variant": "emphasis",
+      "labelDy": 55
+    },
+    {
+      "id": "serve-dashboard",
+      "from": "api",
+      "to": "dashboard",
+      "label": "REST /api + static build",
+      "variant": "emphasis"
+    },
+    {
+      "id": "digest-reads",
+      "from": "db",
+      "to": "digest",
+      "label": "top gems + trends"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ingest and score",
+      "items": [
+        "GraphQL-first GitHub access with REST fallback (ADR-004)",
+        "Polly retry and rate-limit handling (ADR-018)",
+        "Score from independently weighted signals, not stars alone"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Pipeline shape",
+      "items": [
+        "Each stage runs on its own Hangfire schedule (ADR-009)",
+        "Each stage is a Wolverine command handler — vertical slice + CQRS (ADR-015)",
+        "Stages never call each other; PostgreSQL is the handoff"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Local AI and delivery",
+      "items": [
+        "Llama 3.2 3B via host-installed LM Studio, no cloud AI cost (ADR-001, ADR-016)",
+        "One .NET 10 process serves the API and the built dashboard (ADR-008)",
+        "The daily digest sends independently of the crawl pipeline"
+      ]
+    }
+  ]
+}
