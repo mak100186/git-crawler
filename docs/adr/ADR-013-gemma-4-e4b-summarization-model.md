@@ -24,10 +24,10 @@ before benchmarking proceeds.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Llama 3.2 (3B/8B) | Comparable on-device-class candidate, but the operator specified Gemma directly; no functional requirement favors Llama specifically. |
-| Phi-3.5/Phi-4 mini | Same reasoning — a plausible alternative small model, but not the operator's stated preference. |
+| Option             | Why not chosen                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Llama 3.2 (3B/8B)  | Comparable on-device-class candidate, but the operator specified Gemma directly; no functional requirement favors Llama specifically. |
+| Phi-3.5/Phi-4 mini | Same reasoning — a plausible alternative small model, but not the operator's stated preference.                                       |
 
 ## Consequences
 

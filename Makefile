@@ -73,7 +73,9 @@ help:
 	@echo "make status   - show whether Docker, Compose services, and LM Studio are up"
 	@echo "make health   - probe every component's actual endpoint (dashboard, app /health, /api/ping, Postgres, LM Studio)"
 	@echo "make logs     - tail the app container's logs"
-	@echo "make format   - format/lint-fix everything: frontend (eslint + prettier) and backend (dotnet format)"
+	@echo "make format   - format/lint-fix everything: frontend (eslint + prettier), the repo's"
+	@echo "                   markdown (README/CONTRIBUTING/docs, excluding docs/archive), and"
+	@echo "                   backend (dotnet format)"
 	@echo "make test     - run frontend and backend tests"
 	@echo "make secret-scan - scan the full git history and working tree for accidentally-committed"
 	@echo "                   secrets (gitleaks, NFR-002) - same check CI runs, before you push"
@@ -185,6 +187,7 @@ frontend:
 # this only touches source files, so it runs standalone against whatever's on disk right now.
 format:
 	cd src/frontend && npm run lint && npm run format
+	cd src/frontend && npm run format:docs
 	cd src/backend && dotnet format
 
 # Vitest (this app's actual test runner as of Angular 22's default @angular/build builder), not

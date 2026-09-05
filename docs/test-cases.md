@@ -16,6 +16,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-001 — Spike: GitHub GraphQL rate-limit budget validation
 
 ### TC-001-01 (Happy path) — Point-cost budget computed and documented
+
 1. Run the point-cost model / calculator produced by the spike against a simulated discovery query
    sized for 1,000 repos/day (low end of the FR-001 target range).
 2. Repeat for 5,000 repos/day (high end).
@@ -24,11 +25,13 @@ LM Studio instance — those steps are marked **Manual**).
    explicitly.
 
 ### TC-001-02 (Edge case) — Scale-out target (100k+ repos)
+
 1. Extrapolate the same point-cost model to the 100k+ repos scale-out target from NFR-004.
 2. **Expect:** the spike states whether the current query shape holds at that volume or requires a
    different pagination/query strategy — this must be an explicit statement, not silence.
 
 ### TC-001-03 (Regression-sensitive) — Rate-limit exhaustion behavior
+
 1. **Manual/simulated:** Using a real or mocked GitHub API response for a `403`/rate-limit-exceeded
    response (GraphQL cost or REST secondary rate limit), verify the back-off strategy documented by
    the spike actually specifies a concrete wait/retry mechanism (not just "retry later").
@@ -40,6 +43,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-002 — Spike: LM Studio inference throughput benchmark
 
 ### TC-002-01 (Happy path) — Model availability confirmed
+
 1. **Manual:** Query LM Studio's local catalog/API for the configured summarization model
    (originally Gemma 4 E4B per ADR-013; superseded 2026-08-01 by Llama 3.2 3B Instruct per
    ADR-017 — see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9-§10 for why).
@@ -48,6 +52,7 @@ LM Studio instance — those steps are marked **Manual**).
    this identifier postdates verifiable training data).
 
 ### TC-002-02 (Happy path) — Throughput benchmark against NFR-001
+
 1. **Manual:** Run a summary-generation request against LM Studio's local API for a representative
    repository README (~1-3 KB of content).
 2. Measure wall-clock time from request to completed summary.
@@ -55,11 +60,13 @@ LM Studio instance — those steps are marked **Manual**).
    per repository" target, and the spike states pass/fail against that target.
 
 ### TC-002-03 (Edge case) — Model unavailable or underperforming
+
 1. If TC-002-01 finds the model unavailable, or TC-002-02 shows throughput far outside the NFR-001
    target: **expect** the spike's output explicitly recommends revisiting ADR-013 or NFR-001,
    per F-002's acceptance criteria, rather than silently proceeding.
 
 ### TC-002-04 (Regression-sensitive) — Repeatability
+
 1. Run the same benchmark request 3 times in a row.
 2. **Expect:** the spike reports variance across runs (not just a single sample), since a single
    fast run could mask a p95 tail-latency problem relevant to NFR-001.
@@ -69,16 +76,19 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-003 — Project scaffolding & Docker Compose skeleton
 
 ### TC-003-01 (Happy path) — Backend builds
+
 1. From `src/`, run `dotnet build` against the scaffolded .NET 10 solution.
 2. **Expect:** build succeeds with zero errors; all projects target `net10.0`; Wolverine is a
    referenced package; a vertical-slice folder convention is visible in the project layout.
 
 ### TC-003-02 (Happy path) — Frontend builds
+
 1. From the Angular project directory, run the Angular CLI production build.
 2. **Expect:** build succeeds with zero errors; Angular Material + CDK are installed and confirmed
    compatible with the scaffolded Angular version; a Material theme is configured.
 
 ### TC-003-03 (Happy path) — Static asset integration
+
 1. Build the Angular app, then build/run the .NET host.
 2. Request the host's root URL.
 3. **Expect:** the Angular build output is served from the ASP.NET Core host's static file root
@@ -86,6 +96,7 @@ LM Studio instance — those steps are marked **Manual**).
    served from a separate process).
 
 ### TC-003-04 (Happy path) — `make up` brings up the full stack (Compose + host LM Studio, ADR-016)
+
 1. Run `make up` from the repo root.
 2. **Expect:** Docker Compose brings up two services — the app container (API + served dashboard)
    and `postgres:18.4` (pinned tag, verified via `docker compose config` or image inspection — must
@@ -93,7 +104,7 @@ LM Studio instance — those steps are marked **Manual**).
    host-installed, already on the operator's machine).
 3. **Expect:** the Makefile checks Docker is running (starting Docker Desktop if needed), checks
    LM Studio's local server is responding on its configured port (starting it via `lms server
-   start` if needed), and loads the configured model (`LMSTUDIO_MODEL`, default
+start` if needed), and loads the configured model (`LMSTUDIO_MODEL`, default
    `llama-3.2-3b-instruct` per ADR-017) via `lms load`.
 4. **Expect:** `make status` (or manual `curl`) confirms all three are reachable — HTTP 200 on the
    app's health endpoint, a successful `pg_isready` against Postgres, and a reachable LM Studio API
@@ -103,6 +114,7 @@ LM Studio instance — those steps are marked **Manual**).
    erroring or reloading.
 
 ### TC-003-05 (Edge case) — Package compatibility with .NET 10 / PostgreSQL 18
+
 1. Inspect the scaffolded solution's package references: EF Core, Hangfire, Wolverine, GitHub API
    client, Npgsql.
 2. **Expect:** each is confirmed compatible with .NET 10 and (for Npgsql/EF Core) PostgreSQL 18 —
@@ -110,6 +122,7 @@ LM Studio instance — those steps are marked **Manual**).
    package requires a preview/RC version to support .NET 10 at time of scaffolding.
 
 ### TC-003-06 (Regression-sensitive) — Clean rebuild from scratch
+
 1. Remove all build artifacts and containers (`docker compose down -v`, `dotnet clean`).
 2. Re-run TC-003-01 through TC-003-04 from a clean checkout.
 3. **Expect:** identical successful outcome — scaffolding must not depend on stale local state
@@ -120,6 +133,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-004 — Data Store schema (EF Core)
 
 ### TC-004-01 (Happy path) — Migration applies cleanly to a fresh PostgreSQL 18.4 instance
+
 1. From `src/backend/GitCrawler.Api`, against a freshly-created, empty PostgreSQL 18.4 database
    (e.g. a clean `make up` with an empty `data/postgres/` bind mount), start the app.
 2. **Expect:** `Program.cs`'s startup `Database.Migrate()` call applies the `InitialCreate`,
@@ -131,6 +145,7 @@ LM Studio instance — those steps are marked **Manual**).
    in `psql`, or `dotnet ef migrations script` against the three migrations.
 
 ### TC-004-02 (Edge case) — Hangfire schema coexists without collision
+
 1. After F-006's Hangfire wiring runs at least once against the same database, inspect the
    database's schemas.
 2. **Expect:** Hangfire's own job-storage tables live under a separate `hangfire` schema
@@ -138,6 +153,7 @@ LM Studio instance — those steps are marked **Manual**).
    name collisions, no EF Core migration defines any Hangfire table.
 
 ### TC-004-03 (Regression-sensitive) — Idempotent upsert target exists
+
 1. Insert two `Repository` rows with the same `GitHubId` directly via `INSERT` (bypassing the
    application).
 2. **Expect:** the second insert fails with a unique-constraint violation on `GitHubId` — proves
@@ -149,6 +165,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-005 — GitHub Crawler
 
 ### TC-005-01 (Happy path) — Discovery and idempotent upsert
+
 1. **Manual/live** (requires `GITHUB_TOKEN`): trigger `DiscoverRepositoriesCommand` (directly via a
    test harness invoking Wolverine's `IMessageBus.InvokeAsync`, or by waiting for F-006's scheduled
    `discover-repositories` Hangfire job to fire).
@@ -161,6 +178,7 @@ LM Studio instance — those steps are marked **Manual**).
    place (e.g. `LastCrawledAtUtc` advances).
 
 ### TC-005-02 (Edge case) — Contributor-count caching cadence
+
 1. Crawl a repo for the first time. **Expect:** `ContributorCountFetchedAtUtc` is set and a REST
    call was made (per the F-001 spike §7 mitigation).
 2. Re-crawl the same repo within 7 days. **Expect:** no new REST contributor-count call is made
@@ -169,6 +187,7 @@ LM Studio instance — those steps are marked **Manual**).
    days. **Expect:** a fresh REST call is made and the timestamp advances.
 
 ### TC-005-03 (Regression-sensitive) — Rate-limit backoff actually engages
+
 1. **Manual/simulated:** force a GraphQL `RATE_LIMITED` condition (e.g. exhaust a low-quota test
    token, or substitute a faked `IGitHubDiscoveryClient` in a test harness that throws
    `GitHubGraphQlRateLimitExceededException`).
@@ -182,6 +201,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-006 — Job Scheduler (Hangfire)
 
 ### TC-006-01 (Happy path) — Recurring job registered and dashboard reachable
+
 1. Run `make up`, then check Hangfire's dashboard at `/hangfire` (unauthenticated — no auth
    system exists elsewhere in this single-operator v1; see ADR-009 Consequences for why an
    earlier shared-secret filter was tried and reverted).
@@ -190,6 +210,7 @@ LM Studio instance — those steps are marked **Manual**).
    schedule (`Hangfire:CrawlerCronSchedule`, default `0 3 * * *`).
 
 ### TC-006-02 (Happy path) — Crawl-to-score chaining
+
 1. Trigger the `discover-repositories` job (manually via the dashboard, or by waiting for its
    schedule) against a database with no existing `Score` rows for the discovered repos.
 2. **Expect:** once the crawl completes, a `ComputeScoresJob` continuation fires automatically
@@ -198,6 +219,7 @@ LM Studio instance — those steps are marked **Manual**).
    §3.
 
 ### TC-006-03 (Regression-sensitive) — Mid-run restart doesn't duplicate or drop work
+
 1. Start a crawl, then restart the `app` container mid-run (`docker compose restart app` while a
    crawl is in progress).
 2. **Expect:** Hangfire's PostgreSQL-backed storage means the job's state survives the restart —
@@ -211,6 +233,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-007 — Scoring Engine
 
 ### TC-007-01 (Happy path) — Score computed from all five independent signals
+
 1. Seed a `Repository` row with known values (e.g. licensed, `CommitCount`=20 over a 2-week-old
    repo, `ContributorCount`=10, `ForkCount`=50, `StarCount`=25), then trigger
    `ComputeScoresCommand`.
@@ -223,6 +246,7 @@ LM Studio instance — those steps are marked **Manual**).
    identifiable, weighted inputs" requirement (FR-002/FR-005), not just "a score gets computed."
 
 ### TC-007-02 (Edge case) — No external calls, no license, brand-new repo
+
 1. Confirm (via code inspection or a network-call assertion in a test harness) that
    `ComputeScoresCommandHandler`/`ScoringWeights` make zero HTTP/GraphQL calls — pure computation
    per Architecture §3.
@@ -234,6 +258,7 @@ LM Studio instance — those steps are marked **Manual**).
    repo's rate can spike.
 
 ### TC-007-03 (Regression-sensitive) — Re-scoring on re-crawl, not duplicated per run
+
 1. Score a repository once. Re-run `ComputeScoresCommand` immediately without an intervening
    crawl. **Expect:** no new `Score` row is added (the repo's existing score is already newer than
    `LastCrawledAtUtc` — the "needs scoring" condition skips it).
@@ -247,6 +272,7 @@ LM Studio instance — those steps are marked **Manual**).
 ## F-008 — Summarizer (LM Studio + Llama 3.2 3B Instruct)
 
 ### TC-008-01 (Happy path) — Top-scored repository without a summary is summarized
+
 1. Seed a `Repository` with a latest `Score.TotalScore` ≥ `Summarization:MinimumScore` (default 40)
    and no existing `Summary` row, then trigger `GenerateSummariesCommand`.
 2. **Expect:** a `Summary` row is written for the repository (`GeneratedAtUtc` set) with **both**
@@ -257,6 +283,7 @@ LM Studio instance — those steps are marked **Manual**).
    one" AC.
 
 ### TC-008-02 (Edge case) — Below-threshold and already-summarized repos are excluded
+
 1. Seed one repository with a latest score below `Summarization:MinimumScore`, and a second with a
    score well above it but an existing `Summary` row. Trigger `GenerateSummariesCommand`.
 2. **Expect:** neither repository is summarized — the below-threshold repo counts toward
@@ -265,6 +292,7 @@ LM Studio instance — those steps are marked **Manual**).
    append-history/re-scoring-on-recrawl behavior, per the Task Packet).
 
 ### TC-008-03 (Edge case) — Missing README (404) does not block summarization
+
 1. Seed an eligible repository. Configure the README fetch (`GET /repos/{owner}/{repo}/readme`) to
    return `404`, then trigger `GenerateSummariesCommand`.
 2. **Expect:** the repository is still summarized (`SummarizedCount` increments), using
@@ -272,6 +300,7 @@ LM Studio instance — those steps are marked **Manual**).
    per-repo failure.
 
 ### TC-008-04 (Regression-sensitive) — Eligibility uses the latest score by time, not the highest ever
+
 1. Seed a repository with two `Score` rows: an earlier one above `MinimumScore`, and a
    chronologically later one (by `ComputedAtUtc`) below it (i.e., the repo went stale on a
    re-crawl). Trigger `GenerateSummariesCommand`.
@@ -280,6 +309,7 @@ LM Studio instance — those steps are marked **Manual**).
    getting this wrong would permanently summarize a repo off a stale high score.
 
 ### TC-008-05 (Regression-sensitive) — Per-repository failure does not abort the batch
+
 1. Seed two eligible repositories. Configure `IRepositorySummarizer` (or the LM Studio call) to
    throw for the first and succeed for the second, then trigger `GenerateSummariesCommand`.
 2. **Expect:** the failing repository is logged and skipped (`FailedCount` increments, no `Summary`
@@ -288,6 +318,7 @@ LM Studio instance — those steps are marked **Manual**).
    never abort the whole run.
 
 ### TC-008-06 (Edge case) — Batch size caps a single run
+
 1. Seed more eligible repositories than `Summarization:BatchSize` (default 20; use a smaller
    configured value to keep the test fast), then trigger `GenerateSummariesCommand`.
 2. **Expect:** exactly `BatchSize` repositories are summarized (highest-scored first), the remainder
@@ -295,6 +326,7 @@ LM Studio instance — those steps are marked **Manual**).
    they still have no `Summary` row.
 
 ### TC-008-07 (Happy path) — Score-to-summarize chaining (F-006/F-009 chain link 3)
+
 1. Trigger the `compute-scores` continuation (or wait for the crawl-to-score chain, F-006 TC-006-02)
    against a database containing at least one top-scored repo without a summary.
 2. **Expect:** once scoring completes, a `GenerateSummariesJob` continuation fires automatically
@@ -302,6 +334,7 @@ LM Studio instance — those steps are marked **Manual**).
    for a separate schedule — completing "score before summarize" ordering (Architecture §3).
 
 ### TC-008-08 (Manual) — Live LM Studio summarization quality and throughput
+
 1. **Manual (requires a running LM Studio instance with `llama-3.2-3b-instruct` loaded, per
    ADR-017/`make up`):** trigger `GenerateSummariesCommand` against real top-scored repositories with
    real README content.
@@ -310,9 +343,11 @@ LM Studio instance — those steps are marked **Manual**).
    seconds-per-repository target — consistent with the F-002 spike's live throughput results.
 
 ### TC-008-09 (Regression-sensitive) — README content is capped before being sent to the model
+
 Added 2026-08-04 after a live run against `openclaw/openclaw` (a 111KB/~35,489-token README) failed
 outright: LM Studio rejected the request with `"n_keep: 35489 >= n_ctx: 8192"` — the loaded model's
 context window, exceeded because nothing capped the README's length before it was sent.
+
 1. Seed an eligible repository whose README content exceeds `Summarization:MaxReadmeCharacters`
    (default 6000), then trigger `GenerateSummariesCommand` against a stubbed `IRepositorySummarizer`/
    HTTP handler that records the outgoing prompt text.
@@ -329,6 +364,7 @@ context window, exceeded because nothing capped the README's length before it wa
 ## F-009 — Trend Aggregator
 
 ### TC-009-01 (Happy path) — Scored and summarized repository is counted in its category
+
 1. Seed a repository with `PrimaryLanguage` set, a `Score`, and a `Summary`, then trigger
    `AggregateTrendsCommand`.
 2. **Expect:** a `TrendAggregate` row is written with `Category` = the repo's `PrimaryLanguage`,
@@ -337,6 +373,7 @@ context window, exceeded because nothing capped the README's length before it wa
    F-009's "rolls up scored + summarized repos into trend summaries" AC (FR-008).
 
 ### TC-009-02 (Edge case) — Scored-only (not yet summarized) and null-language repos are excluded
+
 1. Seed one repository with a `Score` but no `Summary`, and a second with both a `Score` and a
    `Summary` but a `null` `PrimaryLanguage`. Trigger `AggregateTrendsCommand`.
 2. **Expect:** neither repository contributes to any `TrendAggregate` row — "scored + summarized"
@@ -344,18 +381,21 @@ context window, exceeded because nothing capped the README's length before it wa
    lumped into a fake "Unknown" category).
 
 ### TC-009-03 (Happy path) — Multiple repositories in the same category aggregate correctly
+
 1. Seed two scored-and-summarized repositories sharing the same `PrimaryLanguage` with different
    `TotalScore` values, then trigger `AggregateTrendsCommand`.
 2. **Expect:** one `TrendAggregate` row for that category, with `RepositoryCount` = 2 and
    `AverageScore` = the arithmetic mean of both repos' latest scores.
 
 ### TC-009-04 (Regression-sensitive) — Rollup uses the latest score by time, not the highest ever
+
 1. Seed a repository with two `Score` rows: an earlier high score and a chronologically later
    (by `ComputedAtUtc`) lower one. Trigger `AggregateTrendsCommand`.
 2. **Expect:** the trend's `AverageScore` reflects the latest score, not the historical peak — same
    "latest by `ComputedAtUtc`" rule F-007/F-008 each apply to their own `Score` reads.
 
 ### TC-009-05 (Regression-sensitive) — Re-running for the same period upserts, never duplicates
+
 1. Trigger `AggregateTrendsCommand` once against a seeded repo, note the resulting `TrendAggregate`
    row's `Id`. Seed a second repository in the same category, then trigger the command again for the
    same period.
@@ -363,16 +403,18 @@ context window, exceeded because nothing capped the README's length before it wa
    `RepositoryCount`/`AverageScore`/`CreatedAtUtc` in place, not a duplicate row. Satisfies NFR-003
    idempotency. As of F-016, this is backed by both layers, not just the handler's own
    query-then-upsert logic: `AggregateTrendsJob` now carries `[DisableConcurrentExecution]`
-   (closing the *simultaneous*-overlap window a single-threaded assumption alone never actually
+   (closing the _simultaneous_-overlap window a single-threaded assumption alone never actually
    enforced), and `(Category, PeriodStart, PeriodEnd)` is now a real unique DB index — see TC-016-02.
 
 ### TC-009-06 (Edge case) — Configurable multi-day period
+
 1. Configure `Trends:PeriodDays` to a value > 1 (e.g. 3), seed an eligible repo, trigger
    `AggregateTrendsCommand`.
 2. **Expect:** `PeriodEnd` = today, `PeriodStart` = `PeriodEnd` − (`PeriodDays` − 1) — confirms the
    window computation, not just the single-day default path.
 
 ### TC-009-07 (Happy path) — Summarize-to-aggregate chaining (F-006/F-009 chain link 4)
+
 1. Trigger the `generate-summaries` continuation (or wait for the score-to-summarize chain,
    TC-008-07) against a database containing at least one newly-summarized repo.
 2. **Expect:** once summarization completes, an `AggregateTrendsJob` continuation fires automatically
@@ -383,16 +425,25 @@ context window, exceeded because nothing capped the README's length before it wa
 
 ## F-018 — Dashboard UX design brief & Claude Designer handoff
 
-No running system to verify — this is a documentation output (`docs/design-briefs/dashboard-ux-brief.md`).
+> **Retired — not runnable.** F-018's deliverable was a document, and that document is gone: the
+> `docs/design-briefs/` bundle was git-ignored, never committed, and has since been deleted. Both
+> cases below are unverifiable and are kept only as a record of what F-018 was accepted against.
+> Design moves to committed artboards under [docs/design/](design/) — see that README for what the
+> retired brief's section numbers referred to, since ~two dozen source comments still cite them.
+> New cases get written against the artboards once they land.
 
-### TC-018-01 (Happy path) — Brief covers all four required views plus filter/sort/bookmark interactions
-1. Open `docs/design-briefs/dashboard-ux-brief.md`.
+No running system to verify — this was a documentation output (`docs/design-briefs/dashboard-ux-brief.md`, deleted).
+
+### TC-018-01 (Happy path, RETIRED) — Brief covers all four required views plus filter/sort/bookmark interactions
+
+1. ~~Open `docs/design-briefs/dashboard-ux-brief.md`.~~ (file deleted)
 2. **Expect:** §4 specifies a layout for each of the four FR-009 views (Discovery Feed, Hidden Gems,
    Trending, Categories); §5 specifies the FR-004 filter/sort facets (language, star range, topic,
    license) and their controls; §6 specifies the FR-007 bookmark create/list/delete interactions
    (collapsed into a single toggle for create/delete, plus a "bookmarked only" filter for list).
 
-### TC-018-02 (Edge case) — Material-only constraint honored, gaps flagged not silently specced
+### TC-018-02 (Edge case, RETIRED) — Material-only constraint honored, gaps flagged not silently specced
+
 1. Confirm §2 states the Angular-Material-only constraint (ADR-011) explicitly.
 2. **Expect:** every component named across §3-§6 is an actual `@angular/material`/`@angular/cdk`
    component; §7 lists every case where Material has no first-class equivalent (infinite scroll,
@@ -400,6 +451,7 @@ No running system to verify — this is a documentation output (`docs/design-bri
    introduces a custom/non-Material widget.
 
 ### TC-018-03 (Regression-sensitive) — Handoff scope is honestly stated, review/approval remains open
+
 1. Confirm §8 (Handoff Note) states plainly that no design-tool invocation or external handoff
    occurred — the document itself is the handoff artifact — and that the resulting UX design still
    requires review/approval before F-011 begins.
@@ -413,11 +465,13 @@ No running system to verify — this is a documentation output (`docs/design-bri
 ## F-010 — Web API
 
 ### TC-010-01 (Happy path) — Hidden Gems filters, sorts, and paginates
+
 Originally exercised via the Discovery Feed endpoint; Discovery Feed was decommissioned 2026-08-03
 (see TC-011-01/TC-011-02) since `GetHiddenGems` already covers the same shared D4 filter/sort/paginate
 contract as a superset — retargeted to Hidden Gems rather than removed, since the underlying
 capability itself didn't go away.
-1. Seed *scored* repositories (Hidden Gems requires at least one `Score` row) with varied
+
+1. Seed _scored_ repositories (Hidden Gems requires at least one `Score` row) with varied
    `PrimaryLanguage`, `StarCount`, `Topics`, `LicenseIdentifier`, and `FirstDiscoveredAtUtc`. Call the
    Hidden Gems endpoint with a combination of `language`, `minStars`/`maxStars`, `topic`, and `license`
    filters plus `sort=Newest&direction=Desc` (overriding its own `Score desc` default).
@@ -428,6 +482,7 @@ capability itself didn't go away.
    order (`Score desc`).
 
 ### TC-010-02 (Happy path) — Hidden Gems exposes the FR-005 weighted signal breakdown
+
 1. Seed a scored repository, call the Hidden Gems endpoint.
 2. **Expect:** the response's score-breakdown block reports each of the five signals
    (license/commits-per-week/contributor count/fork count/star count) alongside the exact
@@ -435,26 +490,29 @@ capability itself didn't go away.
    aggregate number. Default sort is `Score desc`.
 
 ### TC-010-03 (Removed 2026-08-03) — Trending's contributing repos mirror F-009's own membership rule
+
 This scenario covered `/api/trending`'s contributing-repos membership check, removed along with the
 dashboard's Trending view (see TC-011-04) — nothing else consumed that endpoint, so it was deleted
 entirely rather than kept (unlike `/api/categories`, see TC-010-04). Kept as a removed placeholder
 (ID not reused), same precedent as TC-011-11.
 
 ### TC-010-04 (Happy path) — Categories list
+
 Changed 2026-08-04 (operator: "So for just the language filter we have the whole TrendAggregate
 table?"): `CategoryDto` used to carry `RepositoryCount`/`AverageScore`/`PeriodStart`/`PeriodEnd`
 sourced from `TrendAggregate`, none of which `FacetOptionsService` (the sole consumer) ever read —
 only `.category`. The endpoint now queries `Repository.PrimaryLanguage` directly instead;
 `TrendAggregate`/`AggregateTrendsCommand` are unchanged and still run, reserved for F-013's planned
 digest.
-1. Seed two *scored* repositories with different `PrimaryLanguage` values (plus a second, same-
+
+1. Seed two _scored_ repositories with different `PrimaryLanguage` values (plus a second, same-
    language repository, to confirm distinctness) and call the Categories endpoint.
 2. **Expect:** one entry per distinct language among scored repositories — just `{ category: string }`
    now, no rollup fields.
 3. Seed a repository with a `PrimaryLanguage` but no `Score` row. **Expect:** its language is absent
    from the result — matches `GetHiddenGemsQueryHandler`'s own `Scores.Any()` eligibility, so a
    language never appears as a filter option unless selecting it could actually return a result. (This
-   is also a fix over the old `TrendAggregate`-based version, which required both a `Score` *and* a
+   is also a fix over the old `TrendAggregate`-based version, which required both a `Score` _and_ a
    `Summary` before a language appeared here — stricter than Hidden Gems' own Score-only requirement,
    so a newly-scored-but-not-yet-summarized repo's language used to be unfilterable until the next
    nightly Trend Aggregator run despite the repo already appearing on Hidden Gems.)
@@ -464,12 +522,14 @@ digest.
    `Repository.PrimaryLanguage`. That drill-down assertion remains removed here.)
 
 ### TC-010-05 (Happy path) — Bookmark create/list/delete round-trip
+
 1. Call create-bookmark for a repository, then list-bookmarks, then delete-bookmark for the same
    repository, then list-bookmarks again.
 2. **Expect:** the repository appears in the list after create and is absent after delete; a repo
    card's `IsBookmarked` flag flips accordingly on the Hidden Gems endpoint in between (FR-007).
 
 ### TC-010-06 (Edge case) — Bookmark idempotency
+
 1. Call create-bookmark twice in a row for the same repository.
 2. **Expect:** no constraint-violation error on the second call (the unique index on
    `Bookmark.RepositoryId` is respected without surfacing a 409/500).
@@ -477,12 +537,14 @@ digest.
 4. **Expect:** no error — a defined, documented idempotent response either way.
 
 ### TC-010-07 (Edge case) — Topic filter and repos with no topics
-1. Seed one *scored* repository with `Topics` containing a known value and one (also scored) with an
+
+1. Seed one _scored_ repository with `Topics` containing a known value and one (also scored) with an
    empty `Topics` list. Filter Hidden Gems by that topic value.
 2. **Expect:** only the matching repository is returned; the empty-`Topics` repository never matches
    any topic filter and never errors when `Topics` is empty.
 
 ### TC-010-08 (Regression-sensitive) — Score/Commits sort uses the latest score, not the highest ever
+
 1. Seed a repository with two `Score` rows: an earlier high `TotalScore`/`CommitsPerWeek` and a
    chronologically later (by `ComputedAtUtc`) lower one. Call Hidden Gems sorted by `Score desc`, then
    again sorted by `Commits desc`.
@@ -491,18 +553,21 @@ digest.
    "Important context").
 
 ### TC-010-09 (Regression-sensitive) — `FirstDiscoveredAtUtc` is set once, never overwritten
+
 1. Crawl a new repository (first insert). **Expect:** `FirstDiscoveredAtUtc` is set.
 2. Re-crawl the same repository after a delay (`LastCrawledAtUtc` advances).
 3. **Expect:** `FirstDiscoveredAtUtc` is unchanged from step 1 — a repeatedly re-crawled old repo
    must never resurface as "Newest."
 
 ### TC-010-10 (Edge case) — Pagination boundaries
+
 1. Seed exactly `pageSize` + 1 matching repositories. Request page 1, then page 2, then a page far
    beyond the last page.
 2. **Expect:** page 1 returns a full page, page 2 returns exactly one result, and the out-of-range
    page returns an empty result set — never an error.
 
 ### TC-010-11 (Happy path) — Hidden Gems card exposes its own repository's trend growth
+
 Changed 2026-08-04 (operator: "Trend is currently calculated per language. I want it to be calculated
 per repository"): originally computed from `TrendAggregate` — a rollup shared by every repository of
 the same `PrimaryLanguage`, so every C# repo showed the identical growth figure regardless of its own
@@ -510,11 +575,12 @@ standing. Now computed directly from the repository's own `Score` history instea
 gets a new row per repo on every re-crawl, per `ComputeScoresCommandHandler` — no schema change was
 needed); `TrendAggregate` itself is untouched and still backs the Categories/Language-filter endpoint
 (TC-010-04).
+
 1. Seed a repository with two `Score` rows from separate re-crawls (previous `TotalScore` 50, latest
    60), and a second, same-language repository with a single differently-valued `Score`. Call the
    Hidden Gems endpoint.
 2. **Expect:** the first repository's `TrendGrowth` is `"▲ +20% vs. last period"` — computed from
-   *its own* two most recent `Score.TotalScore` values, not blended with the second, same-language
+   _its own_ two most recent `Score.TotalScore` values, not blended with the second, same-language
    repository's score (confirms this is genuinely per-repository, not still secretly per-category).
 3. Repeat with only one `Score` row ever recorded for a repository (no re-crawl yet). **Expect:**
    `TrendGrowth` falls back to `"{score} current score"` (no prior score to diff against — reworded
@@ -530,6 +596,7 @@ needed); `TrendAggregate` itself is untouched and still backs the Categories/Lan
 ## F-011 — Web Dashboard
 
 ### TC-011-01 (Happy path) — Required view renders, is the default route, and is the whole primary nav
+
 1. Load the dashboard. **Expect:** the default route lands on Hidden Gems — the dashboard's sole view
    — composed from Angular Material components (AC1, FR-009); the primary nav has exactly one entry
    ("Hidden Gems"). (Originally four view entries plus a separate F-012 "Bookmarks" entry: Categories
@@ -539,9 +606,11 @@ needed); `TrendAggregate` itself is untouched and still backs the Categories/Lan
    turned out to be redundant with Hidden Gems' own "Bookmarked only" filter — see TC-012-01.)
 
 ### TC-011-02 (Happy path) — Filter/sort controls work end-to-end (Hidden Gems)
+
 Originally exercised on both Discovery Feed and Hidden Gems (steps 1-4 on Discovery Feed, then
 repeated on Hidden Gems); narrowed to Hidden Gems alone now that Discovery Feed is gone (2026-08-03) —
 the filter/sort capability itself is unaffected, only the view exercising it changed.
+
 1. On Hidden Gems, select a language via the Language facet (`mat-select multiple`), narrow the Star
    range slider, add a topic via the autocomplete, select a license.
 2. **Expect:** each selection renders as a removable chip in the active-filter `mat-chip-set`; the
@@ -557,16 +626,18 @@ the filter/sort capability itself is unaffected, only the view exercising it cha
    dialog on 2026-08-04 (see TC-011-14) and are no longer shown inline on the card itself.
 
 ### TC-011-03 (Happy path) — Bookmark toggle, optimistic UI, undo/retry
+
 1. On any Hidden Gems card, click the bookmark toggle.
 2. **Expect:** the icon flips immediately (optimistic), a `mat-snack-bar` confirms ("Added to
    bookmarks") with an "Undo" action, and `POST /api/repositories/{id}/bookmark` fires.
 3. Click "Undo" on the snack-bar. **Expect:** the icon flips back and `DELETE
-   /api/repositories/{id}/bookmark` fires.
+/api/repositories/{id}/bookmark` fires.
 4. Simulate the bookmark API call failing (e.g. stop the backend mid-request). **Expect:** the icon
    reverts to its prior state and the snack-bar shows the error variant ("Couldn't save bookmark —
    try again") with a "Retry" action (FR-007).
 
 ### TC-011-04 (Removed 2026-08-03) — Trending view renders server order, no client-side re-sort
+
 This scenario covered the standalone Trending view (per-category trend cards, server-order rendering,
 expandable contributing-repos panel), decommissioned per the operator's direction to merge Trending
 into Hidden Gems — see TC-010-11/TC-011-13 for its replacement (each Hidden Gems card now shows its
@@ -575,6 +646,7 @@ built, see TC-010-11's own note). Kept as a removed placeholder (ID not reused),
 TC-011-11.
 
 ### TC-011-05 (Removed 2026-08-03) — Categories grid and drill-down
+
 This scenario covered the standalone Categories tile grid and its Category drill-down route, both
 decommissioned per the operator's direction to remove the Categories tab — Category ≡
 `Repository.PrimaryLanguage`, and that value remains fully filterable via the existing Language
@@ -583,6 +655,7 @@ as a removed placeholder (ID not reused) rather than deleted outright, matching 
 precedent for a superseded scenario in this document.
 
 ### TC-011-06 (Edge case) — Empty, loading, and error states
+
 1. Request a filter combination with zero matches. **Expect:** the centered empty-state `mat-card`
    ("No repositories match these filters") with a button that clears all active filters.
 2. Toggle "Bookmarked only" with zero bookmarks. **Expect:** the same empty state, not an error.
@@ -593,6 +666,7 @@ precedent for a superseded scenario in this document.
    spinner) while existing results remain visible.
 
 ### TC-011-07 (Edge case) — Pagination beyond the last page
+
 1. Filter to a small result set, then request a page far beyond the last page (mirrors TC-010-10 at
    the UI layer).
 2. **Expect:** the empty state renders (per TC-011-06), not a crash or an unhandled error — the API's
@@ -600,6 +674,7 @@ precedent for a superseded scenario in this document.
    filter.
 
 ### TC-011-08 (Edge case) — "Summary pending" placeholder, no layout jump
+
 1. Render a card whose `summaryContent` is `null` (repo scored/discovered but not yet summarized by
    F-008). **Expect:** a fixed-height "Summary pending" placeholder renders in the summary slot, not
    an empty area.
@@ -608,11 +683,13 @@ precedent for a superseded scenario in this document.
    change/layout shift.
 
 ### TC-011-09 (Edge case) — Responsive collapse at the 960px breakpoint
+
 Step 2's original "primary nav collapses to a bottom floating pill nav" no longer applies — the
 primary nav (Hidden Gems/Bookmarks entries, then just Hidden Gems) was removed entirely on 2026-08-04
 once Hidden Gems became the dashboard's only page ("remove the hidden gems tab, we only have one
 page"); the toolbar today is brand + a reserved search placeholder only, with nothing to collapse at
 any width. Only the filter/sort bar's own collapse behavior still applies.
+
 1. Resize the viewport below 960px on Hidden Gems.
 2. **Expect:** the filter/sort bar collapses to a single "Filters · N" button (N = active filter
    count) that opens a `mat-sidenav` containing the same controls the desktop layout shows inline;
@@ -625,15 +702,17 @@ any width. Only the filter/sort bar's own collapse behavior still applies.
    check added 2026-08-04 after an operator screenshot showed grid content painting on top of the
    opened sidenav (`.filter-bar__sheet-container` shipped Angular Material's own default `z-index: 1`
    on the container element itself, distinct from the `z-index: 20` this app already applied to the
-   sidenav/backdrop *children* — fixed by raising the container to the same `z-index: 20` plus
+   sidenav/backdrop _children_ — fixed by raising the container to the same `z-index: 20` plus
    `isolation: isolate`, confirmed against the live render).
 
 ### TC-011-10 (Removed 2026-08-03) — Category name requiring URL encoding
+
 This scenario covered URL-encoding for the Category drill-down route, removed alongside the rest of
 the Categories tab (see TC-011-05). Kept as a removed placeholder (ID not reused), same precedent as
 TC-011-11.
 
 ### TC-011-11 (Regression-sensitive) — Reserved v2 placeholder is inert
+
 1. Inspect the primary nav and the filter-bar area.
 2. **Expect:** the disabled "Search (v2)" field is present (dashed border, reduced opacity) but not
    wired to any handler — clicking it does nothing. This placeholder exists so the shell won't
@@ -644,6 +723,7 @@ TC-011-11.
    "Search (v2)" placeholder-inertness assertion above remains accurate and unchanged.)
 
 ### TC-011-12 (Manual) — Live build-and-serve smoke test (FR-009 AC3)
+
 1. Run `dotnet publish` (or the Docker image build) against `src/backend/GitCrawler.Api` with a real
    Node toolchain available, so `BuildAngularApp`/`CopyAngularApp` execute for real (not just
    `npm run build` in isolation, which the Developer already verified produces
@@ -658,10 +738,12 @@ TC-011-11.
    Integration passes disclosed for their own live-infrastructure checks (`docs/handoff.md`).
 
 ### TC-011-13 (Happy path) — Detail dialog renders the trend-growth chip
+
 Retargeted 2026-08-04 (capability persists, only the vehicle changed, same precedent as TC-010-01's
 Discovery Feed retargeting): the trend-growth chip was removed from the compact card entirely that
 same day ("dont show trending pilll on the card... just show topic, license on bottom left and
 github link on bottom right") — it renders only in the click-through detail dialog now (TC-011-14).
+
 1. Open the detail dialog (TC-011-14) for a repository. **Expect:** its chip row renders a chip with
    `trendGrowth`'s exact text (see TC-010-11 for how the API now computes it per repository).
 2. Per TC-010-11's step 4, `trendGrowth` is never `null` for a repository Hidden Gems returns at all
@@ -669,6 +751,7 @@ github link on bottom right") — it renders only in the click-through detail di
    there is no "chip omitted" case left to test here.
 
 ### TC-011-14 (Happy path) — Card click opens the repository detail dialog (design brief §09)
+
 Converted 2026-08-04 from a right-side `mat-drawer` to a centered `MatDialog` ("i want the overlay to
 show under the header. And i want this detail pane to be centered like a modal") — the drawer-specific
 assertions below (backdrop click, viewport-width panel) are updated for the dialog's actual behavior,
@@ -676,6 +759,7 @@ not carried over unchanged. The card's own "Why this score?" panel referenced in
 of this scenario no longer exists (removed the same day, folded into this dialog's own score-breakdown
 footer instead) — this scenario no longer compares the dialog's breakdown against a card-level panel,
 since there isn't one to compare against.
+
 1. On Hidden Gems, click a card anywhere except the bookmark toggle or the "Open on GitHub" link (the
    card itself no longer has any other interactive control to avoid, now that the score panel is
    gone).
@@ -692,17 +776,21 @@ since there isn't one to compare against.
    **Expect:** same result (`MatDialog`'s default backdrop-click-to-close behavior).
 
 ### TC-011-15 (Edge case) — Card's own interactive controls don't also open the detail dialog
+
 Narrowed 2026-08-04: the "Why this score?" panel step below no longer applies — that control was
 removed from the card the same day (see TC-011-14's own note) — leaving only the bookmark toggle and
 the "Open on GitHub" link as the card's interactive controls to check.
+
 1. Click the bookmark toggle on a card. **Expect:** it toggles as usual (TC-011-03) and the detail
    dialog does **not** open.
 2. Click a card's "Open on GitHub" link. **Expect:** it navigates (new tab) and the detail dialog does
    **not** open.
 
 ### TC-011-16 (Edge case) — Paginator page-size options
+
 Added 2026-08-04 (operator: "the items per page should be a dropdown with options for 24, 48 and 64
 items").
+
 1. Open the paginator's items-per-page control.
 2. **Expect:** exactly three options — 24, 48, 64 — not a single option matching whatever page size
    happens to already be selected. Selecting a different one re-fetches with the new `pageSize` and
@@ -718,16 +806,19 @@ own feature, TC-011-03) and the "Bookmarked only" filter (TC-011-02, TC-012-05) 
 surface.
 
 ### TC-012-01 (Removed 2026-08-03) — Dedicated Bookmarks view lists bookmarked repos
+
 This scenario covered the standalone `/bookmarks` route's own card-grid listing, decommissioned per
 the operator's direction ("i dont think we need the bookmarks tab either since its a filter on the
 hidden gems tab") — accurate: Hidden Gems' existing "Bookmarked only" filter (TC-012-05) surfaces the
 identical set. Kept as a removed placeholder (ID not reused), same precedent as TC-011-11.
 
 ### TC-012-02 (Removed 2026-08-03) — Nav pill is live, not a ghost
+
 This scenario covered the "Bookmarks" nav entry itself, gone along with the view it routed to. Kept
 as a removed placeholder (ID not reused), same precedent as TC-011-11.
 
 ### TC-012-03 (Removed 2026-08-03) — Empty bookmarks state
+
 This scenario covered the dedicated view's own bookmarks-specific empty-state copy; with the view
 gone, an empty "Bookmarked only" filter on Hidden Gems now renders the ordinary, already-covered
 TC-011-06 filter-empty state instead (a behavior change, not a gap — there's no longer a
@@ -735,6 +826,7 @@ filter-bar-less view to need different copy for). Kept as a removed placeholder 
 precedent as TC-011-11.
 
 ### TC-012-04 (Removed 2026-08-03) — Un-bookmarking from the Bookmarks view removes it immediately
+
 This scenario covered a behavior specific to the dedicated view (a card leaving the grid on
 un-bookmark, since that view had no other reason to list it). On Hidden Gems, un-bookmarking a card
 while "Bookmarked only" is active removes it from view the same way, via the same underlying
@@ -743,15 +835,18 @@ distinct behavior needing its own scenario. Kept as a removed placeholder (ID no
 precedent as TC-011-11.
 
 ### TC-012-05 (Regression-sensitive) — "Bookmarked only" filter reflects current bookmark state
+
 Originally covered cross-view sync between Hidden Gems and the now-removed dedicated Bookmarks view;
 retargeted in place to the single remaining view now that there's only one (capability persists, only
 the vehicle changed — not marked Removed, same precedent as TC-010-01's Discovery Feed retargeting).
+
 1. On Hidden Gems, bookmark a repo, then toggle "Bookmarked only" on. **Expect:** the repo appears.
 2. Un-bookmark it from within the filtered view. **Expect:** it disappears from the current result
    set (its `IsBookmarked` flag flipped, so it no longer matches `bookmarkedOnly=true` on the next
    fetch) — no stale "still bookmarked" toggle or lingering card from a cached prior fetch.
 
 ### TC-012-06 (Removed 2026-08-03) — List-fetch error state
+
 This scenario covered `GET /api/bookmarks` specifically, an endpoint fully removed along with the
 dedicated view it alone served — Hidden Gems' own request-failure handling (TC-011-06) already covers
 the "Bookmarked only" filter, since it's just another facet on the same endpoint. Kept as a removed
@@ -762,6 +857,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
 ## F-013 — Digest Service
 
 ### TC-013-01 (Happy path) — Daily digest composed and sent with top hidden gems + trend summaries
+
 1. Seed several scored-and-summarized repositories with varying `TotalScore`, plus at least one
    `TrendAggregate` row for today's period. Trigger `SendDigestCommand` (directly via
    `IMessageBus.InvokeAsync`, or by waiting for its scheduled Hangfire trigger).
@@ -772,6 +868,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
    sends a daily email with top hidden gems and trend summaries" AC (FR-006).
 
 ### TC-013-02 (Edge case) — Send failure is logged, not silently dropped
+
 1. Configure the SMTP client to fail (e.g. an unreachable host, or a stubbed mail-transport dependency
    that throws), then trigger `SendDigestCommand`.
 2. **Expect:** the failure is logged (visible in the app's structured logs, at `Error`/`Warning` level)
@@ -781,12 +878,14 @@ placeholder (ID not reused), same precedent as TC-011-11.
    dropped" means the log itself is the check, not a skip-and-continue count.
 
 ### TC-013-03 (Edge case) — No eligible repos or trend data for today
+
 1. Trigger `SendDigestCommand` against a database with no scored repos meeting the digest's inclusion
    bar, and no `TrendAggregate` row for the current period.
 2. **Expect:** the digest either sends an email stating there's nothing new, or explicitly skips
    sending with a logged reason — never silently sends a malformed/empty-body email, and never throws.
 
 ### TC-013-04 (Regression-sensitive) — Digest reflects each repo's latest score, not a historical peak
+
 1. Seed a repository with two `Score` rows: an earlier high score and a chronologically later (by
    `ComputedAtUtc`) lower one, positioned so the earlier score alone would place it in the top-N but
    the later one would not.
@@ -795,6 +894,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
    each already apply to their own `Score` reads.
 
 ### TC-013-05 (Manual) — Live SMTP delivery
+
 1. **Manual (requires a real or local-relay SMTP endpoint configured):** trigger `SendDigestCommand`
    against real data and confirm an email actually arrives at the configured recipient(s), rendering
    correctly (subject, top hidden gems, trend summaries) in a real mail client.
@@ -806,6 +906,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
 ## F-014 — Observability
 
 ### TC-014-01 (Happy path) — Every command/query stage emits structured stage-level metrics
+
 1. Trigger a representative sample of existing pipeline commands/queries (e.g.
    `DiscoverRepositoriesCommand`, `ComputeScoresCommand`, `GenerateSummariesCommand`,
    `AggregateTrendsCommand`, and at least one Web API query handler) with the Wolverine observability
@@ -816,6 +917,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
    scheduled pipeline jobs.
 
 ### TC-014-02 (Edge case) — Failures are captured per stage, not just successes
+
 1. Force a handler to throw (e.g. a stubbed dependency failure in `GenerateSummariesCommandHandler`),
    with the middleware active.
 2. **Expect:** the emitted stage record reflects the failure (failure count/flag set, exception detail
@@ -823,6 +925,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
    stage" half of F-014's AC.
 
 ### TC-014-03 (Regression-sensitive) — Middleware adds stage-level detail beyond the Hangfire dashboard, without duplicating it
+
 1. Compare what the Hangfire dashboard (F-006) already shows for a job run (start/end time,
    succeeded/failed, retry count) against what the new middleware emits for the same run.
 2. **Expect:** the middleware's output includes detail the Hangfire dashboard does not capture (e.g.
@@ -832,6 +935,7 @@ placeholder (ID not reused), same precedent as TC-011-11.
    dashboard ... F-014 still needed for stage-level detail").
 
 ### TC-014-04 (Manual) — A stuck or rate-limited run is diagnosable from logs/metrics alone
+
 1. **Manual/simulated:** reproduce a rate-limited crawl (same trigger as TC-005-03) or otherwise stall
    a stage, with the observability middleware active, then attempt to determine what stage is stuck
    and why using only the emitted logs/metrics — no debugger attached.
@@ -862,6 +966,7 @@ and GitHub retry/backoff (ADR-018/Polly, TC-005 already covers this). The scenar
 three real gaps F-016 closed.
 
 ### TC-016-01 (Regression-sensitive) — Every pipeline job rejects a simultaneous concurrent trigger
+
 1. Inspect (or attempt to concurrently invoke) each of the five pipeline `*Job.RunAsync` entry points:
    `DiscoverRepositoriesJob`, `ComputeScoresJob`, `GenerateSummariesJob`, `AggregateTrendsJob`,
    `SendDigestJob`.
@@ -873,15 +978,17 @@ three real gaps F-016 closed.
    `DiscoverRepositoriesJobTests`, `SendDigestJobTests`), not just by code inspection.
 
 ### TC-016-02 (Regression-sensitive) — TrendAggregate's natural key is a real unique DB constraint, not just upsert logic
+
 1. Insert a `TrendAggregate` row for a given `(Category, PeriodStart, PeriodEnd)`, then attempt to
    insert a second row for the exact same triple.
 2. **Expect:** the second insert throws `DbUpdateException` — the schema itself now enforces
    `AggregateTrendsCommandHandler`'s upsert key (replacing the old non-unique `(Category,
-   PeriodStart)` index), backing TC-009-05's upsert behavior with a real constraint rather than
+PeriodStart)` index), backing TC-009-05's upsert behavior with a real constraint rather than
    relying solely on the job being single-threaded. Covered by
    `TrendAggregate_DuplicateNaturalKey_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`.
 
 ### TC-016-03 (Regression-sensitive) — Summary.RepositoryId is a real unique DB constraint
+
 1. Insert a `Summary` row for a repository, then attempt to insert a second `Summary` row for the
    same `RepositoryId`.
 2. **Expect:** the second insert throws `DbUpdateException` — a `Summary` is create-once and never
@@ -891,6 +998,7 @@ three real gaps F-016 closed.
    `Summary_DuplicateRepositoryId_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`.
 
 ### TC-016-04 (Regression-sensitive) — A same-day digest retry after a crash does not re-send
+
 1. Trigger `SendDigestCommand` successfully for a given day (an outbound send occurs, and a
    `DigestSendLog` row is written for that `SentForDate`). Trigger `SendDigestCommand` again for the
    same day (simulating a Hangfire automatic-retry that fires after the process died between the
@@ -898,10 +1006,10 @@ three real gaps F-016 closed.
 2. **Expect:** the second invocation sends nothing — it's blocked by the persisted `DigestSendLog`
    marker checked first in `HandleAsync`, before any composition/query work, and returns
    `Sent: false`. Distinct from TC-016-01's `[DisableConcurrentExecution]` guard on `SendDigestJob`,
-   which only closes the *simultaneous*-overlap window between two truly concurrent executions — this
-   is a *sequential* retry of an already-completed attempt, needing its own independent guard.
+   which only closes the _simultaneous_-overlap window between two truly concurrent executions — this
+   is a _sequential_ retry of an already-completed attempt, needing its own independent guard.
    Covered by `Handle_InvokedTwiceForSameDay_SendsOnlyOnce_SecondInvocationReportsNotSent` in
-   `SendDigestCommandHandlerTests.cs`. Also confirm a `DigestSendLog` row from a *prior* day does not
+   `SendDigestCommandHandlerTests.cs`. Also confirm a `DigestSendLog` row from a _prior_ day does not
    block today's send (`Handle_PriorDaySentMarker_DoesNotBlockTodaysSend`) and that the schema itself
    rejects two `DigestSendLog` rows for the same `SentForDate`
    (`DigestSendLog_DuplicateSentForDate_ViolatesUniqueConstraint` in `GitCrawlerDbContextTests.cs`).
@@ -911,7 +1019,7 @@ three real gaps F-016 closed.
 ## F-017 — Scalability: indexing & partitioning strategy
 
 Pre-flight (2026-08-07) found the dashboard's core filter/sort path — `GetHiddenGemsQueryHandler` —
-materialized *all* scored repositories matching the filters (with their complete `Scores`/`Summaries`/
+materialized _all_ scored repositories matching the filters (with their complete `Scores`/`Summaries`/
 `Bookmarks` collections) via `.ToListAsync()`, then sorted and paginated **in application memory**
 (`RepositoryCardQuery.Rank`/`Paginate`). At the 100k+ repos / 1M+ records target that loads the entire
 match set plus full score history into process memory on every page request — no index can fix a
@@ -920,6 +1028,7 @@ the server-side sort/pagination rewrite, and the documented partitioning strateg
 seeded scratch database sized toward the NFR-004 target (never the operator's real dev/crawl data).
 
 ### TC-017-01 (Happy path / performance) — Core filter/sort page requests stay fast at seeded scale
+
 1. Seed a **separate scratch database** (not the real dev database) toward the NFR-004 target:
    100k+ repositories with 1M+ `Score` rows (append-per-recrawl history), plus representative
    `Summary`/`Bookmark` coverage, via F-017's seed harness.
@@ -930,7 +1039,7 @@ seeded scratch database sized toward the NFR-004 target (never the operator's re
    in practice these should be orders of magnitude under it), and `EXPLAIN ANALYZE` evidence shows
    the supporting indexes are used (no unbounded sequential scan + full materialization of the match
    set). Per-request cost is bounded by page size, not by total dataset size.
-4. **Known caveat (amended 2026-08-07; measured same day):** the *unfiltered* Score/Commits sort
+4. **Known caveat (amended 2026-08-07; measured same day):** the _unfiltered_ Score/Commits sort
    paths evaluate a correlated-subquery sort key for every matching row before LIMIT applies —
    that path is bounded by match count, not page size. **Authoritative measurement
    (Orchestrator, 2026-08-07, 100k repos / 1M scores):** Score DESC 4904ms, Commits DESC 4816ms
@@ -941,6 +1050,7 @@ seeded scratch database sized toward the NFR-004 target (never the operator's re
    partitioning strategy).
 
 ### TC-017-02 (Edge case) — Boundary requests at seeded scale don't fall back to full scans
+
 1. Against the same seeded scratch database: request a page beyond the last page, a filter
    combination matching zero repositories, and a combination matching exactly one.
 2. **Expect:** all three return promptly with correct shapes (empty slice / empty page with
@@ -948,8 +1058,9 @@ seeded scratch database sized toward the NFR-004 target (never the operator's re
    in the documented beyond-last-page behavior (empty slice, not an error).
 
 ### TC-017-03 (Regression-sensitive) — The rewrite changes where sorting happens, not what it returns
+
 1. With fixtures covering the semantics the in-memory pipeline used to own: a repo whose
-   chronologically-latest `Score` is *lower* than an earlier one; two repos tying on the sort key;
+   chronologically-latest `Score` is _lower_ than an earlier one; two repos tying on the sort key;
    a repo with no `Summary` yet; a repo with multiple `Score` rows for the per-repository
    `TrendGrowth` computation.
 2. **Expect:** sort uses the latest (not highest-ever) score; ties break deterministically by
@@ -960,6 +1071,7 @@ seeded scratch database sized toward the NFR-004 target (never the operator's re
    the rewrite must behave identically there and on Npgsql/Postgres).
 
 ### TC-017-04 (Regression-sensitive) — New indexes exist at the schema level and apply cleanly
+
 1. Apply F-017's migration to a fresh database; inspect the resulting schema (or the EF model /
    model snapshot).
 2. **Expect:** the new indexes F-017 introduces for the filter/sort paths exist exactly as
@@ -968,6 +1080,7 @@ seeded scratch database sized toward the NFR-004 target (never the operator's re
    or weakened, and the migration applies cleanly to a fresh PostgreSQL 18.4 instance.
 
 ### TC-017-05 (Documentation) — The partitioning strategy is recorded, not silently deferred
+
 1. Read `docs/architecture.md`'s NFR-004 treatment after F-017 completes.
 2. **Expect:** it records the partitioning/archiving decision for the one unbounded,
    append-per-recrawl table (`Score`): why physical partitioning is not adopted at the 1M-record
@@ -977,25 +1090,26 @@ seeded scratch database sized toward the NFR-004 target (never the operator's re
 ---
 
 ## Version History
-| Version | Date | Change | Triggered By |
-|---------|------|--------|---------------|
-| v1 | 2026-07-31 | Initial draft covering Phase 0 (F-001, F-002, F-003) | Orchestrator Step 0.0 gap — no test-cases-doc existed at build handoff |
-| v2 | 2026-08-02 | Added Phase 1 scenarios: TC-004 (Data Store schema), TC-005 (GitHub Crawler), TC-006 (Job Scheduler), TC-007 (Scoring Engine, including the five-signal independence check added after the star-count amendment) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 0 when Phase 1 features completed |
-| v3 | 2026-08-02 | TC-006-01 updated: Hangfire dashboard access control removed (F-006), so the `?key=` requirement and the access-denied assertion no longer apply | Operator: "remove the auth for hangfire" |
-| v4 | 2026-08-02 | Added Phase 2 scenarios: TC-008 (Summarizer, including score-to-summarize chaining and a Manual live-LM-Studio quality/throughput check), TC-009 (Trend Aggregator, including the upsert-idempotency and summarize-to-aggregate chaining checks), TC-018 (Dashboard UX design brief, documentation-only) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 1 when Phase 2 features completed (same gap-closure pattern as v2) |
-| v5 | 2026-08-02 | Added F-010 scenarios (TC-010): Discovery Feed/Hidden Gems/Trending/Categories filter-sort-paginate contract, bookmark CRUD + idempotency, topic filtering, and two regression checks specific to F-010's two schema additions (`FirstDiscoveredAtUtc` set-once, latest-not-highest score sort) | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended for F-010 when it completed (same gap-closure pattern as v2/v4); F-010 was run as a standalone slice of Phase 3, not the full phase |
-| v6 | 2026-08-02 | Added F-011 scenarios (TC-011): four-view navigation, filter/sort end-to-end, bookmark toggle optimistic/undo/retry, Trending server-order rendering, Categories grid/drill-down, loading/empty/error states, pagination-beyond-last-page, "Summary pending" no-layout-jump, 960px responsive collapse (filter bar → sidenav, nav → bottom pills), category-name URL-encoding, reserved F-012/v2 placeholder inertness, and a Manual live-publish smoke test for FR-009 AC3 | Orchestrator drafted this section directly, before dispatching the Integration Agent, per this skill's own Step 0.0 gap-closure pattern (same as v2/v4/v5) — stated explicitly to both the Integration and Reviewer-Integration Agents in their prompts to avoid the misattribution the F-010 run's Reviewer-Integration initially made (`docs/handoff.md` "Important context") |
-| v7 | 2026-08-03 | Added F-012 scenarios (TC-012): dedicated `/bookmarks` view lists bookmarks server-ordered, live nav pill replacing the F-011 ghost placeholder, bookmarks-specific empty state, un-bookmark-removes-card-from-this-view behavior (distinct from the generic toggle check), cross-view bookmark-state sync, and list-fetch error state | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-012 coverage before this feature's Task Packet was generated (same pattern as v2/v4/v5/v6), drafted before dispatching the Developer Agent this time (F-012's Task Packet references these scenarios directly) |
-| v8 | 2026-08-03 | TC-011-11 updated: removed its now-contradicted assertion that the "Bookmarks · F-012" nav pill is present/disabled (F-012 replaced it with a live nav entry — TC-012-02), retitled to "Reserved v2 placeholder is inert", and kept the still-accurate "Search (v2)" inert-placeholder assertion | F-012 Integration pass, retry after Reviewer-Integration flagged the internal TC-011-11/TC-012-02 contradiction |
-| v9 | 2026-08-03 | Categories tab decommissioned: TC-010-04 narrowed to the still-live Categories list endpoint only (drill-down step removed); TC-011-01 narrowed to three required views; TC-011-03/TC-012-01/TC-012-05 no longer mention Categories/a Category drill-down as a card source; TC-011-05 and TC-011-10 marked Removed (IDs kept, not reused, same precedent as TC-011-11) | Operator: "make category a filter and get rid of the category tab" — implemented directly via Claude Code, not an orchestrated run |
-| v10 | 2026-08-03 | Trending tab decommissioned and merged into Hidden Gems: TC-010-03 and TC-011-04 marked Removed (same precedent as TC-011-11/TC-011-05/TC-011-10) — `/api/trending` is fully removed, unlike `/api/categories`; TC-011-01 narrowed to two required views; TC-011-02/TC-011-03/TC-012-01/TC-012-05 no longer mention Trending as a card source or view. New TC-010-11 (backend: `HiddenGemCardDto.TrendGrowth` computation — growth percentage, single-period fallback, null-when-no-data) and TC-011-13 (frontend: the trend-growth chip renders/omits correctly) cover the replacement functionality | Operator: "merge trending, add the trending score to the repo card on the hidden gems and then remove the trending tab as well" — implemented directly via Claude Code, not an orchestrated run |
-| v11 | 2026-08-03 | Discovery Feed tab decommissioned: `/api/discovery-feed` is fully removed, like Trending, since `GetHiddenGems` already covers the same shared D4 contract as a superset. TC-010-01 retargeted from Discovery Feed to Hidden Gems in place (capability persists, only the vehicle changed — not marked Removed, unlike Trending/Categories' own dedicated scenarios which covered feature-specific behavior that's genuinely gone); TC-010-04/05/07/08 no longer mention Discovery Feed. TC-011-01 narrowed to Hidden Gems as the sole required view (Bookmarks called out as a separate, non-FR-009 nav entry); TC-011-02 narrowed to Hidden Gems alone (was: Discovery Feed then repeated on Hidden Gems); TC-011-03/09/TC-012-01/05 no longer mention Discovery Feed as a card source or view | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." — implemented directly via Claude Code, not an orchestrated run |
-| v12 | 2026-08-03 | New TC-011-14 (card click opens the repository detail pane per design brief §09 — full summary, topics, score breakdown) and TC-011-15 (a card's own interactive controls — bookmark toggle, score panel, GitHub link — don't also trigger it) | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" — implemented directly via Claude Code, not an orchestrated run |
-| v13 | 2026-08-03 | F-012's dedicated Bookmarks view decommissioned: TC-012-01/02/03/04/06 marked Removed (same precedent as TC-011-11/05/10/TC-010-03) — the view is gone, its "Bookmarked only" filter equivalent already existed on Hidden Gems; TC-012-05 retargeted in place to that filter (capability persists, same precedent as TC-010-01's Discovery Feed retargeting) rather than marked Removed. TC-011-01 updated: primary nav is now exactly one entry ("Hidden Gems"), not a separate FR-009-views-vs-Bookmarks-nav-entry distinction. TC-011-03/14 no longer mention Bookmarks as a second card source | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" — implemented directly via Claude Code, not an orchestrated run |
-| v14 | 2026-08-04 | Full documentation sync pass — several rounds of direct, operator-directed UI/backend changes on 2026-08-04 had left this doc describing behavior that no longer exists. TC-008-01 amended for the two-summary split (short + detailed, one `Summary` row, two LM Studio calls); new TC-008-09 for the README-length cap (`Summarization:MaxReadmeCharacters`) added after a live `openclaw/openclaw` context-window failure. TC-010-11 rewritten: `TrendGrowth` is now computed per repository from its own `Score` history, not per language/category from `TrendAggregate` (operator: "Trend is currently calculated per language. I want it to be calculated per repository"). TC-011-02 no longer claims the card shows a "Why this score?" panel or a trend chip (both removed from the card, consolidated into the detail dialog). TC-011-04's forward-pointer and TC-011-13 both corrected/retargeted for the same per-repository trend change (TC-011-13 now describes the dialog's chip, not a card-level one). TC-011-09 corrected: there is no bottom nav to collapse (the primary nav was removed entirely once Hidden Gems became the sole page) — only the filter bar collapses; added a step 4 regression check for the narrow-viewport GitHub-link-showing-through-the-sidenav defect (operator-confirmed fixed). TC-011-14/15 updated for the drawer→`MatDialog` conversion and the removed card-level score panel. New TC-011-16 for the paginator's 24/48/64 page-size dropdown. `docs/prd.md` (v8 — US-8 reworded), `docs/architecture.md` (v22 — §3 Web Dashboard), and `docs/project-management.md` (v29+) were also found with a separate, unrelated drift while doing this pass: each doc's own header `Version` marker had silently fallen behind its own changelog table (e.g. Architecture's header still read v18 while its table already reached v22) — fixed in each file alongside its content corrections | Operator: "now update all documents for whatever has been implemented so far" |
-| v15 | 2026-08-04 | TC-010-04 rewritten: the Categories endpoint no longer reads `TrendAggregate` — it queries `Repository.PrimaryLanguage` directly, since `CategoryDto`'s only consumer (`FacetOptionsService`) had only ever read the `category` string, never the rollup fields (`RepositoryCount`/`AverageScore`/period dates) that came with it. New assertion added: a language with no scored repository behind it must not appear as a filter option (matches `GetHiddenGemsQueryHandler`'s own eligibility) — also documents a latent-bug fix, since the old version required a `Summary` too, stricter than Hidden Gems itself requires | Operator: "So for just the language filter we have the whole TrendAggregate table?" |
-| v16 | 2026-08-04 | Added Phase 4 scenarios ahead of implementation (TC-013 Digest Service: composition/send, logged-not-dropped send failure, empty-digest handling, latest-not-highest score selection, a Manual live-SMTP-delivery check; TC-014 Observability: platform-wide stage metrics, per-stage failure capture, additive-not-duplicate vs. the Hangfire dashboard, a Manual stuck-run-diagnosability check) | Orchestrator Step 0.0 gap-closure — test-cases-doc had no Phase 4 coverage before F-013/F-014's Task Packets were generated (same pattern as v2/v4/v5/v6/v7), drafted before dispatching either Developer Agent per the operator's explicit choice to draft scenarios now rather than proceed without them |
-| v17 | 2026-08-04 | Added a documentation-only F-015 note (no TC-015 scenario, deliberately — F-015 is a CI/tooling gate with no unit-testable application code, not a runtime feature); header `Covers` line updated to record Phase 5/F-015's status explicitly rather than leaving it unmentioned | F-015 Integration pass |
-| v18 | 2026-08-06 | Added F-016 (Reliability/idempotency pass) scenarios: TC-016-01 (every pipeline job rejects a simultaneous concurrent trigger, `[DisableConcurrentExecution]`), TC-016-02 (`TrendAggregate`'s natural key is now a real unique DB constraint, not just upsert logic), TC-016-03 (`Summary.RepositoryId` is now a real unique DB constraint), TC-016-04 (a same-day digest retry after a crash does not re-send, via the new persisted `DigestSendLog` marker). TC-009-05 corrected: it previously asserted "there is no unique DB constraint enforcing this (intentional, per the Task Packet)" for `TrendAggregate`'s upsert — no longer accurate post-F-016, now cross-references TC-016-02 instead | F-016 Integration pass, documentation drift check |
-| v19 | 2026-08-07 | Added F-017 (Scalability: indexing & partitioning strategy) scenarios ahead of implementation: TC-017-01 (core filter/sort page requests stay fast at seeded 100k+/1M+ scale, index-backed plans), TC-017-02 (beyond-last-page / zero-match / single-match boundary requests at scale), TC-017-03 (the server-side rewrite preserves latest-not-highest sort, Id tie-break, total count, and per-repo TrendGrowth semantics), TC-017-04 (new indexes exist at the schema level, apply cleanly, no F-016 constraint dropped or weakened), TC-017-05 (partitioning strategy documented as a decision with revisit triggers, not silently deferred). Header `Covers` line extended for F-017 | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-017 coverage before its Task Packet was generated; drafted before dispatching the Developer Agent (same pattern as v16), stated explicitly to avoid the F-010 run's misattribution incident |
-| v20 | 2026-08-07 | TC-017-01 amended with a known-caveat step 4: unfiltered Score/Commits sort evaluates a correlated-subquery sort key for all matching rows before LIMIT, bounded by match count not page size — may approach or exceed the NFR-001 budget at scale-out. Per operator decision 2026-08-07 (F-017 gap accepted-and-documented, tracked as PM-008; first action at scale-out = denormalized latest-score columns — Architecture v29). Operator should re-run `make seed-perf` against a stable Docker environment before relying on agent-reported measurements (same "flag it, don't fake it" pattern prior phases used for live-SMTP/live-concurrent-retry gaps) | Orchestrator (recording operator decision on F-017 gap) |
+
+| Version | Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Triggered By                                                                                                                                                                                                                                                                                                                                                                    |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1      | 2026-07-31 | Initial draft covering Phase 0 (F-001, F-002, F-003)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Orchestrator Step 0.0 gap — no test-cases-doc existed at build handoff                                                                                                                                                                                                                                                                                                          |
+| v2      | 2026-08-02 | Added Phase 1 scenarios: TC-004 (Data Store schema), TC-005 (GitHub Crawler), TC-006 (Job Scheduler), TC-007 (Scoring Engine, including the five-signal independence check added after the star-count amendment)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 0 when Phase 1 features completed                                                                                                                                                                                                                                                                    |
+| v3      | 2026-08-02 | TC-006-01 updated: Hangfire dashboard access control removed (F-006), so the `?key=` requirement and the access-denied assertion no longer apply                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Operator: "remove the auth for hangfire"                                                                                                                                                                                                                                                                                                                                        |
+| v4      | 2026-08-02 | Added Phase 2 scenarios: TC-008 (Summarizer, including score-to-summarize chaining and a Manual live-LM-Studio quality/throughput check), TC-009 (Trend Aggregator, including the upsert-idempotency and summarize-to-aggregate chaining checks), TC-018 (Dashboard UX design brief, documentation-only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended past Phase 1 when Phase 2 features completed (same gap-closure pattern as v2)                                                                                                                                                                                                                                   |
+| v5      | 2026-08-02 | Added F-010 scenarios (TC-010): Discovery Feed/Hidden Gems/Trending/Categories filter-sort-paginate contract, bookmark CRUD + idempotency, topic filtering, and two regression checks specific to F-010's two schema additions (`FirstDiscoveredAtUtc` set-once, latest-not-highest score sort)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Orchestrator Step 0.0 gap — test-cases-doc hadn't been extended for F-010 when it completed (same gap-closure pattern as v2/v4); F-010 was run as a standalone slice of Phase 3, not the full phase                                                                                                                                                                             |
+| v6      | 2026-08-02 | Added F-011 scenarios (TC-011): four-view navigation, filter/sort end-to-end, bookmark toggle optimistic/undo/retry, Trending server-order rendering, Categories grid/drill-down, loading/empty/error states, pagination-beyond-last-page, "Summary pending" no-layout-jump, 960px responsive collapse (filter bar → sidenav, nav → bottom pills), category-name URL-encoding, reserved F-012/v2 placeholder inertness, and a Manual live-publish smoke test for FR-009 AC3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Orchestrator drafted this section directly, before dispatching the Integration Agent, per this skill's own Step 0.0 gap-closure pattern (same as v2/v4/v5) — stated explicitly to both the Integration and Reviewer-Integration Agents in their prompts to avoid the misattribution the F-010 run's Reviewer-Integration initially made (`docs/handoff.md` "Important context") |
+| v7      | 2026-08-03 | Added F-012 scenarios (TC-012): dedicated `/bookmarks` view lists bookmarks server-ordered, live nav pill replacing the F-011 ghost placeholder, bookmarks-specific empty state, un-bookmark-removes-card-from-this-view behavior (distinct from the generic toggle check), cross-view bookmark-state sync, and list-fetch error state                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-012 coverage before this feature's Task Packet was generated (same pattern as v2/v4/v5/v6), drafted before dispatching the Developer Agent this time (F-012's Task Packet references these scenarios directly)                                                                                                      |
+| v8      | 2026-08-03 | TC-011-11 updated: removed its now-contradicted assertion that the "Bookmarks · F-012" nav pill is present/disabled (F-012 replaced it with a live nav entry — TC-012-02), retitled to "Reserved v2 placeholder is inert", and kept the still-accurate "Search (v2)" inert-placeholder assertion                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | F-012 Integration pass, retry after Reviewer-Integration flagged the internal TC-011-11/TC-012-02 contradiction                                                                                                                                                                                                                                                                 |
+| v9      | 2026-08-03 | Categories tab decommissioned: TC-010-04 narrowed to the still-live Categories list endpoint only (drill-down step removed); TC-011-01 narrowed to three required views; TC-011-03/TC-012-01/TC-012-05 no longer mention Categories/a Category drill-down as a card source; TC-011-05 and TC-011-10 marked Removed (IDs kept, not reused, same precedent as TC-011-11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Operator: "make category a filter and get rid of the category tab" — implemented directly via Claude Code, not an orchestrated run                                                                                                                                                                                                                                              |
+| v10     | 2026-08-03 | Trending tab decommissioned and merged into Hidden Gems: TC-010-03 and TC-011-04 marked Removed (same precedent as TC-011-11/TC-011-05/TC-011-10) — `/api/trending` is fully removed, unlike `/api/categories`; TC-011-01 narrowed to two required views; TC-011-02/TC-011-03/TC-012-01/TC-012-05 no longer mention Trending as a card source or view. New TC-010-11 (backend: `HiddenGemCardDto.TrendGrowth` computation — growth percentage, single-period fallback, null-when-no-data) and TC-011-13 (frontend: the trend-growth chip renders/omits correctly) cover the replacement functionality                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Operator: "merge trending, add the trending score to the repo card on the hidden gems and then remove the trending tab as well" — implemented directly via Claude Code, not an orchestrated run                                                                                                                                                                                 |
+| v11     | 2026-08-03 | Discovery Feed tab decommissioned: `/api/discovery-feed` is fully removed, like Trending, since `GetHiddenGems` already covers the same shared D4 contract as a superset. TC-010-01 retargeted from Discovery Feed to Hidden Gems in place (capability persists, only the vehicle changed — not marked Removed, unlike Trending/Categories' own dedicated scenarios which covered feature-specific behavior that's genuinely gone); TC-010-04/05/07/08 no longer mention Discovery Feed. TC-011-01 narrowed to Hidden Gems as the sole required view (Bookmarks called out as a separate, non-FR-009 nav entry); TC-011-02 narrowed to Hidden Gems alone (was: Discovery Feed then repeated on Hidden Gems); TC-011-03/09/TC-012-01/05 no longer mention Discovery Feed as a card source or view                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Operator: "Discovery Feed: remove it. there isnt much difference between that and the hidden gems." — implemented directly via Claude Code, not an orchestrated run                                                                                                                                                                                                             |
+| v12     | 2026-08-03 | New TC-011-14 (card click opens the repository detail pane per design brief §09 — full summary, topics, score breakdown) and TC-011-15 (a card's own interactive controls — bookmark toggle, score panel, GitHub link — don't also trigger it)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Operator: "adjust the ui of repo card... click to open details pane. see 09 in the Dashboard Design.dc.html" — implemented directly via Claude Code, not an orchestrated run                                                                                                                                                                                                    |
+| v13     | 2026-08-03 | F-012's dedicated Bookmarks view decommissioned: TC-012-01/02/03/04/06 marked Removed (same precedent as TC-011-11/05/10/TC-010-03) — the view is gone, its "Bookmarked only" filter equivalent already existed on Hidden Gems; TC-012-05 retargeted in place to that filter (capability persists, same precedent as TC-010-01's Discovery Feed retargeting) rather than marked Removed. TC-011-01 updated: primary nav is now exactly one entry ("Hidden Gems"), not a separate FR-009-views-vs-Bookmarks-nav-entry distinction. TC-011-03/14 no longer mention Bookmarks as a second card source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Operator: "i dont think we need the bookmarks tab either since its a filter on the hidden gems tab" — implemented directly via Claude Code, not an orchestrated run                                                                                                                                                                                                             |
+| v14     | 2026-08-04 | Full documentation sync pass — several rounds of direct, operator-directed UI/backend changes on 2026-08-04 had left this doc describing behavior that no longer exists. TC-008-01 amended for the two-summary split (short + detailed, one `Summary` row, two LM Studio calls); new TC-008-09 for the README-length cap (`Summarization:MaxReadmeCharacters`) added after a live `openclaw/openclaw` context-window failure. TC-010-11 rewritten: `TrendGrowth` is now computed per repository from its own `Score` history, not per language/category from `TrendAggregate` (operator: "Trend is currently calculated per language. I want it to be calculated per repository"). TC-011-02 no longer claims the card shows a "Why this score?" panel or a trend chip (both removed from the card, consolidated into the detail dialog). TC-011-04's forward-pointer and TC-011-13 both corrected/retargeted for the same per-repository trend change (TC-011-13 now describes the dialog's chip, not a card-level one). TC-011-09 corrected: there is no bottom nav to collapse (the primary nav was removed entirely once Hidden Gems became the sole page) — only the filter bar collapses; added a step 4 regression check for the narrow-viewport GitHub-link-showing-through-the-sidenav defect (operator-confirmed fixed). TC-011-14/15 updated for the drawer→`MatDialog` conversion and the removed card-level score panel. New TC-011-16 for the paginator's 24/48/64 page-size dropdown. `docs/prd.md` (v8 — US-8 reworded), `docs/architecture.md` (v22 — §3 Web Dashboard), and `docs/project-management.md` (v29+) were also found with a separate, unrelated drift while doing this pass: each doc's own header `Version` marker had silently fallen behind its own changelog table (e.g. Architecture's header still read v18 while its table already reached v22) — fixed in each file alongside its content corrections | Operator: "now update all documents for whatever has been implemented so far"                                                                                                                                                                                                                                                                                                   |
+| v15     | 2026-08-04 | TC-010-04 rewritten: the Categories endpoint no longer reads `TrendAggregate` — it queries `Repository.PrimaryLanguage` directly, since `CategoryDto`'s only consumer (`FacetOptionsService`) had only ever read the `category` string, never the rollup fields (`RepositoryCount`/`AverageScore`/period dates) that came with it. New assertion added: a language with no scored repository behind it must not appear as a filter option (matches `GetHiddenGemsQueryHandler`'s own eligibility) — also documents a latent-bug fix, since the old version required a `Summary` too, stricter than Hidden Gems itself requires                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Operator: "So for just the language filter we have the whole TrendAggregate table?"                                                                                                                                                                                                                                                                                             |
+| v16     | 2026-08-04 | Added Phase 4 scenarios ahead of implementation (TC-013 Digest Service: composition/send, logged-not-dropped send failure, empty-digest handling, latest-not-highest score selection, a Manual live-SMTP-delivery check; TC-014 Observability: platform-wide stage metrics, per-stage failure capture, additive-not-duplicate vs. the Hangfire dashboard, a Manual stuck-run-diagnosability check)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Orchestrator Step 0.0 gap-closure — test-cases-doc had no Phase 4 coverage before F-013/F-014's Task Packets were generated (same pattern as v2/v4/v5/v6/v7), drafted before dispatching either Developer Agent per the operator's explicit choice to draft scenarios now rather than proceed without them                                                                      |
+| v17     | 2026-08-04 | Added a documentation-only F-015 note (no TC-015 scenario, deliberately — F-015 is a CI/tooling gate with no unit-testable application code, not a runtime feature); header `Covers` line updated to record Phase 5/F-015's status explicitly rather than leaving it unmentioned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | F-015 Integration pass                                                                                                                                                                                                                                                                                                                                                          |
+| v18     | 2026-08-06 | Added F-016 (Reliability/idempotency pass) scenarios: TC-016-01 (every pipeline job rejects a simultaneous concurrent trigger, `[DisableConcurrentExecution]`), TC-016-02 (`TrendAggregate`'s natural key is now a real unique DB constraint, not just upsert logic), TC-016-03 (`Summary.RepositoryId` is now a real unique DB constraint), TC-016-04 (a same-day digest retry after a crash does not re-send, via the new persisted `DigestSendLog` marker). TC-009-05 corrected: it previously asserted "there is no unique DB constraint enforcing this (intentional, per the Task Packet)" for `TrendAggregate`'s upsert — no longer accurate post-F-016, now cross-references TC-016-02 instead                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | F-016 Integration pass, documentation drift check                                                                                                                                                                                                                                                                                                                               |
+| v19     | 2026-08-07 | Added F-017 (Scalability: indexing & partitioning strategy) scenarios ahead of implementation: TC-017-01 (core filter/sort page requests stay fast at seeded 100k+/1M+ scale, index-backed plans), TC-017-02 (beyond-last-page / zero-match / single-match boundary requests at scale), TC-017-03 (the server-side rewrite preserves latest-not-highest sort, Id tie-break, total count, and per-repo TrendGrowth semantics), TC-017-04 (new indexes exist at the schema level, apply cleanly, no F-016 constraint dropped or weakened), TC-017-05 (partitioning strategy documented as a decision with revisit triggers, not silently deferred). Header `Covers` line extended for F-017                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Orchestrator Step 0.0 gap-closure — test-cases-doc had no F-017 coverage before its Task Packet was generated; drafted before dispatching the Developer Agent (same pattern as v16), stated explicitly to avoid the F-010 run's misattribution incident                                                                                                                         |
+| v20     | 2026-08-07 | TC-017-01 amended with a known-caveat step 4: unfiltered Score/Commits sort evaluates a correlated-subquery sort key for all matching rows before LIMIT, bounded by match count not page size — may approach or exceed the NFR-001 budget at scale-out. Per operator decision 2026-08-07 (F-017 gap accepted-and-documented, tracked as PM-008; first action at scale-out = denormalized latest-score columns — Architecture v29). Operator should re-run `make seed-perf` against a stable Docker environment before relying on agent-reported measurements (same "flag it, don't fake it" pattern prior phases used for live-SMTP/live-concurrent-retry gaps)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Orchestrator (recording operator decision on F-017 gap)                                                                                                                                                                                                                                                                                                                         |

@@ -25,10 +25,10 @@ access control was tried and reverted).
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Quartz.NET (ADR-006) | Superseded by this ADR — its trigger-graph model is not meaningfully better suited to this pipeline than Hangfire's `RecurringJob` + `ContinueJobWith`, and it has no built-in monitoring UI, which Hangfire provides for free against NFR-005. |
-| Plain `BackgroundService` + a cron-parsing library (e.g. Cronos) | Still ruled out for the same reason as in ADR-006: no built-in persistence, misfire handling, or monitoring — all bespoke work that both Quartz.NET and Hangfire already solve. |
+| Option                                                           | Why not chosen                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quartz.NET (ADR-006)                                             | Superseded by this ADR — its trigger-graph model is not meaningfully better suited to this pipeline than Hangfire's `RecurringJob` + `ContinueJobWith`, and it has no built-in monitoring UI, which Hangfire provides for free against NFR-005. |
+| Plain `BackgroundService` + a cron-parsing library (e.g. Cronos) | Still ruled out for the same reason as in ADR-006: no built-in persistence, misfire handling, or monitoring — all bespoke work that both Quartz.NET and Hangfire already solve.                                                                 |
 
 ## Consequences
 
@@ -44,7 +44,7 @@ access control was tried and reverted).
   against Hangfire's.
 - **Tried and reverted (2026-08-02):** a shared-secret `?key=` query-string filter
   (`HangfireDashboardAuthorizationFilter`) initially gated the dashboard, fail-closed by default.
-  Hangfire applies whatever `IDashboardAuthorizationFilter` is configured to *every* request under
+  Hangfire applies whatever `IDashboardAuthorizationFilter` is configured to _every_ request under
   `/hangfire`, including the dashboard's own CSS/JS assets and its stats-polling XHR — none of
   which carry the page's `?key=` query string forward (relative URLs don't inherit it), so the
   filter also denied those, leaving the dashboard unstyled and its live stats erroring. Removed
@@ -52,7 +52,7 @@ access control was tried and reverted).
   tool with no other auth system in the app, so the operator's own network boundary (don't publish
   the port beyond localhost/a trusted network) is the access control, not an in-app filter.
 - **Gotcha found while removing the filter above:** simply omitting `DashboardOptions` from
-  `UseHangfireDashboard` does *not* make the dashboard unauthenticated — Hangfire's own default
+  `UseHangfireDashboard` does _not_ make the dashboard unauthenticated — Hangfire's own default
   (`DashboardOptions.Authorization` unset) falls back to a `LocalRequestsOnlyAuthorizationFilter`,
   and Docker Desktop's port-publishing proxy doesn't preserve `127.0.0.1` as the apparent remote
   address for a host-browser request through it (the exact reason a loopback check was rejected

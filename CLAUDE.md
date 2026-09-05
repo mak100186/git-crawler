@@ -4,11 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-GitHub Hidden Gems Discovery Platform — a self-hosted .NET 10 / Angular 22 modular monolith. Phases
-0-3 (scaffolding, data pipeline, AI summarization/trends, dashboard/API/bookmarking) are complete;
-Phase 4 (daily digest, observability) and Phase 5 (security/reliability hardening) have not started.
-See `docs/handoff.md` for the current build state and what's next, and `docs/project-management.md`
-for the full feature backlog.
+GitHub Hidden Gems Discovery Platform — a self-hosted .NET 10 / Angular 22 modular monolith.
+
+**Tranche v1 (MVP) is closed.** All six phases shipped — scaffolding, data pipeline, AI
+summarization/trends, dashboard/API, daily digest + observability (F-013/F-014), and security and
+reliability hardening (F-015 gitleaks secret scanning, F-016 Hangfire concurrency guards, F-017
+scalability indexes with server-side sort/pagination). F-001 through F-018 are Done; the v1 PMBook
+and handoff are archived under `docs/archive/v1-mvp/`.
+
+**Tranche v2 is open with an empty backlog.** `docs/project-management.md` has no phases or features
+yet — v2 phases continue from Phase 6 and feature IDs from F-019, both assigned during PMBook triage,
+and `docs/handoff.md` stays empty until v2's first Finalization writes it. So there is no "next
+feature" to pick up: new work enters via `/idea-discovery` (records to `docs/ideas.md` +
+`docs/stash/`) and then `/idea-triage` (PRD → Architecture → PMBook gates), before
+`/orchestrator-development-pattern` builds anything. See `.claude/SKILLS.md` for how those three
+skills are wired to this repo's paths.
 
 ## Starting the stack — always use `make`, not `docker compose` directly
 
@@ -45,6 +55,7 @@ docs/setup.md §3a for the full explanation.
 ## Build / test commands
 
 Backend (`src/backend/`):
+
 ```bash
 dotnet build          # build
 dotnet test           # run tests
@@ -52,6 +63,7 @@ dotnet format         # format
 ```
 
 Frontend (`src/frontend/`):
+
 ```bash
 npm run build          # production build
 npm run test -- --watch=false   # run tests (Vitest)
@@ -69,3 +81,20 @@ those before making a structural or technology-choice change, and add/amend an A
 Governed docs (`docs/prd.md`, `docs/architecture.md`, `docs/project-management.md`, `docs/adr/`,
 `docs/handoff.md`) are specs the code must satisfy, not side artifacts — keep them in sync with any
 structural change in the same session, not as a follow-up.
+
+## Screenshots go in `docs/screenshots/`
+
+Every screenshot in this repo lives in `docs/screenshots/` — the README's five UI shots and anything
+captured later. When taking one with the Playwright MCP browser, **pass an explicit
+`docs/screenshots/<name>.png` filename**; with no path it lands in the repo root or in
+`.playwright-mcp/`, which is git-ignored scratch (per-run console logs and page snapshots) and will
+be lost. Name the file for what it shows (`toolbar-logo.png`), not for when it was taken.
+
+## Visual design — don't go looking for `dashboard-handoff.md`
+
+Roughly two dozen frontend comments cite `dashboard-handoff.md §N` or `dashboard-ux-brief.md §N`.
+**Those files no longer exist** — the `docs/design-briefs/` bundle they lived in was git-ignored,
+never committed, and has been deleted. Read such a citation as "the approved v1 design specified
+this," not as a file to open, and treat `src/frontend/src/styles.scss` (the token set) plus each
+component's own SCSS as the canonical record of what it said. `docs/design/README.md` has the
+section-number mapping. Committed artboards land in `docs/design/` when the designs are updated.

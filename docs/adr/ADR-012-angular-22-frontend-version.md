@@ -16,10 +16,10 @@ The dashboard targets Angular 22, using its standalone-components architecture (
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
+| Option                                                            | Why not chosen                                                                                                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Leave unpinned, resolve "latest stable" at F-003 scaffolding time | Was the prior default in ADR-008/architecture v7, but the operator has an explicit version preference, so pinning it now removes ambiguity for scaffolding rather than deferring it. |
-| An older Angular LTS version | No stability or compatibility reason surfaced to prefer an older version for a greenfield project with no legacy Angular codebase to reconcile with. |
+| An older Angular LTS version                                      | No stability or compatibility reason surfaced to prefer an older version for a greenfield project with no legacy Angular codebase to reconcile with.                                 |
 
 ## Consequences
 

@@ -17,8 +17,8 @@ All .NET components target .NET 10.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
+| Option                | Why not chosen                                                                                                                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET 8 (previous LTS) | Was still a reasonable choice for longer-term support stability, but the operator's explicit preference is .NET 10; as a solo greenfield project with no legacy dependency pinned to .NET 8, there's no compatibility reason to stay behind. |
 
 ## Consequences

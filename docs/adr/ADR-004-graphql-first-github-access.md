@@ -20,9 +20,9 @@ commit-activity statistics endpoints).
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| REST-only | Requires multiple round-trips per repo to assemble the fields the scoring engine needs (license, contributors, forks, activity), burning rate-limit budget faster at 1K-5K repos/day and worse at 100k+ scale. |
+| Option       | Why not chosen                                                                                                                                                                                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST-only    | Requires multiple round-trips per repo to assemble the fields the scoring engine needs (license, contributors, forks, activity), burning rate-limit budget faster at 1K-5K repos/day and worse at 100k+ scale.                                                 |
 | GraphQL-only | Some data the scoring/crawling pipeline may need is only available via specific REST endpoints (e.g. certain statistics endpoints return 202-and-compute-async behavior with no GraphQL equivalent); a hard GraphQL-only rule would force awkward workarounds. |
 
 ## Consequences

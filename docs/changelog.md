@@ -6,6 +6,7 @@
 ## Revision 18 — 2026-08-07 — MVP closeout pass (documentation only)
 
 **Changes:**
+
 - **MVP closeout**: all 5 phases complete, all 18 features (F-001 through F-018) Done. This
   revision is a documentation-only pass recording the final state of the platform against the
   PRD v8 / Architecture v30 and closing out items that had been carried forward through earlier
@@ -41,9 +42,8 @@
 
 ## Revision 17 — 2026-08-07 — Phase 5 complete: Scalability/indexing & partitioning strategy (F-017)
 
-## Revision 17 — 2026-08-07 — Phase 5 complete: Scalability/indexing & partitioning strategy (F-017)
-
 **Changes:**
+
 - **F-017 — Scalability: indexing & partitioning strategy (Should, Planned → Done); Phase 5 →
   Done**: pre-flight found the real gap was two-fold — zero indexes on any dashboard filter/sort
   column (every existing index was idempotency-related), and `GetHiddenGemsQueryHandler`
@@ -73,7 +73,7 @@
 - **E2E caveat (Docker HNS-level networking)**: Docker Desktop's HNS cache held a phantom
   reference to a deleted network across `docker compose down`, `docker network prune`, and Docker
   Desktop restarts in both the Integration Agent's and Orchestrator's environments — `make
-  seed-perf` could not run. Reviewer-Integration round-1 FAILed on a report/runbook contradiction
+seed-perf` could not run. Reviewer-Integration round-1 FAILed on a report/runbook contradiction
   (the report claimed live execution with specific numbers; the runbook documented "could not
   run"); Integration's retry (loop_count 1) retracted the figures and marked TC-017-01/02 as
   "COULD NOT EXECUTE LIVE" under both E2E Validation and Unresolvable Issues — PASS on retry.
@@ -81,15 +81,15 @@
   `LatestCommitsPerWeek` columns on `Repository` now (ADR-worthy, touches F-007's write path) vs.
   accept-and-document the gap — Operator chose **accept-and-document**. New PM-008 records the
   decision: first action at scale-out is the denormalization; the operator should re-run `make
-  seed-perf` against a stable Docker environment before relying on any agent-reported measurement.
+seed-perf` against a stable Docker environment before relying on any agent-reported measurement.
 - **Modules/files affected**: `Data/GitCrawlerDbContext.cs` (6 new indexes configured),
   `Data/Migrations/AddF017DashboardIndexes.*` (new) and snapshot, `Features/Repositories/
-  RepositoryCardQuery.cs` (`ApplySort` added), `Features/Repositories/GetHiddenGems/
-  GetHiddenGemsQuery.cs` (full server-side rewrite + SQLite fallback), `src/backend/tools/
-  SeedHarness/` (new: `SeedHarness.csproj`, `Program.cs`, `PerfSeeder.cs`, `PerfVerifier.cs`),
+RepositoryCardQuery.cs` (`ApplySort` added), `Features/Repositories/GetHiddenGems/
+GetHiddenGemsQuery.cs` (full server-side rewrite + SQLite fallback), `src/backend/tools/
+SeedHarness/` (new: `SeedHarness.csproj`, `Program.cs`, `PerfSeeder.cs`, `PerfVerifier.cs`),
   `src/backend/GitCrawler.sln` (SeedHarness project added), `Makefile` (new `seed-perf` target +
   help text), matching test files (`GitCrawlerDbContextTests.cs` — 8 new tests; `GetHiddenGems-
-  QueryHandlerTests.cs` — 15 new tests).
+QueryHandlerTests.cs` — 15 new tests).
 - **Breaking changes**: None (additive indexes; the sort/pagination rewrite preserves the response
   contract byte-for-byte; the composite Score index's leading column covers every query the
   replaced plain-`RepositoryId` index served).
@@ -114,11 +114,11 @@
      tie-break, TotalCount accuracy, per-repo TrendGrowth, page-size clamping, topic/license/
      bookmarked-only facets).
 - **Verification**: backend 142/142 (119 pre-existing + 23 new), frontend 45/45, `dotnet format
-  --verify-no-changes` clean, `dotnet build` 0 warnings, `dotnet list package --vulnerable
-  --include-transitive` clean for all 3 projects. PM-007 carried forward (5 dev-only npm audit
+--verify-no-changes` clean, `dotnet build` 0 warnings, `dotnet list package --vulnerable
+--include-transitive` clean for all 3 projects. PM-007 carried forward (5 dev-only npm audit
   findings, 4 moderate + 1 high, in the `@angular/cli` → `@modelcontextprotocol/sdk` transitive
   chain — unrelated to F-017, which touched no `package.json`). Run through the full `orchestrator-
-  development-pattern` (Feature Loop PASS on first Developer/Reviewer attempt; Integration with 1
+development-pattern` (Feature Loop PASS on first Developer/Reviewer attempt; Integration with 1
   retry after Reviewer-Integration FAIL on a report/runbook contradiction; Finalization with
   graphify incremental update on `src` → 2134 nodes / 3443 edges / 206 communities).
 
@@ -127,6 +127,7 @@
 ## Revision 16 — 2026-08-06 — Phase 5 continued: Reliability/idempotency pass (F-016)
 
 **Changes:**
+
 - **F-016 — Reliability/idempotency pass (Must, Planned → Done)**: pre-flight found GitHub
   retry/backoff (ADR-018/Polly) and repository-discovery idempotency (upsert by unique-indexed
   `GitHubId`) already correct — untouched. Three real gaps closed, all rooted in nothing previously
@@ -167,6 +168,7 @@ Mailpit entry) — same pre-existing changelog-cadence drift noted in Revision 1
 fixed here.
 
 **Changes:**
+
 - **F-015 — Security hardening (Must, Planned → Done)**: GitHub token handling (env-var loaded via
   `GITHUB_TOKEN` → `GitHub:Token`, never committed/logged) was already correct and required no code
   change — verified during pre-flight, not reworked. The actual gap NFR-002 required: a repo-wide
@@ -200,8 +202,8 @@ fixed here.
      gate the workflow the same way; confirm the two Snyk-based jobs are unaffected (same triggers,
      same pass/fail behavior as before this revision).
 - **Verification**: backend 109/109 tests (`dotnet format --verify-no-changes` clean, `dotnet list
-  package --vulnerable --include-transitive` clean), frontend 45/45 tests (`npm run lint` clean; `npm
-  audit`'s pre-existing PM-007 findings confirmed dev-only/unrelated, numbers corrected). Run through
+package --vulnerable --include-transitive` clean), frontend 45/45 tests (`npm run lint` clean; `npm
+audit`'s pre-existing PM-007 findings confirmed dev-only/unrelated, numbers corrected). Run through
   the full `orchestrator-development-pattern` (Feature Loop, Integration, Reviewer-Integration,
   Finalization) — F-015 PASSed on the first Developer/Reviewer attempt; Integration and
   Reviewer-Integration both PASS. gitleaks itself was not installed in the Integration Agent's
@@ -219,9 +221,10 @@ operator-directed changes between them (recorded in `docs/project-management.md`
 file, not introduced here, and out of scope to backfill as part of this Phase 4 run.
 
 **Changes:**
+
 - **F-013 — Digest Service (Should, Planned → Done)**: new `Features/Digest/SendDigest/` Wolverine
   slice. Composes and sends a daily email with the top-N (default 10) hidden gems — ranked by each
-  repo's *latest* `Score.TotalScore`, with its short summary — plus the current period's trend
+  repo's _latest_ `Score.TotalScore`, with its short summary — plus the current period's trend
   summaries from `TrendAggregate`. Sent via a new `IEmailSender`/`SmtpEmailSender` abstraction (BCL
   `SmtpClient`, no new package). A send failure is logged and returned as `Sent: false`, never
   propagates or crashes the host (FR-006). Runs on its own independent daily `RecurringJob`
@@ -247,6 +250,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   records-processed heuristic that misreported an entity's `Id` field as a count).
 
 **Smoke tests:**
+
 1. **Happy path**: with at least one scored+summarized repo and a `TrendAggregate` row for the current
    period, trigger `SendDigestCommand` (or wait for `Hangfire:DigestCronSchedule`) — confirm an email is
    sent via the configured SMTP provider containing the top-N hidden gems and a trend summary section.
@@ -259,6 +263,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
    middleware).
 
 **Files changed:**
+
 - `src/backend/GitCrawler.Api/Features/Digest/SendDigest/` — new (`SendDigestCommand.cs`,
   `SendDigestJob.cs`, `IEmailSender.cs`, `SmtpEmailSender.cs`).
 - `src/backend/GitCrawler.Api/Infrastructure/Observability/` — new (`ObservabilityMiddleware.cs`,
@@ -279,8 +284,9 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 13 — 2026-08-03 — Bookmarks tab decommissioned
 
 **Changes:**
+
 - **Bookmarks tab removed** — the dedicated `/bookmarks` view (`src/frontend/src/app/features/
-  bookmarks/`, F-012's entire delta) and its live nav entry are gone, along with the backend
+bookmarks/`, F-012's entire delta) and its live nav entry are gone, along with the backend
   `ListBookmarks` endpoint/query/tests it alone existed to serve (fully removed, unlike
   `GetCategories`, since nothing else consumed it). The primary nav is now a single "Hidden Gems"
   entry.
@@ -304,6 +310,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   explicit direction, same as Revisions 9-12.
 
 **Files changed:**
+
 - `src/backend/GitCrawler.Api/Features/Bookmarks/ListBookmarks/` — deleted.
 - `src/backend/GitCrawler.Api/Program.cs` — `MapListBookmarksEndpoint()` call and its `using` removed.
 - `src/backend/tests/GitCrawler.Api.Tests/Features/Bookmarks/ListBookmarks/` — deleted.
@@ -322,6 +329,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 12 — 2026-08-03 — Repo card polish + click-to-open detail pane
 
 **Changes:**
+
 - **Repo card summary/footer spacing adjusted, per operator feedback**: `.repo-card__summary` now
   clamps to 3 lines instead of 2 (matching "Summary pending" min-height so the placeholder still
   never causes a layout jump when the real summary arrives), and the footer chip row's `padding-top`
@@ -346,13 +354,14 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   `docs/architecture.md` (v17) and `docs/project-management.md` (v26 — F-011 row amended a fourth
   time) note it for completeness.
 - **Docs updated**: `docs/architecture.md` (v17), `docs/project-management.md` (v26), `docs/test-
-  cases.md` (v12 — new TC-011-14/TC-011-15), `docs/test-runbook.md` (new F-011 manual steps + spec
+cases.md` (v12 — new TC-011-14/TC-011-15), `docs/test-runbook.md` (new F-011 manual steps + spec
   count corrections).
 - **Verification**: backend unaffected (frontend-only change; still 89/89). Frontend 51/51 (was 42; 6
   new: 2 `RepositoryCard` click-propagation cases, 2 new `RepositoryDetailPane` cases, 2 new
   `RepositoryGrid` drawer-wiring cases), `npm run lint` clean.
 
 **Files changed:**
+
 - `src/frontend/src/app/shared/utils/score-breakdown.util.ts` — new.
 - `src/frontend/src/app/shared/components/repository-card/` — `cardClick` output added; avatar-era
   scoring-math duplication removed in favor of the new shared util; summary/footer CSS spacing.
@@ -369,6 +378,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 11 — 2026-08-03 — Discovery Feed tab decommissioned
 
 **Changes:**
+
 - **Discovery Feed tab removed** — the standalone Discovery Feed view
   (`src/frontend/src/app/features/discovery-feed/`, the default/landing route) and its route/nav
   entry are gone, along with the backend `GetDiscoveryFeed` endpoint/query/tests it alone existed to
@@ -387,7 +397,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   called out as a concern by the operator and no replacement was requested.
 - **Docs updated**: `docs/prd.md` (v7), `docs/architecture.md` (v16 — including the Web API surface
   change, since `/api/discovery-feed` is fully removed unlike `/api/categories`), `docs/project-
-  management.md` (v25 — F-010/F-011 rows amended in place a third time), `docs/test-cases.md` (v11),
+management.md` (v25 — F-010/F-011 rows amended in place a third time), `docs/test-cases.md` (v11),
   `docs/test-runbook.md`, `docs/handoff.md`. Two pre-existing stale mentions of the already-removed
   Trending/Categories tabs, missed by Revisions 9/10, were also fixed while in these files anyway:
   `Makefile`'s `make help`/`make up` output text, and three explanatory code comments in
@@ -397,6 +407,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   explicit direction, same as Revisions 9/10.
 
 **Files changed:**
+
 - `src/backend/GitCrawler.Api/Features/Repositories/GetDiscoveryFeed/` — deleted.
 - `src/backend/GitCrawler.Api/Program.cs` — `MapGetDiscoveryFeedEndpoint()` call and its `using`
   removed.
@@ -425,6 +436,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 10 — 2026-08-03 — Trending tab decommissioned, merged into Hidden Gems
 
 **Changes:**
+
 - **Trending tab removed, merged into Hidden Gems** — the standalone Trending view
   (`src/frontend/src/app/features/trending/`, per-category trend cards with an expandable
   contributing-repos panel) and its route/nav entry are gone, along with the backend `GetTrending`
@@ -449,6 +461,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   explicit direction, same as Revision 9.
 
 **Files changed:**
+
 - `src/backend/GitCrawler.Api/Features/Trends/GetTrending/` — deleted.
 - `src/backend/GitCrawler.Api/Program.cs` — `MapGetTrendingEndpoint()` call and its `using` removed.
 - `src/backend/tests/GitCrawler.Api.Tests/Features/Trends/GetTrending/` — deleted.
@@ -468,6 +481,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 9 — 2026-08-03 — Categories tab decommissioned
 
 **Changes:**
+
 - **Categories tab removed** — the standalone Categories view (`src/frontend/src/app/features/categories/`,
   a grid of category tiles) and its Category drill-down route (`categories/:category`) are gone, along
   with the "Categories" nav entry and the backend `GetCategoryRepositories` endpoint/query/tests that
@@ -492,6 +506,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   touched that file's `.scss`.
 
 **Files changed:**
+
 - `src/backend/GitCrawler.Api/Features/Categories/GetCategoryRepositories/` — deleted.
 - `src/backend/GitCrawler.Api/Program.cs` — `MapGetCategoryRepositoriesEndpoint()` call and its
   `using` removed.
@@ -509,10 +524,11 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 8 — 2026-08-03 — F-012 (Bookmarking), run as a standalone slice of Phase 3; Phase 3 complete
 
 **Changes:**
+
 - **F-012 (Bookmarking)** — a dedicated `/bookmarks` view (`src/frontend/src/app/features/bookmarks/`)
   and a live "Bookmarks" nav entry (5th, after Categories) replacing F-011's inert "Bookmarks · F-012"
   ghost pill. Bookmark create/toggle and backend CRUD already shipped inside F-010/F-011's own scope —
-  this feature's entire delta is the ability to *revisit* bookmarked repos from their own page. Lists
+  this feature's entire delta is the ability to _revisit_ bookmarked repos from their own page. Lists
   results via F-010's existing `GET /api/bookmarks` (unpaginated, server-ordered most-recent-first,
   passed straight through with no client re-sort), rendered through the existing `RepositoryGrid`
   (Loading/Error/Populated states reused unmodified; a locally-rendered empty state supplies
@@ -550,6 +566,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   Graph grew 1445→1500 nodes, 2262→2349 edges, 114→125 communities.
 
 **Smoke tests** (see `docs/test-runbook.md` F-012 section for full steps):
+
 1. **Happy path**: bookmark 2-3 repos from any existing view, navigate to `/bookmarks` — they render,
    most-recently-bookmarked first, matching the API's own order.
 2. **Edge case**: navigate to `/bookmarks` with zero bookmarks — bookmarks-specific empty-state copy
@@ -563,6 +580,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 7 — 2026-08-02 — F-011 (Web Dashboard), run as a standalone slice of Phase 3; post-hoc `core/services` split
 
 **Changes:**
+
 - **F-011 (Web Dashboard)** — the four required views (Discovery Feed, Hidden Gems, Trending,
   Categories) plus the Category drill-down, implemented as standalone, Angular-Material-only
   (ADR-011) routed components under `src/frontend/src/app/features/`, backed by live `HttpClient`
@@ -631,9 +649,10 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   scenarios, authored directly by the Orchestrator per this pipeline's Step 0.0 gap-closure pattern —
   stated explicitly to both Integration and Reviewer-Integration this run to avoid the F-010 run's
   misattribution incident). `docs/test-runbook.md` extended with an F-011 section. `docs/
-  project-management.md` F-011 row → `Done` (v20, corrected to v21 for the `MatInputModule` finding).
+project-management.md` F-011 row → `Done` (v20, corrected to v21 for the `MatInputModule` finding).
 
 **Modules / files affected:**
+
 - `src/frontend/src/app/app.{ts,html,scss}`, `app.routes.ts`, `app.config.ts` — real shell, routing,
   `provideHttpClient()`/`provideAnimationsAsync()`.
 - `src/frontend/src/styles.scss`, `src/frontend/src/index.html` — theme tokens, Caprasimo/Figtree fonts.
@@ -657,6 +676,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 **Breaking changes:** None. Frontend-only; no backend contract or schema change.
 
 **Smoke tests:**
+
 1. Happy path — load the dashboard, confirm it lands on Discovery Feed, select a language + narrow
    the star range + add a topic + pick a license, confirm the active-filter chips appear and the grid
    re-fetches with matching query params; toggle a bookmark and confirm the optimistic flip + confirm
@@ -671,6 +691,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 6 — 2026-08-02 — F-010 (Web API), run as a standalone slice of Phase 3
 
 **Changes:**
+
 - **F-010 (Web API)** — 8 new Wolverine command/query slices (ADR-015) under
   `Features/{Repositories,Trends,Categories,Bookmarks}/`: `GetDiscoveryFeed`, `GetHiddenGems`,
   `GetTrending`, `GetCategories`, `GetCategoryRepositories`, `CreateBookmark`, `DeleteBookmark`,
@@ -701,7 +722,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   repo-level FK by design.
 - **Hidden Gems exposes FR-005's full weighted signal breakdown** — all five signals plus
   `ScoringWeights`' exact constants (18/27/22.5/22.5/10%) and `TotalScore`, not just an aggregate.
-  Both Hidden Gems and Discovery Feed's `Score`/`Commits` sorts use each repo's *latest* `Score` by
+  Both Hidden Gems and Discovery Feed's `Score`/`Commits` sorts use each repo's _latest_ `Score` by
   `ComputedAtUtc`, following the same "latest by time, not highest-ever" convention F-008 first got
   wrong and fixed in Phase 2 — applied correctly here from the start.
 - **Bookmark create/delete are idempotent by design**: a double-create never trips the unique-index
@@ -724,6 +745,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   array-overlap query translation), not a live HTTP walkthrough. See `docs/handoff.md`'s What's Next.
 
 **Modules / files affected:**
+
 - `src/backend/GitCrawler.Api/Data/Entities/Repository.cs` — `Topics`, `FirstDiscoveredAtUtc` added.
 - `src/backend/GitCrawler.Api/Data/Migrations/20260802054513_AddRepositoryTopicsAndFirstDiscoveredAt.*`, `GitCrawlerDbContextModelSnapshot.cs` — new migration.
 - `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/{IGitHubDiscoveryClient,GitHubDiscoveryClient,DiscoverRepositoriesCommand}.cs` — extended for `Topics`/`FirstDiscoveredAtUtc`.
@@ -742,18 +764,20 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 (if imperfect — see PM-006) defaults rather than failing the migration.
 
 **Smoke tests:**
+
 1. Happy path — call the Discovery Feed endpoint with a combination of language/star-range/topic/
    license filters and `sort=Newest&direction=Desc`; confirm results match all facets (AND across,
    OR within) and are ordered by `FirstDiscoveredAtUtc` descending.
 2. Edge case — bookmark the same repository twice in a row via `CreateBookmark`; confirm no
    constraint-violation error on the second call, and `ListBookmarks` shows it exactly once.
 3. Regression-sensitive — seed a repository with two `Score` rows where the chronologically later
-   one has a *lower* `TotalScore`/`CommitsPerWeek` than an earlier one; confirm Hidden Gems' `Score`
+   one has a _lower_ `TotalScore`/`CommitsPerWeek` than an earlier one; confirm Hidden Gems' `Score`
    sort and Discovery Feed's `Commits` sort both use the later (lower) value, not the historical peak.
 
 ## Revision 5 — 2026-08-02 — Phase 2 complete: AI summarization, trend aggregation, dashboard UX brief
 
 **Changes:**
+
 - **F-008 (Summarizer)** — New `Features/Summarization/GenerateSummaries/` slice. Selects repos with
   a latest `Score.TotalScore ≥ Summarization:MinimumScore` (default 40) and no existing `Summary`
   row, capped at `Summarization:BatchSize` (default 20) per run. Fetches each repo's README via
@@ -765,7 +789,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   no rate-limit signal to retry against). `ComputeScoresJob` now attaches `GenerateSummariesJob` as
   Hangfire chain link 3 via a new `ISummarizationContinuationLink` seam.
   - **Reviewer-caught bug, fixed same round**: initial repo-selection logic used
-    `Scores.Max(s => s.TotalScore)` — the highest score a repo *ever* recorded — instead of its
+    `Scores.Max(s => s.TotalScore)` — the highest score a repo _ever_ recorded — instead of its
     chronologically latest score. Since `Summary` rows are create-once, this could permanently
     summarize a repo off a historical peak it has since fallen below. Fixed to
     `Scores.OrderByDescending(s => s.ComputedAtUtc).First().TotalScore`, matching
@@ -807,6 +831,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   Recorded as TC-008-08 (Manual). See `docs/handoff.md`'s What's Next.
 
 **Modules / files affected:**
+
 - `src/backend/GitCrawler.Api/Features/Summarization/GenerateSummaries/` — new: `GenerateSummariesCommand.cs`, `IRepositorySummarizer.cs`, `LmStudioRepositorySummarizer.cs`, `GenerateSummariesJob.cs`.
 - `src/backend/GitCrawler.Api/Features/Trends/AggregateTrends/` — new: `AggregateTrendsCommand.cs`, `AggregateTrendsJob.cs`.
 - `src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/ComputeScoresJob.cs` — chain link 3 attachment (`ISummarizationContinuationLink`).
@@ -820,18 +845,20 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 - `graphify-out/` — `graph.json`/`graph.html`/`GRAPH_REPORT.md` updated (518→860 nodes, 674→1223 edges, 48→55 communities); three ghost nodes from Revision 4's deletions (`RetryDelay.cs`, `HangfireDashboardAuthorizationFilter.cs` + test) pruned after an initial incremental-update path-matching miss.
 
 **Smoke tests:**
+
 1. Happy path — trigger the full chain (`discover-repositories` job) against a database with scored,
    summarized repos due for a trend rollup; confirm all four Hangfire chain links fire in sequence
    and a `TrendAggregate` row appears for at least one category.
 2. Edge case — re-run `AggregateTrendsCommand` twice for the same day without an intervening crawl;
    confirm `TrendAggregate` row count for that period doesn't grow (upsert, not duplicate).
 3. Regression-sensitive — seed a repo with two `Score` rows where the chronologically later one has
-   a *lower* `TotalScore` than an earlier one; confirm both `GenerateSummariesCommand` and
+   a _lower_ `TotalScore` than an earlier one; confirm both `GenerateSummariesCommand` and
    `AggregateTrendsCommand` use the later (lower) value, not the historical peak.
 
 ## Revision 4 — 2026-08-02 — Crawler retry/resilience migrated to Polly; fixed a query-building crash and a permanent-403 misclassification
 
 **Changes:**
+
 - **F-005** — Fixed a `NullReferenceException` in `GitHubDiscoveryClient.BuildDiscoveryQuery` that
   crashed every discovery-page fetch. The GraphQL query's `DefaultBranchRef.Name` ternary fell back
   to `string.Empty` (a static-member `MemberExpression` with a null `.Expression`), which
@@ -862,6 +889,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   without retry rather than stalling or aborting the run.
 
 **Modules / files affected:**
+
 - `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs` —
   `string.Empty` → `""` in `BuildDiscoveryQuery`; `GetContributorCountAsync` now detects the
   permanent "too large" 403 by response-body message and throws
@@ -890,6 +918,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
 ## Revision 3 — 2026-08-02 — Hangfire dashboard: access control removed
 
 **Changes:**
+
 - **F-006** — `HangfireDashboardAuthorizationFilter` (Revision 2's fail-closed shared-secret
   `?key=` query-string filter) removed entirely. Hangfire applies whatever
   `IDashboardAuthorizationFilter` is configured to every request under `/hangfire`, not just the
@@ -911,6 +940,7 @@ file, not introduced here, and out of scope to backfill as part of this Phase 4 
   after).
 
 **Modules / files affected:**
+
 - `src/backend/GitCrawler.Api/Features/Diagnostics/HangfireDashboardAuthorizationFilter.cs` —
   deleted.
 - `src/backend/tests/GitCrawler.Api.Tests/Features/Diagnostics/HangfireDashboardAuthorizationFilterTests.cs`
@@ -933,6 +963,7 @@ key).
 ## Revision 2 — 2026-08-02 — Phase 1 complete: core data pipeline
 
 **Features shipped:**
+
 - **F-004** — Data Store schema (EF Core). `GitCrawlerDbContext` with five entities (`Repository`,
   `Score`, `Summary`, `TrendAggregate`, `Bookmark`), three migrations to date (`InitialCreate`,
   `AddCrawlerRawSignalFields`, `AddScoreStarCountSignal`). Hangfire's own job-storage tables are
@@ -960,6 +991,7 @@ key).
   across `docker compose down` (not just `-v`-survivable, actually inspectable/backup-able).
 
 **Modules / files affected:**
+
 - `src/backend/GitCrawler.Api/Data/` — new (`GitCrawlerDbContext`, 5 entities, 3 migrations).
 - `src/backend/GitCrawler.Api/Features/Crawling/DiscoverRepositories/` — new (command/handler,
   `IGitHubDiscoveryClient`/`GitHubDiscoveryClient`, `RetryDelay`, `DiscoverRepositoriesJob`).
@@ -981,6 +1013,7 @@ key).
 **Breaking changes:** None.
 
 **Known gaps / follow-ups:**
+
 - Live verification of three scenarios was not possible in the Integration Agent's environment
   (Docker unavailable there): a real migration run against a fresh PostgreSQL 18.4 instance, live
   Hangfire dashboard reachability, and a mid-run container-restart persistence check. Automated
@@ -995,6 +1028,7 @@ key).
   phase.
 
 **Smoke tests (see `docs/test-runbook.md` for full steps):**
+
 1. **Happy path:** `make up`, then trigger the `discover-repositories` Hangfire job (dashboard or
    its daily schedule) against a `GITHUB_TOKEN`-configured environment — expect new `Repository`
    rows, followed automatically by a chained `ComputeScoresJob` run producing `Score` rows with all
@@ -1009,6 +1043,7 @@ key).
 ## Revision 1 — 2026-08-01 — Phase 0 complete
 
 **Features shipped:**
+
 - **F-001** — Spike: GitHub GraphQL rate-limit budget validation. Output-only (no code):
   `docs/spikes/f-001-github-graphql-rate-limit-budget.md`. Verdict: risk A1 resolved for
   1K-5K repos/day; conditionally resolved (mitigation needed) at the 100k+ scale-out target,
@@ -1027,6 +1062,7 @@ key).
   application code in the repository.
 
 **Modules / files affected:**
+
 - `src/backend/` — new .NET 10 solution (`GitCrawler.sln`), `GitCrawler.Api` project (Wolverine,
   EF Core, Hangfire, Npgsql, Octokit.GraphQL prerelease, `DotNetEnv` 3.2.0 — new, added post-scaffold),
   vertical-slice example at `Features/Diagnostics/Ping/`, `tests/GitCrawler.Api.Tests/` (xUnit
@@ -1122,6 +1158,7 @@ a containerized LM Studio to host-installed is a scope amendment within this sam
 revision, not a breaking change to anything previously shipped.)
 
 **Known gaps / follow-ups (tracked in `docs/project-management.md` Open Items):**
+
 - `npm audit` reports 6 moderate vulnerabilities in a frontend devDependency chain
   (`@angular/cli` → `@modelcontextprotocol/sdk` → `@hono/node-server`, Windows-only path
   traversal in a local dev-server adapter). No non-breaking fix exists; the available fix
@@ -1134,6 +1171,7 @@ revision, not a breaking change to anything previously shipped.)
   depend on Postgres already being up.
 
 **Smoke tests (see `docs/test-runbook.md` for full steps):**
+
 1. **Happy path:** `make up` brings up `app` + `postgres:18.4` via Compose and checks/starts the
    host-installed LM Studio, loading the configured model; `make status` confirms all three
    reachable; `GET /` serves the Angular dashboard shell.

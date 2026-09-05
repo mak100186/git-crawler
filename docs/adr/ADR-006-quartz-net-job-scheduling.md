@@ -19,10 +19,10 @@ in-flight/misfired job state survive a restart.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Plain `BackgroundService` + a cron-parsing library (e.g. Cronos) | Simpler to start with, but provides no built-in persistence or misfire handling — a container restart mid-crawl would need bespoke recovery logic that Quartz.NET already provides. |
-| Hangfire | Comparable feature set to Quartz.NET for this use case, but its dashboard/UI and job-type model are oriented around fire-and-forget/queued jobs rather than Quartz's cron-triggered, dependency-ordered scheduling, which is the closer fit for this pipeline's fixed daily stages. |
+| Option                                                           | Why not chosen                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plain `BackgroundService` + a cron-parsing library (e.g. Cronos) | Simpler to start with, but provides no built-in persistence or misfire handling — a container restart mid-crawl would need bespoke recovery logic that Quartz.NET already provides.                                                                                                 |
+| Hangfire                                                         | Comparable feature set to Quartz.NET for this use case, but its dashboard/UI and job-type model are oriented around fire-and-forget/queued jobs rather than Quartz's cron-triggered, dependency-ordered scheduling, which is the closer fit for this pipeline's fixed daily stages. |
 
 ## Consequences
 

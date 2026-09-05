@@ -17,9 +17,9 @@ PostgreSQL is the primary data store, accessed from .NET via EF Core.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| SQL Server | No meaningful capability advantage here and carries licensing cost/complexity for a self-hosted solo deployment that PostgreSQL avoids entirely. |
+| Option                        | Why not chosen                                                                                                                                                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQL Server                    | No meaningful capability advantage here and carries licensing cost/complexity for a self-hosted solo deployment that PostgreSQL avoids entirely.                                                                           |
 | Document store (e.g. MongoDB) | Repo metadata, scores, and trend aggregates are relational/tabular by nature (join-heavy queries for filter/sort by language, stars, topic, license); a document model would fight the access pattern rather than help it. |
 
 ## Consequences

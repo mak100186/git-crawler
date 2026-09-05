@@ -85,8 +85,13 @@ data/postgres/*
 # Vitest's rerun-failed-tests cache - regenerated on every test run, not source.
 test-results/
 
-# Exported design-tool brief - a dropped-in bundle (compiled JS, generated manifests), not
-# something meant to be diffed/hand-edited. Kept on disk locally; docs referencing its path
-# (handoff.md, changelog.md, project-management.md, test-cases.md) still resolve for anyone
-# who has it, they just won't get it from a fresh clone.
-docs/design-briefs/
+# orchestrator-development-pattern's per-run checkpoint (`run-state-file`, bound in
+# .claude/SKILLS.md). Written after every work-item state transition so an interrupted run can be
+# resumed; it describes one in-flight run on one machine, not the project. The metrics log
+# (docs/orchestrator-metrics.md) IS committed - that one is a measurement record across runs.
+docs/.orchestrator-run-state.json
+
+# Playwright MCP's own scratch output - per-run console logs, page snapshots, and any screenshot
+# written without an explicit path. Regenerated on every browser session, machine-local, not source.
+# Screenshots worth keeping go to docs/screenshots/ by an explicit filename instead (see CLAUDE.md).
+.playwright-mcp/

@@ -20,8 +20,13 @@
   z-index: 1001;
 
   &__brand {
-    font-family: var(--font-display);
-    font-size: 21px;
+    // Operator-specified wordmark: Figtree 800, not the Caprasimo display face the rest of the
+    // headings use. 800 is loaded explicitly in index.html's Google Fonts URL - without it the
+    // browser synthesises the weight from 700 and the logo renders as smeared faux-bold.
+    font-family: var(--font-body);
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -31,6 +36,10 @@
     width: 28px;
     height: 28px;
     font-size: 28px;
+    // The mark's SVG paints with currentColor, so this is what tints it - the design's accent
+    // orange, matching public/icon.svg's hard-coded fill (an <img>/favicon can't read a CSS var).
+    // 3.9:1 against the ink-900 toolbar, over WCAG 1.4.11's 3:1 for a non-text graphic.
+    color: var(--color-accent);
   }
 
   &__spacer {

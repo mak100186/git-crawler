@@ -17,10 +17,10 @@ The Data Store runs PostgreSQL 18.4, pinned as the `postgres:18.4` image tag in 
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
+| Option                           | Why not chosen                                                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `postgres:latest` (floating tag) | Risks an unplanned major-version upgrade on a routine `docker compose pull`, which is worse for a solo-operated system than deliberately bumping a pinned version when ready. |
-| PostgreSQL 17 (previous major) | No compatibility constraint favors staying behind; the operator specified 18.4 directly for this greenfield project. |
+| PostgreSQL 17 (previous major)   | No compatibility constraint favors staying behind; the operator specified 18.4 directly for this greenfield project.                                                          |
 
 ## Consequences
 

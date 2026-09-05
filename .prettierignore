@@ -1,0 +1,24 @@
+# Prettier config lives at the repo root (.prettierrc) so `npx prettier` works from anywhere -
+# Prettier walks up from each file, so src/frontend/** still resolves it. This ignore file is
+# likewise repo-wide.
+
+# Build output, dependencies, caches
+node_modules/
+dist/
+bin/
+obj/
+.angular/
+graphify-out/
+test-results/
+coverage/
+
+# Live Postgres bind mount - gigabytes of binary WAL, never source
+data/
+
+# Closed tranche. These are a historical record of what v1 was, kept verbatim; reformatting them
+# produces a large diff that changes nothing anyone will read, and makes `git blame` on the
+# archive point at a formatting pass instead of the decision it recorded.
+docs/archive/
+
+# Dropped-in bundles and generated artifacts
+src/backend/GitCrawler.Api/wwwroot/

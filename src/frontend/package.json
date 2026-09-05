@@ -9,7 +9,9 @@
     "test": "ng test",
     "lint": "ng lint",
     "format": "prettier --write \"src/**/*.{ts,html,scss,css,json,md}\" \"e2e/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.{ts,html,scss,css,json,md}\" \"e2e/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.{ts,html,scss,css,json,md}\" \"e2e/**/*.ts\"",
+    "format:docs": "prettier --ignore-path ../../.prettierignore --write \"../../*.md\" \"../../docs/**/*.md\"",
+    "format:docs:check": "prettier --ignore-path ../../.prettierignore --check \"../../*.md\" \"../../docs/**/*.md\""
   },
   "private": true,
   "packageManager": "npm@10.9.8",

@@ -29,16 +29,16 @@ topology: it checks Docker is running (starting Docker Desktop if not), brings u
 `lms` CLI if not), and loads the configured model with the right context length/GPU settings before
 declaring the stack ready.
 
-This changes *how* LM Studio is deployed, not *that* it's LM Studio (ADR-007's engine choice is
+This changes _how_ LM Studio is deployed, not _that_ it's LM Studio (ADR-007's engine choice is
 unchanged) — this ADR amends ADR-007's deployment-topology framing and ADR-002's "all components
 must be containerized" consequence; it does not supersede either.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Keep the `lmstudio/llmster-preview` container (original F-003 scaffold) | CPU-only (no GPU/Metal acceleration), Technical Preview stability, and duplicates a model runtime the operator already has installed and configured natively — strictly worse on every axis once a native install is confirmed to exist. |
-| Require the operator to always manually start LM Studio before `docker compose up` | Reintroduces exactly the "did you remember to start X" operational burden a Makefile / single-entrypoint script exists to remove — inconsistent with ADR-002's solo-operator, low-ops-overhead framing. |
+| Option                                                                             | Why not chosen                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep the `lmstudio/llmster-preview` container (original F-003 scaffold)            | CPU-only (no GPU/Metal acceleration), Technical Preview stability, and duplicates a model runtime the operator already has installed and configured natively — strictly worse on every axis once a native install is confirmed to exist. |
+| Require the operator to always manually start LM Studio before `docker compose up` | Reintroduces exactly the "did you remember to start X" operational burden a Makefile / single-entrypoint script exists to remove — inconsistent with ADR-002's solo-operator, low-ops-overhead framing.                                  |
 
 ## Consequences
 

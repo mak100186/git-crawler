@@ -30,9 +30,9 @@ dispatch Wolverine commands/queries per operation.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| MediatR | Explicitly ruled out by the operator; also carries a real licensing risk — its maintainer has moved newer versions toward a commercial license, unlike Wolverine which remains fully open-source with no paid tier for the core library. |
+| Option      | Why not chosen                                                                                                                                                                                                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MediatR     | Explicitly ruled out by the operator; also carries a real licensing risk — its maintainer has moved newer versions toward a commercial license, unlike Wolverine which remains fully open-source with no paid tier for the core library.                                            |
 | MassTransit | A capable alternative with a similar open-source posture, but it's oriented around full message-bus/transport scenarios (RabbitMQ, Azure Service Bus, etc.); heavier than needed when v1 only needs in-process command/query dispatch, with no cross-process messaging requirement. |
 
 ## Consequences

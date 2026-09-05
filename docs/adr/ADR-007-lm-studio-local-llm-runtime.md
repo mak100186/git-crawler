@@ -22,10 +22,10 @@ below.)
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Ollama | Was the illustrative example in ADR-001, but the operator's explicit preference is LM Studio; no functional requirement forces Ollama specifically, and `IRepositorySummarizer` isolates the rest of the system from this choice either way. |
-| Raw llama.cpp (no runtime wrapper) | Would require building and maintaining model-serving, request-queuing, and API-surface concerns that LM Studio already provides, for no benefit given the abstraction already isolates callers from the runtime's internals. |
+| Option                             | Why not chosen                                                                                                                                                                                                                               |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ollama                             | Was the illustrative example in ADR-001, but the operator's explicit preference is LM Studio; no functional requirement forces Ollama specifically, and `IRepositorySummarizer` isolates the rest of the system from this choice either way. |
+| Raw llama.cpp (no runtime wrapper) | Would require building and maintaining model-serving, request-queuing, and API-surface concerns that LM Studio already provides, for no benefit given the abstraction already isolates callers from the runtime's internals.                 |
 
 ## Consequences
 
