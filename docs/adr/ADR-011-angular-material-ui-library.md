@@ -18,9 +18,9 @@ library.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| PrimeNG | Broader component set, but a separate design language from Material and a separate theming system to learn/maintain for a solo developer, with no PRD requirement favoring it over Material. |
+| Option                                | Why not chosen                                                                                                                                                                                                  |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PrimeNG                               | Broader component set, but a separate design language from Material and a separate theming system to learn/maintain for a solo developer, with no PRD requirement favoring it over Material.                    |
 | Tailwind CSS + Angular CDK (headless) | More visual control with no imposed design language, but every component (tables, menus, date pickers, etc.) has to be built by hand — more work for a solo developer than adopting a maintained component set. |
 
 ## Consequences

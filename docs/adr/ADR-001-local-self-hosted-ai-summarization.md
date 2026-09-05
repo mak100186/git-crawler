@@ -23,9 +23,9 @@ swapped or supplemented later without touching calling code.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Cloud LLM API (Azure OpenAI / OpenAI / Anthropic) | Per-call cost scales directly with the 1K-5K/day → 100k+ volume target; introduces an external credential and data-egress surface the self-hosted deployment decision (ADR-002) is otherwise avoiding. |
+| Option                                                  | Why not chosen                                                                                                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloud LLM API (Azure OpenAI / OpenAI / Anthropic)       | Per-call cost scales directly with the 1K-5K/day → 100k+ volume target; introduces an external credential and data-egress surface the self-hosted deployment decision (ADR-002) is otherwise avoiding.                                         |
 | Hybrid (cloud for high-score repos, local for the rest) | Adds a second backend, two credential/ops surfaces, and a routing policy to design and maintain before the base engine is proven — premature given PRD's "prove the base engine first" framing for personalization/other v1-deferred features. |
 
 ## Consequences

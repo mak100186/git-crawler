@@ -8,14 +8,14 @@ LM Studio.
 
 ## Prerequisites
 
-| Requirement | Notes |
-|---|---|
-| Docker Desktop | `make up` will try to start it for you if it's installed but not running. Install: https://docs.docker.com/get-docker/ |
-| LM Studio | Must already be installed on this machine (ADR-016 — not containerized). Install: https://lmstudio.ai/download |
-| LM Studio's `lms` CLI | Bundled with LM Studio but may need enabling once — open LM Studio → Settings → Developer, and enable the CLI. Confirm it's on your `PATH` with `lms --version`. |
-| `make` | Included on macOS/Linux. On Windows, install it separately (e.g. `choco install make`) — the `Makefile` itself forces its recipe shell to Git for Windows' bundled `bash.exe`, so it runs the same from PowerShell, `cmd.exe`, or Git Bash, as long as Git for Windows is installed at its default location. |
-| Llama 3.2 3B Instruct downloaded in LM Studio | Run `lms ls` to check. If it's not there, use LM Studio's "Discover" tab (or `lms get <model>`) to download it. `llama-3.2-3b-instruct` is the identifier confirmed present as of this doc's last update (ADR-017 — chosen over the original Gemma 4 E4B pin after live testing found Gemma 4 E4B wasted most of its output budget on internal reasoning; see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9-§10) — re-check with `lms ls`, since LM Studio's catalog can change. |
-| `gitleaks` (optional — only needed for `make secret-scan`) | Not required for `make up`/`make dev`. Install via `go install github.com/gitleaks/gitleaks/v8@v8.30.1` or a downloaded release binary (https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1) — pinned to match the version `.github/workflows/quality.yml`'s `secret-scan` job installs, so a local pass/fail means the same thing a CI run would. See §5 below. |
+| Requirement                                                | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker Desktop                                             | `make up` will try to start it for you if it's installed but not running. Install: https://docs.docker.com/get-docker/                                                                                                                                                                                                                                                                                                                                                                      |
+| LM Studio                                                  | Must already be installed on this machine (ADR-016 — not containerized). Install: https://lmstudio.ai/download                                                                                                                                                                                                                                                                                                                                                                              |
+| LM Studio's `lms` CLI                                      | Bundled with LM Studio but may need enabling once — open LM Studio → Settings → Developer, and enable the CLI. Confirm it's on your `PATH` with `lms --version`.                                                                                                                                                                                                                                                                                                                            |
+| `make`                                                     | Included on macOS/Linux. On Windows, install it separately (e.g. `choco install make`) — the `Makefile` itself forces its recipe shell to Git for Windows' bundled `bash.exe`, so it runs the same from PowerShell, `cmd.exe`, or Git Bash, as long as Git for Windows is installed at its default location.                                                                                                                                                                                |
+| Llama 3.2 3B Instruct downloaded in LM Studio              | Run `lms ls` to check. If it's not there, use LM Studio's "Discover" tab (or `lms get <model>`) to download it. `llama-3.2-3b-instruct` is the identifier confirmed present as of this doc's last update (ADR-017 — chosen over the original Gemma 4 E4B pin after live testing found Gemma 4 E4B wasted most of its output budget on internal reasoning; see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §9-§10) — re-check with `lms ls`, since LM Studio's catalog can change. |
+| `gitleaks` (optional — only needed for `make secret-scan`) | Not required for `make up`/`make dev`. Install via `go install github.com/gitleaks/gitleaks/v8@v8.30.1` or a downloaded release binary (https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1) — pinned to match the version `.github/workflows/quality.yml`'s `secret-scan` job installs, so a local pass/fail means the same thing a CI run would. See §5 below.                                                                                                                      |
 
 ## 1. Create a GitHub Personal Access Token
 
@@ -73,16 +73,16 @@ some endpoints; verify this is still true for your GitHub account/version before
    Only `POSTGRES_PASSWORD` and `GITHUB_TOKEN` ship blank below — every other value already has a
    working default, so `cp .env.example .env` plus those two real values is enough to run `make up`.
 
-   | `.env` variable | Config key it drives | Notes |
-   |---|---|---|
-   | `POSTGRES_DB` | `ConnectionStrings:Postgres` (database) | Ships as `gitcrawler` — required by `docker-compose.yml`/`make check-env`, only change alongside those files. |
-   | `POSTGRES_USER` | `ConnectionStrings:Postgres` (username) | Ships as `gitcrawler` — same as above. |
-   | `POSTGRES_PASSWORD` | `ConnectionStrings:Postgres` (password) | Any password for local dev; ships blank — `docker-compose.yml` fails loudly if missing. |
-   | `POSTGRES_PORT` | *(host-published port only)* | Port Postgres is reachable at from the host (DB client, or the app itself in bare mode) — the app container always talks to `postgres:5432` internally regardless of this value. Ships as `5432`. |
-   | `GITHUB_TOKEN` | `GitHub:Token` | Paste the token from step 1. Ships blank — fails loudly if missing. |
-   | `LMSTUDIO_PORT` | `LmStudio:BaseUrl` | Port LM Studio's local server listens on. Ships as `1234` (LM Studio's own default). |
-   | `LMSTUDIO_IDENTIFIER` | `LmStudio:Model` | The fixed alias `make up` assigns the loaded model via `lms load --identifier` — what the app sends as `"model"` in LM Studio API calls. Ships as `gitcrawler-summarizer`; rarely needs to change. |
-   | `LMSTUDIO_MODEL` | *(Makefile only, not app config)* | The catalog model `make up` loads under the identifier above (ADR-017). Ships as `llama-3.2-3b-instruct`. |
+   | `.env` variable       | Config key it drives                    | Notes                                                                                                                                                                                              |
+   | --------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `POSTGRES_DB`         | `ConnectionStrings:Postgres` (database) | Ships as `gitcrawler` — required by `docker-compose.yml`/`make check-env`, only change alongside those files.                                                                                      |
+   | `POSTGRES_USER`       | `ConnectionStrings:Postgres` (username) | Ships as `gitcrawler` — same as above.                                                                                                                                                             |
+   | `POSTGRES_PASSWORD`   | `ConnectionStrings:Postgres` (password) | Any password for local dev; ships blank — `docker-compose.yml` fails loudly if missing.                                                                                                            |
+   | `POSTGRES_PORT`       | _(host-published port only)_            | Port Postgres is reachable at from the host (DB client, or the app itself in bare mode) — the app container always talks to `postgres:5432` internally regardless of this value. Ships as `5432`.  |
+   | `GITHUB_TOKEN`        | `GitHub:Token`                          | Paste the token from step 1. Ships blank — fails loudly if missing.                                                                                                                                |
+   | `LMSTUDIO_PORT`       | `LmStudio:BaseUrl`                      | Port LM Studio's local server listens on. Ships as `1234` (LM Studio's own default).                                                                                                               |
+   | `LMSTUDIO_IDENTIFIER` | `LmStudio:Model`                        | The fixed alias `make up` assigns the loaded model via `lms load --identifier` — what the app sends as `"model"` in LM Studio API calls. Ships as `gitcrawler-summarizer`; rarely needs to change. |
+   | `LMSTUDIO_MODEL`      | _(Makefile only, not app config)_       | The catalog model `make up` loads under the identifier above (ADR-017). Ships as `llama-3.2-3b-instruct`.                                                                                          |
 
    `ConnectionStrings:Postgres` isn't consumed by anything yet — no `DbContext` exists until F-004
    — but it's fully wired now so F-004 doesn't also have to solve config sourcing.
@@ -94,6 +94,7 @@ make up
 ```
 
 This:
+
 1. Checks `.env` exists and has every required variable set (`check-env`) — fails fast with a
    pointer back to `.env.example` if not.
 2. Checks Docker is running (starts Docker Desktop if it's installed but not running).

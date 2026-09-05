@@ -31,13 +31,13 @@ replacing Gemma 4 E4B.
 
 **Live comparison data (2026-08-01), single mid-size request, identical `max_tokens: 300` cap:**
 
-| Model | Wall time | `finish_reason` | Visible output | Reasoning tokens |
-|---|---|---|---|---|
-| `google/gemma-4-e4b` (ADR-013, superseded) | 2.57-2.82s (p95) | `length` (truncated) | 30-60 words | 195-258 of 300 (65-86% wasted) |
-| `gemma-3-4b-it` | 1.33s | `stop` (complete) | ~120 words | 0 |
-| `gemma-4-12b-it-qat` | 2.89s | `stop` (complete) | ~125 words | 0 |
-| **`llama-3.2-3b-instruct` (chosen)** | **0.88s** | `stop` (complete) | ~90 words | **0** |
-| `qwen2.5-coder-7b-instruct` | 1.60s | `stop` (complete) | ~120 words | 0 |
+| Model                                      | Wall time        | `finish_reason`      | Visible output | Reasoning tokens               |
+| ------------------------------------------ | ---------------- | -------------------- | -------------- | ------------------------------ |
+| `google/gemma-4-e4b` (ADR-013, superseded) | 2.57-2.82s (p95) | `length` (truncated) | 30-60 words    | 195-258 of 300 (65-86% wasted) |
+| `gemma-3-4b-it`                            | 1.33s            | `stop` (complete)    | ~120 words     | 0                              |
+| `gemma-4-12b-it-qat`                       | 2.89s            | `stop` (complete)    | ~125 words     | 0                              |
+| **`llama-3.2-3b-instruct` (chosen)**       | **0.88s**        | `stop` (complete)    | ~90 words      | **0**                          |
+| `qwen2.5-coder-7b-instruct`                | 1.60s            | `stop` (complete)    | ~120 words     | 0                              |
 
 Notably, `gemma-4-12b-it-qat` shares Gemma 4 E4B's `gemma4` architecture family but produces
 **zero** reasoning-token overhead — confirming the problem is specific to the `e4b` fine-tune, not
@@ -47,24 +47,24 @@ model-specific finding, not an architecture-family one.
 **Full-rigor benchmark for the chosen model** (n=10 per README size, matching F-002 §9.2's
 methodology exactly — see `docs/spikes/f-002-lm-studio-throughput-benchmark.md` §10 for full data):
 
-| README size | n | mean | p50 | p95 | max |
-|---|---|---|---|---|---|
-| small | 10 | 0.866s | 0.876s | 0.976s | 0.976s |
-| mid | 10 | 0.777s | 0.777s | 0.829s | 0.829s |
-| large | 10 | 1.050s | 0.992s | 1.544s | 1.544s |
+| README size | n   | mean   | p50    | p95    | max    |
+| ----------- | --- | ------ | ------ | ------ | ------ |
+| small       | 10  | 0.866s | 0.876s | 0.976s | 0.976s |
+| mid         | 10  | 0.777s | 0.777s | 0.829s | 0.829s |
+| large       | 10  | 1.050s | 0.992s | 1.544s | 1.544s |
 
 Native stats (mid, single call): 241.6 tok/s, `stop_reason: "eosFound"` (natural completion, not
 budget-capped), 165 of 300 completion tokens used — 45% headroom left in the budget, not zero.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Keep `gemma-4-e4b`, raise `max_tokens` (F-002 spike §9.4's first mitigation) | Treats the symptom, not the cause — still burns the majority of every response's budget on invisible reasoning; the wall-clock cost at a wider budget was unverified and would need its own re-benchmark; doesn't fix the underlying waste. |
-| `gemma-4-12b-it-qat` | Genuinely viable — same family as the original ADR-013 pin, complete output, zero reasoning waste, still comfortably passes NFR-001 (2.89s). Not chosen only because `llama-3.2-3b-instruct` is ~3x faster with equally complete output and no functional requirement favors staying within the Gemma family specifically (ADR-013's original "operator preference" rationale for Gemma no longer applies once Gemma's own e4b variant is what caused the problem). Worth reconsidering if `llama-3.2-3b-instruct`'s summary quality proves inadequate in practice. |
-| `gemma-3-4b-it` | Also viable, complete output, close second on speed (1.33s). Not chosen — `llama-3.2-3b-instruct` measured faster with no observed quality tradeoff in this single-request comparison; a closer call than `gemma-4-12b-it-qat` and worth revisiting if `llama-3.2-3b-instruct`'s output quality underperforms at scale. |
-| `qwen2.5-coder-7b-instruct` | Coder-specialized model; repository summarization isn't a code-generation task, so a general instruct model is a better fit — included in the comparison for completeness, not because it was a strong candidate. |
-| `deepseek/deepseek-r1-0528-qwen3-8b` | Not tested — "R1" branding is a well-established, explicit reasoning-model designator (chain-of-thought by design), so it would predictably make the exact problem being solved worse, not better. Excluded on that basis rather than spending a live test on a near-certain negative result. |
+| Option                                                                       | Why not chosen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep `gemma-4-e4b`, raise `max_tokens` (F-002 spike §9.4's first mitigation) | Treats the symptom, not the cause — still burns the majority of every response's budget on invisible reasoning; the wall-clock cost at a wider budget was unverified and would need its own re-benchmark; doesn't fix the underlying waste.                                                                                                                                                                                                                                                                                                                         |
+| `gemma-4-12b-it-qat`                                                         | Genuinely viable — same family as the original ADR-013 pin, complete output, zero reasoning waste, still comfortably passes NFR-001 (2.89s). Not chosen only because `llama-3.2-3b-instruct` is ~3x faster with equally complete output and no functional requirement favors staying within the Gemma family specifically (ADR-013's original "operator preference" rationale for Gemma no longer applies once Gemma's own e4b variant is what caused the problem). Worth reconsidering if `llama-3.2-3b-instruct`'s summary quality proves inadequate in practice. |
+| `gemma-3-4b-it`                                                              | Also viable, complete output, close second on speed (1.33s). Not chosen — `llama-3.2-3b-instruct` measured faster with no observed quality tradeoff in this single-request comparison; a closer call than `gemma-4-12b-it-qat` and worth revisiting if `llama-3.2-3b-instruct`'s output quality underperforms at scale.                                                                                                                                                                                                                                             |
+| `qwen2.5-coder-7b-instruct`                                                  | Coder-specialized model; repository summarization isn't a code-generation task, so a general instruct model is a better fit — included in the comparison for completeness, not because it was a strong candidate.                                                                                                                                                                                                                                                                                                                                                   |
+| `deepseek/deepseek-r1-0528-qwen3-8b`                                         | Not tested — "R1" branding is a well-established, explicit reasoning-model designator (chain-of-thought by design), so it would predictably make the exact problem being solved worse, not better. Excluded on that basis rather than spending a live test on a near-certain negative result.                                                                                                                                                                                                                                                                       |
 
 ## Consequences
 

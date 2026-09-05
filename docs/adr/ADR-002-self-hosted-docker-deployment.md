@@ -18,10 +18,10 @@ self-hosted/on-prem infrastructure, rather than a managed cloud platform.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
+| Option                                            | Why not chosen                                                                                                                                                                                                                          |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Azure (App Service / Container Apps + managed DB) | Adds cloud billing and IAM/config surface disproportionate to a solo, no-deadline project; also pulls against ADR-001's local-inference decision, since a managed cloud host complicates running a local LLM runtime alongside the app. |
-| Kubernetes (self-hosted or managed) | Orchestration complexity (manifests, ingress, secrets management, cluster ops) is unjustified for a single-operator deployment at current scale; revisit only if horizontal scaling needs outgrow Compose. |
+| Kubernetes (self-hosted or managed)               | Orchestration complexity (manifests, ingress, secrets management, cluster ops) is unjustified for a single-operator deployment at current scale; revisit only if horizontal scaling needs outgrow Compose.                              |
 
 ## Consequences
 

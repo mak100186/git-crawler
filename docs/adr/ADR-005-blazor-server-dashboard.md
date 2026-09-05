@@ -18,10 +18,10 @@ Web API.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Separate JS SPA (React/Angular) + .NET API | Adds a second language/toolchain, build pipeline, and API-contract-versioning surface for a solo maintainer to own, with no requirement in the PRD (offline support, huge client-side interactivity) that specifically needs it. |
-| Blazor WebAssembly | Ships the whole app to the browser and needs a separate API auth boundary since it runs fully client-side; Blazor Server's persistent SignalR connection fits a single-user-per-session dashboard better and keeps data access server-side, next to the Data Store. |
+| Option                                     | Why not chosen                                                                                                                                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Separate JS SPA (React/Angular) + .NET API | Adds a second language/toolchain, build pipeline, and API-contract-versioning surface for a solo maintainer to own, with no requirement in the PRD (offline support, huge client-side interactivity) that specifically needs it.                                    |
+| Blazor WebAssembly                         | Ships the whole app to the browser and needs a separate API auth boundary since it runs fully client-side; Blazor Server's persistent SignalR connection fits a single-user-per-session dashboard better and keeps data access server-side, next to the Data Store. |
 
 ## Consequences
 

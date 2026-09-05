@@ -21,9 +21,9 @@ principle from ADR-002 rather than introducing a separate frontend container.
 
 ## Alternatives Considered
 
-| Option | Why not chosen |
-|--------|-----------------|
-| Blazor Server (ADR-005) | Superseded by this ADR — was chosen without the operator's actual frontend preference factored in. |
+| Option                                     | Why not chosen                                                                                                                                                                                                                                                             |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blazor Server (ADR-005)                    | Superseded by this ADR — was chosen without the operator's actual frontend preference factored in.                                                                                                                                                                         |
 | Angular SPA behind its own nginx container | Would isolate the frontend build/serve concern from the API process, but adds a second container and a cross-origin (CORS) boundary between SPA and API for no benefit at solo-operator scale; same-process static serving keeps ADR-002's deployment footprint unchanged. |
 
 ## Consequences

@@ -17,7 +17,7 @@ This spike was produced without the ability to call a live LM Studio instance, l
 measure a single token of real inference. Every number below that looks like a benchmark result is
 either **(estimated, needs live verification)** or explicitly marked as not measured. Nothing in
 this document should be read as "F-002 benchmarked Gemma 4 E4B and it passed/failed" — that
-determination has not happened yet. What this document *does* provide, per the Task Packet's own
+determination has not happened yet. What this document _does_ provide, per the Task Packet's own
 framing of the correct output for a no-access environment:
 
 1. The most honest, best-available assessment of Gemma 4 E4B's existence/identifier/availability
@@ -49,7 +49,7 @@ framing of the correct output for a no-access environment:
    benchmark isn't overfit to a single content length.
 4. **"On the order of seconds per repository" (NFR-001)** is not a pinned numeric SLA anywhere in
    the Architecture doc or PRD. §5 proposes a concrete interpretation (order-of-magnitude bands)
-   since the benchmark methodology needs *some* threshold to compare against — this is a stated,
+   since the benchmark methodology needs _some_ threshold to compare against — this is a stated,
    reasoned assumption, not an authoritative number, and the Architecture owner should confirm or
    adjust it.
 5. **Summarization volume is a subset of discovery volume.** FR-003 scopes summarization to
@@ -63,12 +63,12 @@ framing of the correct output for a no-access environment:
 **Cannot be confirmed from this environment — must be verified live by the operator.** Here is
 what can and cannot be said with the confidence level attached to each claim:
 
-| Claim | Confidence |
-|---|---|
-| Google's Gemma model family exists, is open-weight, and has previously used effective-parameter on-device variant naming | **(documented, high confidence)** — consistent with what ADR-013 itself already states about "Gemma 3n" using "E2B"/"E4B" naming for on-device variants as of my training data. |
-| A "Gemma 4" release (as opposed to Gemma 3n, or a Gemma 3.x point release) exists | **Cannot verify.** ADR-013 already flags this exact gap: it postdates what I can confirm from training data. I have no basis to either confirm or deny a "Gemma 4" release exists, and I will not guess. |
+| Claim                                                                                                                                                                    | Confidence                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google's Gemma model family exists, is open-weight, and has previously used effective-parameter on-device variant naming                                                 | **(documented, high confidence)** — consistent with what ADR-013 itself already states about "Gemma 3n" using "E2B"/"E4B" naming for on-device variants as of my training data.                                                                                                                                                                                                                                                                                  |
+| A "Gemma 4" release (as opposed to Gemma 3n, or a Gemma 3.x point release) exists                                                                                        | **Cannot verify.** ADR-013 already flags this exact gap: it postdates what I can confirm from training data. I have no basis to either confirm or deny a "Gemma 4" release exists, and I will not guess.                                                                                                                                                                                                                                                         |
 | "Gemma 4 E4B" is the exact catalog/file identifier LM Studio would show (e.g. a specific Hugging Face repo + GGUF quantization tag such as `Q4_K_M`, `Q8_0`, `MLX-4bit`) | **Cannot verify.** LM Studio's catalog is a live, changing surface (it pulls GGUF/MLX conversions primarily from Hugging Face, commonly including the `lmstudio-community` curation org for fast-turnaround quantizations of newly released models). Even if "Gemma 4" exists, I have no way to confirm what identifier string LM Studio's search would return for it, what quantization options exist, or what context-window/resource footprint it ships with. |
-| If Gemma 4 does not exist or isn't yet available as a GGUF/MLX conversion, the closest real analog I can identify is the Gemma 3n E2B/E4B family | **(reasoned inference, not verification)** — offered only as the fallback path in §6, not as a substitute decision; ADR-013 explicitly reserves that call for a superseding ADR, not this spike. |
+| If Gemma 4 does not exist or isn't yet available as a GGUF/MLX conversion, the closest real analog I can identify is the Gemma 3n E2B/E4B family                         | **(reasoned inference, not verification)** — offered only as the fallback path in §6, not as a substitute decision; ADR-013 explicitly reserves that call for a superseding ADR, not this spike.                                                                                                                                                                                                                                                                 |
 
 **Concrete verification steps for the operator** (none of these require code, only LM Studio itself
 or a browser):
@@ -114,8 +114,8 @@ Model loaded successfully in 6.21s.
 
 This closes TC-002-01/the first half of AC1 unconditionally — the identifier is `google/gemma-4-e4b`,
 it exists, it's a real 7.5B-parameter model on the `gemma4` architecture, and it loads successfully.
-**This does not close the rest of F-002 or resolve risk A2**: model *load* time (6.21s, one-time,
-cold-start) is a different measurement from *inference throughput per repository summary*
+**This does not close the rest of F-002 or resolve risk A2**: model _load_ time (6.21s, one-time,
+cold-start) is a different measurement from _inference throughput per repository summary_
 (tokens/sec against real README content, which is what NFR-001 and §3-§5 of this document actually
 require). The full runnable benchmark in §3 still needs to be executed against a loaded model with
 real prompts to produce a throughput number comparable to NFR-001's bands in §5. See
@@ -143,6 +143,7 @@ real prompts to produce a throughput number comparable to NFR-001's bands in §5
 ```bash
 curl -s http://localhost:1234/v1/models | jq .
 ```
+
 Record the exact `id` string from the response — this is what confirmed TC-002-01, and it is the
 `"model"` value every request below must use.
 
@@ -162,6 +163,7 @@ jq -n --rawfile readme ./readme-mid.md \
     stream: false
   }' > request-mid.json
 ```
+
 Repeat for `readme-small.md` → `request-small.json` and `readme-large.md` → `request-large.json`.
 A fixed, realistic system prompt matters — it should match (or closely approximate) the actual
 prompt F-008's `IRepositorySummarizer` implementation will use, since prompt length itself affects
@@ -175,6 +177,7 @@ curl -s -w "\ntotal_time_s: %{time_total}\n" \
   -d @request-mid.json \
   http://localhost:1234/v1/chat/completions -o response-mid.json
 ```
+
 `curl`'s `%{time_total}` measures true wall-clock time from request start to full response receipt
 — exactly what TC-002-02 asks for, no separate timing harness needed.
 
@@ -210,8 +213,9 @@ detail that changes across releases)**:
 curl -s -H "Content-Type: application/json" -d @request-mid.json \
   http://localhost:1234/api/v0/chat/completions | jq '.stats // "not available in this LM Studio version"'
 ```
+
 If present, this gives tokens/sec directly instead of having to back-calculate it from wall-clock
-time and output length — useful for diagnosing *why* a run is slow (prompt processing vs.
+time and output length — useful for diagnosing _why_ a run is slow (prompt processing vs.
 generation) but not required; §3.4/§3.5's wall-clock measurement is the one TC-002-02 actually asks
 for and works regardless of LM Studio version.
 
@@ -228,6 +232,7 @@ grep 'size=mid' benchmark-results.txt | grep -oP 'total_time_s=\K[0-9.]+' | sort
     printf "n=%d mean=%.2fs p50=%.2fs p95=%.2fs max=%.2fs\n", n, mean, p50, p95, a[n]
   }'
 ```
+
 Repeat per README size. Report mean, p50, p95, and max — not just mean — since a fast mean can hide
 exactly the tail-latency problem TC-002-04 exists to catch.
 
@@ -259,13 +264,13 @@ plausibly does on comparable hardware," explicitly extrapolated, not measured:
 Assumed workload: ~500-750 input tokens (a ~1-3 KB README plus a short system prompt) + ~200-300
 output tokens (a concise structured summary, per the `max_tokens: 300` cap in §3.3).
 
-| Hardware tier | Typical generation throughput (tok/s) — general local-LLM knowledge, ~4-8B GGUF Q4-class | Projected total time/repo (est.) | Basis |
-|---|---|---|---|
-| Consumer GPU, 8-12+ GB VRAM (e.g. RTX 3060/4060/4070 class) | ~30-80 tok/s | **~3-12 seconds** | **(estimated, needs live verification)** — broad, well-established range for ~4-8B Q4-quantized models on mid-range consumer GPUs with full GPU offload; prompt processing for 500-750 tokens is typically sub-second on GPU and not the dominant cost. |
-| Apple Silicon (M-series, Metal/MLX) | ~20-60 tok/s | **~4-15 seconds** | **(estimated, needs live verification)** — comparable range to consumer GPU tier for similarly sized quantized models, per general knowledge of Metal/MLX-backed llama.cpp inference. |
-| CPU-only, modern multi-core desktop, no GPU offload | ~3-15 tok/s | **~15-100+ seconds** | **(estimated, needs live verification)** — CPU-only inference for models in this parameter class is commonly an order of magnitude slower than GPU-offloaded inference; prompt processing also becomes a non-trivial fraction of total time in this tier, unlike the GPU tiers. |
+| Hardware tier                                               | Typical generation throughput (tok/s) — general local-LLM knowledge, ~4-8B GGUF Q4-class | Projected total time/repo (est.) | Basis                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Consumer GPU, 8-12+ GB VRAM (e.g. RTX 3060/4060/4070 class) | ~30-80 tok/s                                                                             | **~3-12 seconds**                | **(estimated, needs live verification)** — broad, well-established range for ~4-8B Q4-quantized models on mid-range consumer GPUs with full GPU offload; prompt processing for 500-750 tokens is typically sub-second on GPU and not the dominant cost.                         |
+| Apple Silicon (M-series, Metal/MLX)                         | ~20-60 tok/s                                                                             | **~4-15 seconds**                | **(estimated, needs live verification)** — comparable range to consumer GPU tier for similarly sized quantized models, per general knowledge of Metal/MLX-backed llama.cpp inference.                                                                                           |
+| CPU-only, modern multi-core desktop, no GPU offload         | ~3-15 tok/s                                                                              | **~15-100+ seconds**             | **(estimated, needs live verification)** — CPU-only inference for models in this parameter class is commonly an order of magnitude slower than GPU-offloaded inference; prompt processing also becomes a non-trivial fraction of total time in this tier, unlike the GPU tiers. |
 
-One additional, lower-confidence factor specific to the Gemma 3n E2B/E4B *lineage* (offered only as
+One additional, lower-confidence factor specific to the Gemma 3n E2B/E4B _lineage_ (offered only as
 context, given §2's finding that "Gemma 4" itself is unverifiable): Google's stated design goal for
 that naming pattern was reduced active-parameter/memory footprint via architecture tricks
 (MatFormer-style nested sub-models, per-layer embedding caching) specifically to improve on-device
@@ -290,11 +295,11 @@ judgment call at benchmark time. **This banding is this spike's own reasoned int
 fuzzy requirement, not an authoritative reinterpretation of NFR-001** — the Architecture owner
 should confirm or adjust these thresholds if a tighter number is intended:
 
-| Band | p95 wall-clock time per repo (from §3.7) | Verdict |
-|---|---|---|
-| Pass | ≤ ~30 seconds | Squarely "on the order of seconds"; no action needed. |
-| Marginal | ~30 seconds - 2 minutes | Order-of-magnitude has drifted from "seconds" toward "a couple minutes." Not an automatic fail, but should trigger the mitigation options in §6 before F-008 sign-off, not be waved through silently. |
-| Fail | > 2 minutes p95, or mean/median already exceeds the "seconds" order of magnitude | Fails NFR-001 as stated. §6 applies. |
+| Band     | p95 wall-clock time per repo (from §3.7)                                         | Verdict                                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pass     | ≤ ~30 seconds                                                                    | Squarely "on the order of seconds"; no action needed.                                                                                                                                                 |
+| Marginal | ~30 seconds - 2 minutes                                                          | Order-of-magnitude has drifted from "seconds" toward "a couple minutes." Not an automatic fail, but should trigger the mitigation options in §6 before F-008 sign-off, not be waved through silently. |
+| Fail     | > 2 minutes p95, or mean/median already exceeds the "seconds" order of magnitude | Fails NFR-001 as stated. §6 applies.                                                                                                                                                                  |
 
 Additional check beyond the raw per-repo number: **compare mean vs. p95** from §3.7. If p95 is more
 than ~3x the mean, that is itself a finding worth reporting even within the "Pass" band — it means
@@ -302,7 +307,7 @@ occasional runs run long enough to matter for a scheduled batch job (Architectur
 processes multiple top-scored repos per run), even if the typical case looks fine. This is exactly
 the tail-latency risk TC-002-04 was written to catch, and a mean-only comparison would miss it.
 
-Also note the §1.5 caveat: this framework evaluates *per-repo* time only, because neither the PRD
+Also note the §1.5 caveat: this framework evaluates _per-repo_ time only, because neither the PRD
 nor Architecture doc states how many repos clear the scoring threshold per day. A per-repo pass does
 not automatically mean the full Summarizer stage duration is acceptable — that requires the
 top-scored-repo daily count, which is an open unknown (§8), not something this spike can compute.
@@ -313,6 +318,7 @@ Explicit, not silent, per TC-002-03 and the Task Packet's AC4:
 
 **If §2 finds the model unavailable** (neither "Gemma 4 E4B" nor "Gemma 3n E4B" resolves to
 anything in LM Studio's catalog or on Hugging Face):
+
 1. Do not silently substitute a different model and proceed as if ADR-013 were unaffected.
 2. Per ADR-013's own Consequences section (already anticipates this exact case): file a new ADR
    superseding ADR-013 with the corrected model identifier, before F-008 (Summarizer) begins
@@ -325,6 +331,7 @@ anything in LM Studio's catalog or on Hugging Face):
 
 **If §3's measured results land in the "Fail" band of §5** (or "Marginal" with no acceptable
 mitigation):
+
 1. Do not silently accept a result that misses NFR-001 and move on to F-008 unchanged.
 2. Mitigation options to try, roughly in order of effort:
    - Reduce `max_tokens` (shorter structured summary) — directly cuts generation time, the dominant
@@ -351,11 +358,11 @@ mitigation):
 > 2026-08-01 to reflect §9's actual results rather than leaving a stale "not resolved" verdict
 > sitting above a "resolved" one below it in the same document.
 
-| Scope | Verdict |
-|---|---|
-| Model identifier/availability (TC-002-01) | **Resolved 2026-08-01.** `google/gemma-4-e4b` confirmed live via `lms ls`/`lms load`/`/v1/models` against the operator's actual install (§2 addendum). |
-| Throughput vs. NFR-001 (TC-002-02, TC-002-04) | **Resolved 2026-08-01, as measured at `max_tokens: 300`.** §9.2: 2.57-2.82s p95 across all three README sizes — ~10x headroom under §5's 30s Pass threshold. See §9.5 for the one caveat (re-verify once `max_tokens` is widened per §9.4). |
-| Overall risk A2 (Architecture §8) | **Resolved.** Both sub-questions above are now answered from real measurements, not estimates. §9.4 surfaces a separate, non-throughput finding (reasoning-token budget truncation) that needs action before F-008 — tracked as a new follow-up, not a reason to reopen A2. |
+| Scope                                         | Verdict                                                                                                                                                                                                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model identifier/availability (TC-002-01)     | **Resolved 2026-08-01.** `google/gemma-4-e4b` confirmed live via `lms ls`/`lms load`/`/v1/models` against the operator's actual install (§2 addendum).                                                                                                                      |
+| Throughput vs. NFR-001 (TC-002-02, TC-002-04) | **Resolved 2026-08-01, as measured at `max_tokens: 300`.** §9.2: 2.57-2.82s p95 across all three README sizes — ~10x headroom under §5's 30s Pass threshold. See §9.5 for the one caveat (re-verify once `max_tokens` is widened per §9.4).                                 |
+| Overall risk A2 (Architecture §8)             | **Resolved.** Both sub-questions above are now answered from real measurements, not estimates. §9.4 surfaces a separate, non-throughput finding (reasoning-token budget truncation) that needs action before F-008 — tracked as a new follow-up, not a reason to reopen A2. |
 
 **Explicit statement required by the Task Packet's AC4, updated:** ADR-013 and NFR-001 are no
 longer "provisionally accepted pending verification" — both are now validated by real measurement
@@ -419,11 +426,11 @@ than truncated, since it's still representative real-world README length).
 
 ### 9.2 Multi-run wall-clock statistics (§3.5/§3.7, n=10 per size, real data)
 
-| README size | n | mean | p50 | p95 | max |
-|---|---|---|---|---|---|
-| small (1,462 B) | 10 | 2.684s | 2.675s | 2.804s | 2.804s |
-| mid (2,056 B) | 10 | 2.568s | 2.576s | 2.601s | 2.601s |
-| large (3,834 B) | 10 | 2.607s | 2.590s | 2.816s | 2.816s |
+| README size     | n   | mean   | p50    | p95    | max    |
+| --------------- | --- | ------ | ------ | ------ | ------ |
+| small (1,462 B) | 10  | 2.684s | 2.675s | 2.804s | 2.804s |
+| mid (2,056 B)   | 10  | 2.568s | 2.576s | 2.601s | 2.601s |
+| large (3,834 B) | 10  | 2.607s | 2.590s | 2.816s | 2.816s |
 
 Per §3.7's own caveat, p95 at n=10 equals max (nearest-rank needs n≥20 to diverge) — these are
 "max observed at 10 samples," not true 95th-percentile estimates, but see §9.6 for why that
@@ -459,16 +466,16 @@ either way.
 ### 9.4 New finding, not anticipated by §1-§8: reasoning-token budget truncation
 
 Every single response across all 30 timed runs hit `finish_reason: "length"` — the model produces
-a separate internal `reasoning_content` field *before* the visible summary, and that reasoning
+a separate internal `reasoning_content` field _before_ the visible summary, and that reasoning
 consumed **195-258 of the 300-token `max_tokens` budget** (65-86%), leaving only **30-60 words** of
 actual visible summary content — well short of the "under 150 words" the system prompt (§3.3)
 requested. Verified consistent across small/mid/large fixtures (not a one-off):
 
-| Size | completion_tokens | reasoning_tokens | visible content |
-|---|---|---|---|
-| small | 300 (capped) | 215 | 450 chars (~70 words) |
-| mid | 300 (capped) | 195 | ~380 chars (~60 words) |
-| large | 300 (capped) | 258 | 226 chars (~35 words) |
+| Size  | completion_tokens | reasoning_tokens | visible content        |
+| ----- | ----------------- | ---------------- | ---------------------- |
+| small | 300 (capped)      | 215              | 450 chars (~70 words)  |
+| mid   | 300 (capped)      | 195              | ~380 chars (~60 words) |
+| large | 300 (capped)      | 258              | 226 chars (~35 words)  |
 
 **This is not a throughput problem — wall-clock time was fine (§9.2) — it's an output-completeness
 problem.** `google/gemma-4-e4b` appears to be a reasoning-capable model that spends a large,
@@ -476,6 +483,7 @@ variable fraction of its output budget on internal deliberation before answering
 `max_tokens: 300` (chosen in §3.3 as a reasonable cap for a "under 150 words" summary, written
 without knowledge of this model's reasoning behavior) does not account for. **Action needed before
 F-008 implementation, not before A2 sign-off** (see §9.5 for why these are separable):
+
 1. Increase `max_tokens` substantially (e.g. 700-900) to give reasoning room without starving the
    visible answer, and re-measure whether wall-clock time (§9.2) still holds at the higher token
    count — it should, since §9.2 already shows generation time scales with `max_tokens`, not input
@@ -497,10 +505,10 @@ squarely in the §5 "Pass" band (≤~30s p95), with no tail-latency concern.** T
 literal question is resolved.
 
 **§9.4's finding is a distinct problem from A2's throughput question** — it's about response
-*completeness*, not response *speed* — and increasing `max_tokens` to fix it (§9.4 item 1) will
+_completeness_, not response _speed_ — and increasing `max_tokens` to fix it (§9.4 item 1) will
 change the wall-clock number measured here. So: **A2 (throughput vs. NFR-001) is resolved as
 measured**, but the measurement was taken at a `max_tokens` setting §9.4 shows is inadequate for
-real use, meaning **the *specific numbers* in §9.2 should be re-verified once F-008 lands on a
+real use, meaning **the _specific numbers_ in §9.2 should be re-verified once F-008 lands on a
 `max_tokens` value that doesn't truncate reasoning models mid-answer** — almost certainly still a
 "Pass" per §9.4 item 1's reasoning, but not yet re-measured at that setting. This spike is not
 reopening A2 to "unresolved" over that gap (the order-of-magnitude margin to the 30s Pass
@@ -509,9 +517,9 @@ flagging the gap explicitly rather than letting it go unstated.
 
 ### 9.6 Updated NFR-001 verdict
 
-| Band | §5 threshold | Measured (§9.2) | Verdict |
-|---|---|---|---|
-| Pass | p95 ≤ ~30s | 2.60-2.82s p95 across all three sizes | **Pass, by a wide margin (~10x headroom)** |
+| Band | §5 threshold | Measured (§9.2)                       | Verdict                                    |
+| ---- | ------------ | ------------------------------------- | ------------------------------------------ |
+| Pass | p95 ≤ ~30s   | 2.60-2.82s p95 across all three sizes | **Pass, by a wide margin (~10x headroom)** |
 
 Given that margin, the n=10-not-n=20 p95-equals-max caveat (§3.7, §9.2) doesn't change the
 conclusion — even the true (unmeasured) 95th percentile would need to be roughly 10x worse than
@@ -527,13 +535,13 @@ live against the identical mid-size request (same README, same system prompt, sa
 
 ### 10.1 Single-request comparison across candidates
 
-| Model | Wall time | `finish_reason` | Visible output | Reasoning tokens |
-|---|---|---|---|---|
-| `google/gemma-4-e4b` (§9 baseline) | 2.57-2.82s (p95) | `length` (truncated) | 30-60 words | 195-258 of 300 |
-| `gemma-3-4b-it` | 1.33s | `stop` (complete) | ~120 words | 0 |
-| `gemma-4-12b-it-qat` | 2.89s | `stop` (complete) | ~125 words | 0 |
-| **`llama-3.2-3b-instruct` (chosen)** | **0.88s** | `stop` (complete) | ~90 words | **0** |
-| `qwen2.5-coder-7b-instruct` | 1.60s | `stop` (complete) | ~120 words | 0 |
+| Model                                | Wall time        | `finish_reason`      | Visible output | Reasoning tokens |
+| ------------------------------------ | ---------------- | -------------------- | -------------- | ---------------- |
+| `google/gemma-4-e4b` (§9 baseline)   | 2.57-2.82s (p95) | `length` (truncated) | 30-60 words    | 195-258 of 300   |
+| `gemma-3-4b-it`                      | 1.33s            | `stop` (complete)    | ~120 words     | 0                |
+| `gemma-4-12b-it-qat`                 | 2.89s            | `stop` (complete)    | ~125 words     | 0                |
+| **`llama-3.2-3b-instruct` (chosen)** | **0.88s**        | `stop` (complete)    | ~90 words      | **0**            |
+| `qwen2.5-coder-7b-instruct`          | 1.60s            | `stop` (complete)    | ~120 words     | 0                |
 
 `deepseek/deepseek-r1-0528-qwen3-8b` (also present in the catalog) was **not** tested — "R1" is a
 well-established, explicit reasoning-model designator; testing it would have predictably shown the
@@ -546,11 +554,11 @@ not Gemma 4 as an architecture — worth remembering if a future Gemma variant i
 
 ### 10.2 Full-rigor benchmark for the chosen model (n=10 per size, matching §9.2's methodology)
 
-| README size | n | mean | p50 | p95 | max |
-|---|---|---|---|---|---|
-| small (1,462 B) | 10 | 0.866s | 0.876s | 0.976s | 0.976s |
-| mid (2,056 B) | 10 | 0.777s | 0.777s | 0.829s | 0.829s |
-| large (3,834 B) | 10 | 1.050s | 0.992s | 1.544s | 1.544s |
+| README size     | n   | mean   | p50    | p95    | max    |
+| --------------- | --- | ------ | ------ | ------ | ------ |
+| small (1,462 B) | 10  | 0.866s | 0.876s | 0.976s | 0.976s |
+| mid (2,056 B)   | 10  | 0.777s | 0.777s | 0.829s | 0.829s |
+| large (3,834 B) | 10  | 1.050s | 0.992s | 1.544s | 1.544s |
 
 Native stats (`/api/v0`, mid, single call): **241.6 tok/s**, `stop_reason: "eosFound"` (natural
 completion — the model chose to stop, it wasn't cut off), 165 of 300 completion tokens used (45%
@@ -577,9 +585,10 @@ surfaced, and that a better-fitting model was available without trading away spe
 originally written around (`docs/project-management.md`).
 
 ## Version History
-| Version | Date | Change | Triggered By |
-|---|---|---|---|
-| v1 | 2026-07-31 | Initial spike output — no live LM Studio access; availability assessment, benchmark methodology, estimation framework, NFR-001 comparison framework, and A2 verdict delivered | F-002 Task Packet |
-| v1.1 | 2026-08-01 | §2 addendum: model availability confirmed live (`google/gemma-4-e4b`) | Operator confirmed LM Studio running |
-| v2 | 2026-08-01 | §3's benchmark actually executed against real LM Studio + `google/gemma-4-e4b`; added §9 (Measured Results, 6 subsections); §7's verdict table updated from "Not resolved" to "Resolved"; §8's follow-ups updated to reflect completion; new finding (reasoning-token budget truncation, §9.4) flagged for F-008 | Operator: "run that spike and update the results" |
-| v3 | 2026-08-01 | Added §10 — live comparison against 4 alternative models, full-rigor benchmark for `llama-3.2-3b-instruct`, and the resulting model swap; ADR-017 (new) supersedes ADR-013; title/status header updated to reflect the final pick is not Gemma 4 E4B | Operator: "use llama-3.2-3b-instruct, update docs. update spike and ADRs" |
+
+| Version | Date       | Change                                                                                                                                                                                                                                                                                                           | Triggered By                                                              |
+| ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| v1      | 2026-07-31 | Initial spike output — no live LM Studio access; availability assessment, benchmark methodology, estimation framework, NFR-001 comparison framework, and A2 verdict delivered                                                                                                                                    | F-002 Task Packet                                                         |
+| v1.1    | 2026-08-01 | §2 addendum: model availability confirmed live (`google/gemma-4-e4b`)                                                                                                                                                                                                                                            | Operator confirmed LM Studio running                                      |
+| v2      | 2026-08-01 | §3's benchmark actually executed against real LM Studio + `google/gemma-4-e4b`; added §9 (Measured Results, 6 subsections); §7's verdict table updated from "Not resolved" to "Resolved"; §8's follow-ups updated to reflect completion; new finding (reasoning-token budget truncation, §9.4) flagged for F-008 | Operator: "run that spike and update the results"                         |
+| v3      | 2026-08-01 | Added §10 — live comparison against 4 alternative models, full-rigor benchmark for `llama-3.2-3b-instruct`, and the resulting model swap; ADR-017 (new) supersedes ADR-013; title/status header updated to reflect the final pick is not Gemma 4 E4B                                                             | Operator: "use llama-3.2-3b-instruct, update docs. update spike and ADRs" |

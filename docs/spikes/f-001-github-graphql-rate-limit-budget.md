@@ -44,7 +44,7 @@ shape" allowance):
 5. **Scope interpretation of "100k+" (NFR-004 / PRD processing-volume assumption):** the PRD/NFR-004
    language ("scaling toward 100k+ repositories … over time") is ambiguous between (a) cumulative
    repository count in the Data Store, built up incrementally at the existing 1K-5K/day discovery
-   rate, and (b) a literal 100k+ *repos discovered in a single day* (e.g., an initial backfill).
+   rate, and (b) a literal 100k+ _repos discovered in a single day_ (e.g., an initial backfill).
    This is a real ambiguity, not a nit — the two interpretations have very different rate-limit
    consequences. §5 below evaluates both explicitly rather than silently picking one.
 
@@ -73,17 +73,28 @@ query DiscoverRepos($searchQuery: String!, $after: String) {
         pushedAt
         isFork
         isArchived
-        primaryLanguage { name }
-        licenseInfo { spdxId name }
+        primaryLanguage {
+          name
+        }
+        licenseInfo {
+          spdxId
+          name
+        }
         stargazerCount
         forkCount
         repositoryTopics(first: 10) {
-          nodes { topic { name } }
+          nodes {
+            topic {
+              name
+            }
+          }
         }
         defaultBranchRef {
           target {
             ... on Commit {
-              history(first: 1) { totalCount }
+              history(first: 1) {
+                totalCount
+              }
             }
           }
         }
@@ -96,19 +107,19 @@ query DiscoverRepos($searchQuery: String!, $after: String) {
 Field-to-need mapping (Architecture §3 Crawler + PRD scoring signals — license, commits-per-week,
 contributor count, fork count):
 
-| Signal needed | Source in query above | Notes |
-|---|---|---|
-| License presence/type | `licenseInfo { spdxId name }` | Covered by GraphQL directly. |
-| Fork count | `forkCount` | Covered by GraphQL directly. |
-| Popularity signal | `stargazerCount` | Covered by GraphQL directly. |
-| Recency/activity proxy | `pushedAt`, `defaultBranchRef.target.history(first:1).totalCount` | `totalCount` on a `first:1` history connection is a documented cheap way to get a commit count without paginating full history; weekly commit *rate* needs either repeated sampling over time or the REST commit-activity statistics endpoint. |
-| Topics/language (filter/sort, FR-004) | `repositoryTopics`, `primaryLanguage` | Covered by GraphQL directly. |
-| **Contributor count** | **Not present** | GraphQL's `Repository` type has no direct, cheap "contributor count" field. The accurate source is the REST `GET /repos/{owner}/{repo}/contributors` (or `/stats/contributors`) endpoint — which is exactly the kind of "certain commit-activity statistics endpoint" ADR-004 already calls out as the REST-fallback case, and which is also documented to sometimes return `202 Accepted` while GitHub computes results asynchronously. This is a second, independent rate-limit budget (REST's 5,000 req/hour) and is analyzed separately in §4. |
+| Signal needed                         | Source in query above                                             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| License presence/type                 | `licenseInfo { spdxId name }`                                     | Covered by GraphQL directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Fork count                            | `forkCount`                                                       | Covered by GraphQL directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Popularity signal                     | `stargazerCount`                                                  | Covered by GraphQL directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Recency/activity proxy                | `pushedAt`, `defaultBranchRef.target.history(first:1).totalCount` | `totalCount` on a `first:1` history connection is a documented cheap way to get a commit count without paginating full history; weekly commit _rate_ needs either repeated sampling over time or the REST commit-activity statistics endpoint.                                                                                                                                                                                                                                                                                                     |
+| Topics/language (filter/sort, FR-004) | `repositoryTopics`, `primaryLanguage`                             | Covered by GraphQL directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Contributor count**                 | **Not present**                                                   | GraphQL's `Repository` type has no direct, cheap "contributor count" field. The accurate source is the REST `GET /repos/{owner}/{repo}/contributors` (or `/stats/contributors`) endpoint — which is exactly the kind of "certain commit-activity statistics endpoint" ADR-004 already calls out as the REST-fallback case, and which is also documented to sometimes return `202 Accepted` while GitHub computes results asynchronously. This is a second, independent rate-limit budget (REST's 5,000 req/hour) and is analyzed separately in §4. |
 
 ## 3. Point-Cost Model
 
 GitHub's GraphQL point-cost model charges per query based on the number of objects the query
-*could* return across all connections, not per HTTP call **(documented, high confidence on the
+_could_ return across all connections, not per HTTP call **(documented, high confidence on the
 general shape of this model)**. The exact numeric formula/coefficients GitHub uses internally are
 not something this document reproduces with confidence — GitHub's own guidance is to read the
 `cost` value the API returns for your actual query shape rather than hand-derive it, and this spike
@@ -118,14 +129,14 @@ Instead of a single fabricated number, this spike brackets the per-call cost wit
 all plausible for a `search(first: 50)` query with two shallow nested connections
 (`repositoryTopics(first: 10)`, `history(first: 1)`):
 
-| Scenario | Cost per call (50 repos) | Basis |
-|---|---|---|
-| Best case | 1 point | GitHub charges a minimum of ~1 point for a call whose connections resolve to small/paginated-once result sets; shallow nested connections like these are commonly reported to add little beyond the top-level connection cost. |
-| Mid estimate | 5 points | A defensible middle estimate accounting for the two nested connections each contributing a small multiplier on top of the base search cost. |
-| Worst case (pessimistic) | 20 points | Conservative upper bound assuming nested connections cost more than typically reported, used to stress-test whether the budget still holds under a pessimistic reading. |
+| Scenario                 | Cost per call (50 repos) | Basis                                                                                                                                                                                                                          |
+| ------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Best case                | 1 point                  | GitHub charges a minimum of ~1 point for a call whose connections resolve to small/paginated-once result sets; shallow nested connections like these are commonly reported to add little beyond the top-level connection cost. |
+| Mid estimate             | 5 points                 | A defensible middle estimate accounting for the two nested connections each contributing a small multiplier on top of the base search cost.                                                                                    |
+| Worst case (pessimistic) | 20 points                | Conservative upper bound assuming nested connections cost more than typically reported, used to stress-test whether the budget still holds under a pessimistic reading.                                                        |
 
 **This bracket is an estimate, not a measurement.** The actual number must be read from the
-`rateLimit { cost }` field this query already requests — that field returns the *exact* cost of the
+`rateLimit { cost }` field this query already requests — that field returns the _exact_ cost of the
 call it accompanies, live, with no ambiguity. The Crawler implementation (F-005) should log this
 value on every call from day one; the budget table below should be recalculated against real
 numbers before Phase 1 sign-off, not left on this spike's estimate.
@@ -137,10 +148,10 @@ burst within roughly one hourly rate-limit window (§1 assumption 3 — the cons
 
 ### GraphQL discovery query
 
-| Volume | Calls/day | Cost/day (best, 1 pt/call) | Cost/day (mid, 5 pt/call) | Cost/day (worst, 20 pt/call) | Hourly budget | Headroom (worst case) |
-|---|---|---|---|---|---|---|
-| 1,000 repos/day | 20 | 20 | 100 | 400 | 5,000 | 4,600 pts / **92% headroom** |
-| 5,000 repos/day | 100 | 100 | 500 | 2,000 | 5,000 | 3,000 pts / **60% headroom** |
+| Volume          | Calls/day | Cost/day (best, 1 pt/call) | Cost/day (mid, 5 pt/call) | Cost/day (worst, 20 pt/call) | Hourly budget | Headroom (worst case)        |
+| --------------- | --------- | -------------------------- | ------------------------- | ---------------------------- | ------------- | ---------------------------- |
+| 1,000 repos/day | 20        | 20                         | 100                       | 400                          | 5,000         | 4,600 pts / **92% headroom** |
+| 5,000 repos/day | 100       | 100                        | 500                       | 2,000                        | 5,000         | 3,000 pts / **60% headroom** |
 
 **Verdict for GraphQL at 1K-5K/day: comfortable headroom under every scenario, including the
 pessimistic bracket.** No mitigation required for the GraphQL discovery query at this volume.
@@ -151,10 +162,10 @@ REST budget is a **separate** 5,000 requests/hour pool from GraphQL's points **(
 confidence that the two budgets are tracked independently)**. If contributor count is fetched via
 one REST call per newly-discovered repo:
 
-| Volume | REST calls/day | Hourly REST budget | Fits in one burst hour? | Headroom / Deficit |
-|---|---|---|---|---|
-| 1,000 repos/day | 1,000 | 5,000 | Yes | 4,000 requests / **80% headroom** |
-| 5,000 repos/day | 5,000 | 5,000 | **Exactly at the ceiling** | **0 headroom — a single retry, secondary-limit hit, or any other REST call in the same window causes a deficit** |
+| Volume          | REST calls/day | Hourly REST budget | Fits in one burst hour?    | Headroom / Deficit                                                                                               |
+| --------------- | -------------- | ------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1,000 repos/day | 1,000          | 5,000              | Yes                        | 4,000 requests / **80% headroom**                                                                                |
+| 5,000 repos/day | 5,000          | 5,000              | **Exactly at the ceiling** | **0 headroom — a single retry, secondary-limit hit, or any other REST call in the same window causes a deficit** |
 
 **This is the first real finding of this spike:** at the top of the PRD's stated volume range,
 the REST fallback for contributor count — not the GraphQL discovery query — is the binding
@@ -176,9 +187,9 @@ target.
 **Reading (b) — a literal 100k+ repos discovered/processed in one day** (e.g., a one-time backfill
 or a much more aggressive future discovery scope):
 
-| Volume | GraphQL calls/day | Cost/day (best/mid/worst) | Hourly windows needed (worst case) | REST calls/day (contributor count) | Hourly windows needed (REST) |
-|---|---|---|---|---|---|
-| 100,000 repos/day | 2,000 | 2,000 / 10,000 / 40,000 | **8 hourly windows** (40,000 ÷ 5,000) | 100,000 | **20 hourly windows** (100,000 ÷ 5,000) |
+| Volume            | GraphQL calls/day | Cost/day (best/mid/worst) | Hourly windows needed (worst case)    | REST calls/day (contributor count) | Hourly windows needed (REST)            |
+| ----------------- | ----------------- | ------------------------- | ------------------------------------- | ---------------------------------- | --------------------------------------- |
+| 100,000 repos/day | 2,000             | 2,000 / 10,000 / 40,000   | **8 hourly windows** (40,000 ÷ 5,000) | 100,000                            | **20 hourly windows** (100,000 ÷ 5,000) |
 
 **Explicit statement (required by TC-001-02): the current query shape does NOT hold, as a
 single-burst run, at a literal 100k+/day volume — for either the GraphQL query (mid/worst-case
@@ -188,6 +199,7 @@ processing unless the query strategy changes. This is an explicit, not silent, f
 
 **What would need to change if reading (b) ever becomes real** (see §6 for the recommended default
 mitigation, which is worth adopting regardless of which reading turns out to be true):
+
 - Pace/throttle the crawl across multiple hourly windows instead of one burst (turns a hard ceiling
   into a multi-hour job — mechanically simple, no query redesign).
 - Reduce or eliminate the per-repo REST contributor-count call (§6) — this is the larger lever,
@@ -200,7 +212,7 @@ mitigation, which is worth adopting regardless of which reading turns out to be 
 Concrete mechanism, not "retry later":
 
 1. **Pre-flight budget check.** Before starting a batch of calls, query `rateLimit { remaining,
-   resetAt }` (this field is documented to be free/near-zero cost to query on its own). If
+resetAt }` (this field is documented to be free/near-zero cost to query on its own). If
    `remaining` is less than the next call's expected cost plus a safety margin (recommend 10% of
    the hourly limit, i.e. 500 points), pause the run until `resetAt` rather than attempting the
    call and failing.
@@ -251,11 +263,11 @@ This is a design recommendation for F-005 (GitHub Crawler), not something this s
 
 ## 8. Resolution Verdict on Risk A1
 
-| Scope | Verdict |
-|---|---|
-| 1,000-5,000 repos/day (PRD volume target) | **Resolved.** GraphQL discovery query holds with wide headroom under every cost-estimate scenario in §4. REST contributor-count fallback holds at 1,000/day but has zero headroom at 5,000/day at a naive "one REST call per repo per crawl" design — mitigated by the caching/refresh-cadence change in §7, which this spike recommends adopting as part of F-005 rather than leaving as a residual risk. |
-| 100k+ scale-out (NFR-004) | **Conditionally resolved / mitigation adopted, not unconditionally resolved.** Under the reading that 100k+ refers to cumulative Data Store size with unchanged daily discovery volume (§5 reading (a), and the reading this spike considers best-supported by NFR-004's own "schema and indexing" framing), the budget holds indefinitely with no further change. Under the literal "100k+/day" reading (§5 reading (b)), the budget does **not** hold as a single-burst run — the required mitigation (multi-window pacing, plus the §7 REST reduction) is identified but not yet implemented, since no code exists yet in this Phase 0 spike. |
-| Overall | Sufficient to unblock F-005 (GitHub Crawler) design and implementation. **Follow-up (out of scope for this spike, flagged for the orchestrator/human):** update Architecture §8's risk register to mark A1 resolved-with-conditions, referencing this document, and confirm with the Architecture owner (Maxx) which NFR-004 reading — (a) or (b) — is the intended one, since it changes whether §5/§7's mitigations are "nice to have" or "must build before any 100k-scale run." |
+| Scope                                     | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1,000-5,000 repos/day (PRD volume target) | **Resolved.** GraphQL discovery query holds with wide headroom under every cost-estimate scenario in §4. REST contributor-count fallback holds at 1,000/day but has zero headroom at 5,000/day at a naive "one REST call per repo per crawl" design — mitigated by the caching/refresh-cadence change in §7, which this spike recommends adopting as part of F-005 rather than leaving as a residual risk.                                                                                                                                                                                                                                       |
+| 100k+ scale-out (NFR-004)                 | **Conditionally resolved / mitigation adopted, not unconditionally resolved.** Under the reading that 100k+ refers to cumulative Data Store size with unchanged daily discovery volume (§5 reading (a), and the reading this spike considers best-supported by NFR-004's own "schema and indexing" framing), the budget holds indefinitely with no further change. Under the literal "100k+/day" reading (§5 reading (b)), the budget does **not** hold as a single-burst run — the required mitigation (multi-window pacing, plus the §7 REST reduction) is identified but not yet implemented, since no code exists yet in this Phase 0 spike. |
+| Overall                                   | Sufficient to unblock F-005 (GitHub Crawler) design and implementation. **Follow-up (out of scope for this spike, flagged for the orchestrator/human):** update Architecture §8's risk register to mark A1 resolved-with-conditions, referencing this document, and confirm with the Architecture owner (Maxx) which NFR-004 reading — (a) or (b) — is the intended one, since it changes whether §5/§7's mitigations are "nice to have" or "must build before any 100k-scale run."                                                                                                                                                              |
 
 ## 9. Follow-Ups (Not in Scope for This Spike)
 
@@ -272,6 +284,7 @@ This is a design recommendation for F-005 (GitHub Crawler), not something this s
    not only at exotic scale.
 
 ## Version History
-| Version | Date | Change | Triggered By |
-|---|---|---|---|
-| v1 | 2026-07-31 | Initial spike output | F-001 Task Packet |
+
+| Version | Date       | Change               | Triggered By      |
+| ------- | ---------- | -------------------- | ----------------- |
+| v1      | 2026-07-31 | Initial spike output | F-001 Task Packet |

@@ -33,6 +33,12 @@ jobs:
       - name: Check frontend formatting
         run: npm run format:check
 
+      # Repo-wide markdown (README, CONTRIBUTING, docs/) - governed docs are specs in this repo, so
+      # they are held to the same formatting gate as source. Runs from src/frontend because that is
+      # where prettier is installed; docs/archive/ is excluded via the root .prettierignore.
+      - name: Check documentation formatting
+        run: npm run format:docs:check
+
       - name: Run frontend tests
         run: npm test -- --watch=false
 

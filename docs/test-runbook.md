@@ -48,6 +48,7 @@ after a model/hardware/LM Studio version change, not a first-time gap.
 ## F-003 — Project scaffolding & Docker Compose skeleton
 
 ### Happy path — full stack comes up healthy
+
 1. From the repo root, run `make up` (ADR-016 — not `docker compose up` directly; LM Studio is
    host-installed, not a Compose service, and the Makefile is what brings both up together). Pass
    `LMSTUDIO_MODEL=<identifier>` if you're not using the default (`llama-3.2-3b-instruct`, ADR-017,
@@ -74,10 +75,12 @@ after a model/hardware/LM Studio version change, not a first-time gap.
    report `OK`.
 
 ### Edge case — `.env` also drives bare `dotnet run` (outside Docker)
+
 `Program.cs` bridges every flat `.env` name it reads (`GITHUB_TOKEN`, `LMSTUDIO_PORT`,
 `LMSTUDIO_IDENTIFIER`, `POSTGRES_PASSWORD`/`POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PORT`) to its
 hierarchical config key — not just the GitHub token — so this same technique applies to any of
 them.
+
 1. Ensure `.env` exists at the repo root with real values set (see `docs/setup.md` §1-2).
 2. From `src/backend/GitCrawler.Api/`, run `dotnet run`.
 3. `curl http://localhost:<port>/health` — expect `200 Healthy` (confirms the process started
@@ -94,6 +97,7 @@ them.
    publishes Postgres's port to the host for exactly this case.
 
 ### Edge case — backend and frontend build independently
+
 1. From `src/backend/`, run `dotnet build`. Expect 0 errors, all projects targeting `net10.0`.
 2. From `src/backend/`, run `dotnet test`. Expect the smoke test in
    `tests/GitCrawler.Api.Tests/SmokeTests.cs` to pass. **Note (post-Phase 1):** this was the only
@@ -107,14 +111,15 @@ them.
    pass (component creates; Material toolbar renders the expected title).
 
 ### Regression-sensitive — clean rebuild from scratch
+
 1. `docker compose down -v` (remove all containers/named volumes), then `rm -rf data/postgres/*`
    to also clear Postgres's bind-mounted data directory — unlike a named Docker volume, `-v`
    does not remove a bind mount's host-side contents (see the Known Caveat below).
 2. Backend: delete `bin/`/`obj/` under `src/backend/`, then `dotnet restore && dotnet build &&
-   dotnet test` from nothing. Expect an identical successful outcome to the first build — no
+dotnet test` from nothing. Expect an identical successful outcome to the first build — no
    dependency on cached NuGet state or a prior `dotnet restore`.
 3. Frontend: delete `node_modules/` and `dist/` under `src/frontend/`, then `npm ci && npm run
-   build`. Expect an identical successful outcome — no dependency on a prior `npm install`.
+build`. Expect an identical successful outcome — no dependency on a prior `npm install`.
 4. Re-run the Happy Path steps above against the freshly rebuilt images. Expect identical results.
 
 ---
@@ -122,6 +127,7 @@ them.
 ## F-004 — Data Store schema (EF Core)
 
 ### Happy path — migrations apply to a fresh PostgreSQL 18.4 instance
+
 1. Ensure `data/postgres/` is empty (fresh database — see F-003's clean-rebuild step).
 2. `make up`. Watch the app container's startup logs (`make logs`).
 3. **Expect:** no migration errors; the app starts successfully. `Database.Migrate()` runs at
@@ -134,6 +140,7 @@ them.
    index on `RepositoryId`.
 
 ### Edge case — Hangfire's schema coexists without collision
+
 1. After F-006's job scheduler has run at least once (see F-006's Happy Path below), re-run the
    `psql` schema check.
 2. `\dn` — expect a `hangfire` schema alongside `public`, created automatically by
@@ -145,6 +152,7 @@ them.
 ## F-005 — GitHub Crawler
 
 ### Happy path — discovery and idempotent upsert
+
 1. Ensure `.env`'s `GITHUB_TOKEN` is set to a real token (see `docs/setup.md` §1).
 2. Trigger the `discover-repositories` job manually from the Hangfire dashboard
    (`http://localhost:8080/hangfire` → find the job → "Trigger now"), or wait for its scheduled
@@ -158,6 +166,7 @@ them.
    equal (no duplicates); `LastCrawledAtUtc` on previously-seen rows has advanced.
 
 ### Edge case — contributor-count caching cadence
+
 1. After a first crawl, `SELECT "Owner", "Name", "ContributorCountFetchedAtUtc" FROM "Repositories" LIMIT 5;`
    — expect non-null timestamps.
 2. Re-trigger discovery within 7 days. **Expect:** `ContributorCountFetchedAtUtc` unchanged for
@@ -166,6 +175,7 @@ them.
    REST calls.
 
 ### Regression-sensitive — rate-limit backoff
+
 1. **Manual (hard to force live):** if a `403`/rate-limit response is ever observed in the app
    logs during a real crawl, confirm the log shows a wait until the reported reset time (GraphQL
    `resetAt` or REST `x-ratelimit-reset`), not an immediate retry or an aborted run. See the F-001
@@ -178,12 +188,14 @@ them.
 ## F-006 — Job Scheduler (Hangfire)
 
 ### Happy path — dashboard reachable, recurring job registered
+
 1. `make up`, then `curl -I "http://localhost:8080/hangfire"` — expect `200`.
 2. Open the dashboard in a browser — expect the `discover-repositories` recurring job listed
    under "Recurring Jobs" with its configured cron expression, and the page rendering fully
    styled (CSS/JS assets load unauthenticated, same as the page itself).
 
 ### Happy path — crawl-to-score chaining
+
 1. Trigger `discover-repositories` manually from the dashboard against a database with no existing
    `Score` rows.
 2. Watch the dashboard's "Succeeded" job list. **Expect:** shortly after the crawl job completes, a
@@ -191,6 +203,7 @@ them.
    schedule.
 
 ### Regression-sensitive — mid-run container restart
+
 1. Trigger a crawl, then immediately `docker compose restart app` while it's in progress.
 2. Check the dashboard's job history after the app comes back up. **Expect:** the job's state
    survived the restart (visible in history, not silently vanished); no duplicate `Repository` rows
@@ -201,12 +214,14 @@ them.
 ## F-007 — Scoring Engine
 
 ### Happy path — score computed from all five signals
+
 1. After a crawl-to-score chain completes (see F-006 above),
    `SELECT "RepositoryId", "HasLicense", "CommitsPerWeek", "ContributorCount", "ForkCount", "StarCount", "TotalScore" FROM "Scores" LIMIT 10;`
 2. **Expect:** all five signal columns populated (not null/zero across the board unless the source
    repo genuinely has zero for that signal), `TotalScore` between 0 and 100.
 
 ### Edge case — re-scoring on re-crawl
+
 1. Note a repository's current `Score` row count and latest `TotalScore`.
 2. Re-trigger discovery (advancing `LastCrawledAtUtc`), then wait for or manually trigger
    `ComputeScoresJob`.
@@ -218,8 +233,9 @@ them.
 ## F-008 — Summarizer
 
 ### Happy path — score-to-summarize chaining and summary generation
+
 1. Ensure LM Studio is up and the configured model is loaded (`make up`, or `make status`/`make
-   health` to confirm — `LmStudio:Model` bridged from `LMSTUDIO_IDENTIFIER`, default
+health` to confirm — `LmStudio:Model` bridged from `LMSTUDIO_IDENTIFIER`, default
    `llama-3.2-3b-instruct` per ADR-017).
 2. After a crawl-to-score chain completes (see F-006/F-007 above) with at least one repository
    scoring at or above `Summarization:MinimumScore` (default 40) and no existing `Summary` row,
@@ -232,9 +248,11 @@ them.
    repositories that met the score threshold.
 
 ### Edge case — README length is capped before being sent to LM Studio
+
 Added 2026-08-04 after a live run against `openclaw/openclaw` (111KB README) failed with LM Studio's
 `"n_keep: 35489 >= n_ctx: 8192"` — the loaded model's context window, exceeded because nothing capped
 the README before that point.
+
 1. Find (or seed) a repository whose README exceeds `Summarization:MaxReadmeCharacters` (default
    6000), then trigger summarization for it.
 2. **Expect:** it summarizes successfully rather than failing with a context-length error — confirm
@@ -245,6 +263,7 @@ the README before that point.
    alone next time, without a manual `curl` repro against LM Studio directly.
 
 ### Edge case — README-missing and per-repo failure handling
+
 1. Pick a repository with no README (or temporarily point at one) among the eligible batch.
 2. **Expect:** it still gets a `Summary` row — check the app logs (`make logs`) don't show an error
    for that repo, confirming the 404-is-not-fatal path.
@@ -256,6 +275,7 @@ the README before that point.
    `docs/test-cases.md` TC-008-05) — no live LM Studio outage needed to verify the code path.
 
 ### Regression-sensitive — create-once, latest-score-wins
+
 1. Note a repository's `Summary` row (if any) and its latest `Score.TotalScore`.
 2. Re-crawl and re-score the same repository so a new, lower `Score` row is added below
    `Summarization:MinimumScore`, then wait for/trigger the summarization chain again.
@@ -268,6 +288,7 @@ the README before that point.
 ## F-009 — Trend Aggregator
 
 ### Happy path — summarize-to-aggregate chaining and rollup
+
 1. After a summarize step completes (see F-008 above) with at least one repository that now has
    both a `Score` and a `Summary`, watch the Hangfire dashboard's "Succeeded" job list.
 2. **Expect:** shortly after the `GenerateSummariesJob` run completes, an `AggregateTrendsJob` run
@@ -278,12 +299,14 @@ the README before that point.
    `PeriodStart`/`PeriodEnd` both today's date (default `Trends:PeriodDays` = 1).
 
 ### Edge case — excluded repositories
+
 1. Confirm no `TrendAggregate` row's `RepositoryCount` includes repositories that have a `Score` but
    no `Summary` yet, or a `null` `PrimaryLanguage` — cross-check
    `SELECT COUNT(*) FROM "Repositories" WHERE "PrimaryLanguage" IS NULL AND EXISTS (SELECT 1 FROM "Scores" WHERE "RepositoryId" = "Repositories"."Id");`
    against the trend totals; these repos should contribute to neither.
 
 ### Regression-sensitive — idempotent re-run (NFR-003)
+
 1. Note the current row count and a specific row's `Id` in `TrendAggregates` for today's period.
 2. Trigger the chain again for the same day (e.g. re-run `discover-repositories` and let it flow
    through, or manually re-trigger `AggregateTrendsCommand` if a test harness is available).
@@ -299,9 +322,11 @@ the README before that point.
 ## F-010 — Web API
 
 ### Happy path — Hidden Gems filter/sort/paginate
+
 Originally exercised against the Discovery Feed endpoint; `/api/discovery-feed` was removed
 2026-08-03 (see the Removed note after the next section) — retargeted to `/api/hidden-gems` since it
 already covers the same shared D4 contract as a superset (TC-010-01).
+
 1. After a crawl-to-score chain has run at least once (see F-005/F-006 above) so `Repositories` has
    varied `PrimaryLanguage`/`StarCount`/`Topics`/`LicenseIdentifier`/`FirstDiscoveredAtUtc` values,
    `curl "http://localhost:<app-port>/api/hidden-gems?sort=Newest&direction=Desc"` (overriding Hidden
@@ -315,6 +340,7 @@ already covers the same shared D4 contract as a superset (TC-010-01).
    TC-010-01).
 
 ### Happy path — Hidden Gems score breakdown and trend growth
+
 1. `curl "http://localhost:<app-port>/api/hidden-gems"`.
 2. **Expect:** `200`, default sort `Score desc`; each card's score-breakdown block reports all five
    signals (license/commits-per-week/contributor count/fork count/star count) with the exact
@@ -322,7 +348,7 @@ already covers the same shared D4 contract as a superset (TC-010-01).
    aggregate number (TC-010-02).
 3. Re-crawl and re-score a repository already returned by this endpoint (advancing its `Score`
    history to two rows), then re-fetch the same endpoint. **Expect:** that card's `trendGrowth` is a
-   non-null string, computed from *that repository's own* two most recent `Score.TotalScore` values —
+   non-null string, computed from _that repository's own_ two most recent `Score.TotalScore` values —
    either a percentage-change label ("▲ +18% vs. last period") once a second `Score` row exists, or a
    "{score} current score" fallback if it's still on its first (TC-010-11). Changed 2026-08-04
    (operator: "Trend is currently calculated per language. I want it to be calculated per
@@ -340,12 +366,14 @@ gone the same way, same day (see `docs/changelog.md` Revision 11) — unlike Tre
 didn't disappear, it was simply subsumed by `/api/hidden-gems` (see the section above).
 
 ### Happy path — Categories list
+
 Changed 2026-08-04: the response shape simplified from `{ category, repositoryCount, averageScore,
 periodStart, periodEnd }` to just `{ category }` — the endpoint now queries `Repository
 .PrimaryLanguage` directly instead of `TrendAggregate`, since the dashboard's Language filter (the
 only consumer) never read the rollup fields.
+
 1. `curl "http://localhost:<app-port>/api/categories"`.
-2. **Expect:** `200`, one entry per distinct language among *scored* repositories — just
+2. **Expect:** `200`, one entry per distinct language among _scored_ repositories — just
    `{"category": "..."}` per entry now (TC-010-04). (This endpoint's per-category drill-down sibling,
    `/api/categories/<category>/repositories`, was removed 2026-08-03 along with the dashboard's
    Categories tab it only existed to serve — see `docs/changelog.md` Revision 9. This list endpoint
@@ -353,9 +381,11 @@ only consumer) never read the rollup fields.
    different source now.)
 
 ### Happy path — bookmark create/delete round-trip
+
 `GET /api/bookmarks` (the list endpoint) was removed 2026-08-03 along with the dashboard's dedicated
 Bookmarks view it alone served (see `docs/changelog.md`) - this round-trip is now verified via Hidden
 Gems' own `bookmarkedOnly` filter instead of a separate list call.
+
 1. Pick a `RepositoryId` from a prior Hidden Gems response, then
    `curl -X POST "http://localhost:<app-port>/api/repositories/<id>/bookmark"`.
 2. **Expect:** `200` with a `BookmarkDto` body.
@@ -366,6 +396,7 @@ Gems' own `bookmarkedOnly` filter instead of a separate list call.
    (TC-010-05).
 
 ### Edge case — bookmark idempotency
+
 1. `curl -X POST "http://localhost:<app-port>/api/repositories/<id>/bookmark"` twice in a row for
    the same `id`.
 2. **Expect:** both calls return `200` — no constraint-violation error on the repeat (the unique
@@ -374,12 +405,14 @@ Gems' own `bookmarkedOnly` filter instead of a separate list call.
    was never bookmarked. **Expect:** `204`, not an error (TC-010-06).
 
 ### Edge case — topic filter and repos with no topics
+
 1. `curl "http://localhost:<app-port>/api/hidden-gems?topic=<known-topic>"` where `<known-topic>`
    is a value present in at least one scored repo's `Topics`.
 2. **Expect:** only repositories whose `Topics` contains that value are returned; repositories with
    an empty `Topics` array never match and the call never errors (TC-010-07).
 
 ### Regression-sensitive — sort uses the latest score, not the highest ever
+
 1. Pick a repository with more than one `Score` row (re-scored after a re-crawl — see F-007's
    Edge case above), where the earlier row has a higher `TotalScore`/`CommitsPerWeek` than the most
    recent one.
@@ -392,6 +425,7 @@ Gems' own `bookmarkedOnly` filter instead of a separate list call.
    (TC-010-08).
 
 ### Regression-sensitive — `FirstDiscoveredAtUtc` is set once, never overwritten
+
 1. Trigger discovery for a repository not yet in the database.
    `psql -c 'SELECT "FirstDiscoveredAtUtc" FROM "Repositories" WHERE "GitHubId" = <id>;'`. **Expect:**
    a non-default timestamp close to "now".
@@ -402,7 +436,8 @@ Gems' own `bookmarkedOnly` filter instead of a separate list call.
    `Handle_ExistingGitHubId_NeverOverwritesFirstDiscoveredAtUtc` (TC-010-09).
 
 ### Edge case — pagination boundaries
-1. With a seeded set of `pageSize + 1` matching *scored* repositories,
+
+1. With a seeded set of `pageSize + 1` matching _scored_ repositories,
    `curl "http://localhost:<app-port>/api/hidden-gems?pageSize=5&page=1"`, then `page=2`, then a
    page far beyond the last (e.g. `page=999`).
 2. **Expect:** page 1 returns a full page of 5, page 2 returns exactly 1 result, and the
@@ -428,6 +463,7 @@ useful for confirming the built bundle actually renders and behaves this way, no
 isolated component/unit tests pass.
 
 ### Happy path — required view navigates by default, filter/sort works end-to-end
+
 1. `make up`, then open `http://localhost:8080/` in a browser.
 2. **Expect:** lands on Hidden Gems by default — the dashboard's sole page. The `mat-toolbar` shows
    only the brand and a reserved (inert) search placeholder — there is no primary nav at all anymore
@@ -449,6 +485,7 @@ isolated component/unit tests pass.
    detail dialog on 2026-08-04, no longer shown inline on the card (TC-011-02).
 
 ### Happy path — bookmark toggle, optimistic UI, undo/retry
+
 1. On any repository card, click the bookmark toggle. **Expect:** the icon flips immediately, a
    snack-bar confirms ("Added to bookmarks") with an "Undo" action, and
    `POST /api/repositories/{id}/bookmark` fires (TC-011-03).
@@ -469,8 +506,10 @@ isolated component/unit tests pass.
    distinct brick-brown pill for the error/Retry case, both with bold uppercase action text.
 
 ### Happy path — detail dialog's trend-growth chip
+
 Retargeted 2026-08-04: the trend-growth chip moved off the card entirely into the click-through
 detail dialog the same day (see the "card click opens the repository detail dialog" section below).
+
 1. Open a repository's detail dialog (see below). **Expect:** its chip row renders a trend-growth
    chip with `trendGrowth`'s text — computed from that repository's own `Score` history, not a
    `TrendAggregate` category rollup (see F-010's own trend-growth step above) (TC-011-13).
@@ -487,6 +526,7 @@ into the "required view navigates by default" section above rather than kept as 
 walkthrough, since Hidden Gems now covers the same ground.
 
 ### Edge case — empty, loading, error states and pagination beyond the last page
+
 1. Filter to zero matches. **Expect:** the centered empty-state card with a "clear all filters"
    button. Toggle "Bookmarked only" with zero bookmarks. **Expect:** the same empty state, not an
    error (TC-011-06).
@@ -496,6 +536,7 @@ walkthrough, since Hidden Gems now covers the same ground.
    state renders, not a crash (TC-011-07, mirrors TC-010-10 at the UI layer).
 
 ### Edge case — "Summary pending" placeholder and responsive collapse
+
 1. Load a card whose `summaryContent` is `null`. **Expect:** a fixed-height "Summary pending"
    placeholder in the summary slot. When that repo's summary later becomes available (re-fetch),
    **expect:** the real summary replaces the placeholder with no visible layout shift (TC-011-08).
@@ -523,9 +564,11 @@ walkthrough, since Hidden Gems now covers the same ground.
    nav-related left to check here at all, only the "Search (v2)" placeholder.)
 
 ### Happy path — card click opens the repository detail dialog (design brief §09)
+
 Converted 2026-08-04 from a right-side `mat-drawer` to a centered `MatDialog` (operator: "i want the
 overlay to show under the header. And i want this detail pane to be centered like a modal") — steps
 below describe the dialog's actual current behavior, not the original drawer's.
+
 1. On Hidden Gems, click a card anywhere except the bookmark toggle or the "Open on GitHub" link (the
    card's own "Why this score?" panel was removed the same day, so there's no third control to
    avoid). **Expect:** a centered dialog opens over the full page, under the sticky header, with a
@@ -545,14 +588,17 @@ below describe the dialog's actual current behavior, not the original drawer's.
    the viewport width and 85% of its height, with rounded corners and a visible shadow).
 
 ### Edge case — repo-card summary/footer spacing (operator UI feedback, no dedicated TC)
+
 1. Load Hidden Gems with a card whose summary is long enough to wrap. **Expect:** up to 3 lines render
    before truncating (was 2) — a small visual check, not asserted by an automated test.
 2. Inspect the divider between a card's body and its chip row. **Expect:** the chip row sits with
    noticeably more breathing room below the divider than before (`padding-top` 9px → 16px).
 
 ### Regression-sensitive — live build-and-serve smoke test (FR-009 AC3, TC-011-12)
+
 **Executed live in this Integration pass** (both a .NET 10 SDK and a Node toolchain — v26.5.1/npm
 12.0.2 — were available in the environment, so this did not need to be deferred as Manual):
+
 1. `dotnet publish src/backend/GitCrawler.Api/GitCrawler.Api.csproj -c Release -o <dir>` — the
    `BuildAngularApp`/`CopyAngularApp` MSBuild targets ran for real (not just `npm run build` in
    isolation): `npm run build` executed against `src/frontend`, producing
@@ -595,6 +641,7 @@ remaining manual-verification surface; bookmark create/toggle itself is F-011's 
 section above, "Happy path — bookmark toggle, optimistic UI, undo/retry").
 
 ### Regression-sensitive — "Bookmarked only" filter reflects current bookmark state (TC-012-05)
+
 1. `make up`, then open `http://localhost:8080/` in a browser (lands on Hidden Gems).
 2. Bookmark a repo via its card's bookmark toggle, then toggle the filter bar's "Bookmarked only"
    switch on. **Expect:** the repo appears in the (now-filtered) grid.
@@ -614,6 +661,7 @@ TC-013-04. The steps below are for a human/live-environment check of the same sc
 TC-013-05's live-SMTP-delivery check that no automated test can cover.
 
 ### Happy path — daily digest composed and sent (TC-013-01)
+
 1. Seed several scored-and-summarized repositories with varying `TotalScore` (see F-005/F-007/F-008
    above), and let a `AggregateTrendsJob` run at least once (F-009) so at least one `TrendAggregate`
    row exists for today's period.
@@ -624,11 +672,11 @@ TC-013-05's live-SMTP-delivery check that no automated test can cover.
    either wait for the `send-digest` Hangfire RecurringJob to fire (`Hangfire:DigestCronSchedule`,
    default `0 6 * * *`) or trigger it manually from the Hangfire dashboard's "Recurring Jobs" tab
    (`/hangfire`).
-3. **Expect:** an email arrives at the configured recipient listing the top-N (`Digest:TopN`, default
-   10) highest-*current*-scored repos with their short summary, plus a trend-summary section sourced
+3. **Expect:** an email arrives at the configured recipient listing the top-N (`Digest:TopN`, default 10) highest-_current_-scored repos with their short summary, plus a trend-summary section sourced
    from today's `TrendAggregate` rows.
 
 ### Edge case — send failure is logged, not silently dropped (TC-013-02)
+
 1. Point `Smtp:Host` at an unreachable host (or stop the local relay), then trigger `send-digest`.
 2. **Expect:** the app logs an `Error`-level entry ("Failed to send the daily digest email to
    {Recipient}") with the underlying exception, and the Hangfire job itself still reports Succeeded
@@ -636,6 +684,7 @@ TC-013-05's live-SMTP-delivery check that no automated test can cover.
    confirms FR-006's "failure to send is logged, not silently dropped" without crashing the host.
 
 ### Edge case — no eligible repos or trend data (TC-013-03)
+
 1. Trigger `send-digest` against a fresh database (or one with no scored-and-summarized repos and no
    current-period `TrendAggregate` row).
 2. **Expect:** the email still sends, with "No hidden gems to report today." / "No trend data
@@ -643,6 +692,7 @@ TC-013-05's live-SMTP-delivery check that no automated test can cover.
    thrown exception.
 
 ### Manual — live SMTP delivery (TC-013-05)
+
 1. **Manual (requires a running `make dev` stack — Mailpit, see `docs/setup.md` §3a):** repeat the
    Happy path above against a real bare `dotnet watch run`, then open `http://localhost:8025/`
    (Mailpit's web UI) and confirm the captured email is legible and complete (subject, top hidden
@@ -664,6 +714,7 @@ steps below are for confirming the same wiring against the real pipeline stages 
 manual stuck-run-diagnosability check.
 
 ### Happy path — every command/query stage emits structured stage-level metrics (TC-014-01)
+
 1. `make up`, then watch `make logs` (or `docker compose logs -f app`) while a crawl-to-trend chain
    runs (F-005 through F-009), and while hitting a Web API query endpoint directly (e.g.
    `curl http://localhost:8080/api/hidden-gems`).
@@ -675,6 +726,7 @@ manual stuck-run-diagnosability check.
    not just the scheduled pipeline jobs.
 
 ### Edge case — failures are captured per stage (TC-014-02)
+
 1. Temporarily misconfigure a stage so its handler throws (e.g. an invalid `GitHub:Token` for
    `DiscoverRepositoriesCommandHandler`, or stop LM Studio mid-run for
    `GenerateSummariesCommandHandler`).
@@ -684,6 +736,7 @@ manual stuck-run-diagnosability check.
    only, per its own "never alter control flow" design constraint.
 
 ### Regression-sensitive — additive to, not duplicating, the Hangfire dashboard (TC-014-03)
+
 1. Compare the Hangfire dashboard (`/hangfire`, F-006) for a completed job run against the app logs
    for the same run.
 2. **Expect:** the Hangfire dashboard shows job-level history (start/end time, succeeded/failed, retry
@@ -693,6 +746,7 @@ manual stuck-run-diagnosability check.
    have no dashboard entry whatsoever.
 
 ### Manual — a stuck or rate-limited run is diagnosable from logs alone (TC-014-04)
+
 1. **Manual/simulated (requires reproducing a rate-limited crawl, same trigger as TC-005-03):** while
    `DiscoverRepositoriesCommandHandler` is mid-wait inside its Polly rate-limit retry loop, read only
    the app logs (no debugger attached) and confirm a `"Starting DiscoverRepositoriesCommand"` line
@@ -738,6 +792,7 @@ confirming the same guarantees against the real running stack, which no automate
 genuine simultaneous-execution timing.
 
 ### Regression-sensitive — pipeline jobs reject a genuinely simultaneous trigger (TC-016-01)
+
 1. With `make up` running, manually trigger the same job twice back-to-back from the Hangfire
    dashboard (`/hangfire` → Recurring Jobs → "Trigger now") fast enough that the first invocation is
    still mid-run when the second starts — `GenerateSummariesJob` is the easiest to reproduce this
@@ -750,6 +805,7 @@ genuine simultaneous-execution timing.
    should return zero rows).
 
 ### Regression-sensitive — a same-day digest retry after a crash does not re-send (TC-016-04)
+
 1. Trigger `send-digest` once (see F-013 above) and confirm the email arrives. Then check
    `SELECT * FROM "DigestSendLogs" WHERE "SentForDate" = CURRENT_DATE;` — expect exactly one row.
 2. Trigger `send-digest` again the same day (simulating a Hangfire retry firing after a crash between
@@ -771,6 +827,7 @@ model metadata). The steps below are for TC-017-01/02's seeded-scale verificatio
 automated test can cover (requires a real PostgreSQL instance with 100k+ repos / 1M+ Score rows).
 
 ### Happy path — seeded-scale page requests stay fast (TC-017-01)
+
 1. Bring up Postgres (`make dev` or `make up` — the scratch database is separate from the real
    `POSTGRES_DB`, so this is safe against the operator's crawled data).
 2. Run `make seed-perf` from the repo root. This invokes `src/backend/tools/SeedHarness/` which
@@ -786,9 +843,10 @@ automated test can cover (requires a real PostgreSQL instance with 100k+ repos /
    full materialization of the match set) — the `IX_Repositories_FirstDiscoveredAtUtc`,
    `IX_Repositories_PrimaryLanguage`, `IX_Repositories_StarCount`, `IX_Repositories_LicenseIdentifier`,
    `IX_Repositories_Topics` (GIN), and the composite covering index on `Score(RepositoryId,
-   ComputedAtUtc DESC)` are all visible in the plans.
+ComputedAtUtc DESC)` are all visible in the plans.
 
 ### Edge case — boundary requests at seeded scale (TC-017-02)
+
 1. After the seed harness completes, manually (or via the harness's own boundary checks) request:
    a page beyond the last page, a filter combination matching zero repositories, and a combination
    matching exactly one.
@@ -796,6 +854,7 @@ automated test can cover (requires a real PostgreSQL instance with 100k+ repos /
    `TotalCount: 0` / single item with `TotalCount: 1`) — no timeout, no memory blow-up.
 
 ### Regression-sensitive — new indexes exist and no F-016 constraint dropped (TC-017-04)
+
 1. After `make seed-perf` applies migrations to the scratch database,
    `psql -d gitcrawler_perf -c '\di'` — expect all six F-017 indexes present:
    `IX_Repositories_FirstDiscoveredAtUtc`, `IX_Repositories_PrimaryLanguage`,
@@ -808,6 +867,7 @@ automated test can cover (requires a real PostgreSQL instance with 100k+ repos /
    new indexes via EF model metadata; F-016's own unique-constraint tests still pass — 142/142).
 
 ### Regression-sensitive — the server-side rewrite preserves sort semantics (TC-017-03)
+
 Automated coverage only (no live-environment step needed): `GetHiddenGemsQueryHandlerTests`
 exercises latest-not-highest score sort, deterministic Id tie-break, total count accuracy,
 per-repo TrendGrowth (two-score percentage change, single-score fallback), page-size clamping,
@@ -823,7 +883,7 @@ development reported all index-backed EXPLAIN plans and a 2–286ms timed page-r
 at least once against a fresh Docker environment to independently confirm these numbers.
 
 **Known gap at scale-out (PM-008, operator decision 2026-08-07; measured same day):** the
-*unfiltered* Score/Commits sort paths evaluate a correlated-subquery sort key for every matching
+_unfiltered_ Score/Commits sort paths evaluate a correlated-subquery sort key for every matching
 row before LIMIT applies — bounded by match count, not page size. **Authoritative measurement
 (Orchestrator, 2026-08-07, `make seed-perf` against 100k repos / 1M scores / 63,349 summaries /
 4,970 bookmarks in a fresh Docker environment):** Score DESC 4904ms, Score ASC 4899ms, Commits
@@ -840,6 +900,7 @@ at scale-out; the measurement here can be re-produced by running `make seed-perf
 ---
 
 ### Known caveats to check when re-running this runbook later
+
 - `postgres:18.4`'s data directory must be mounted at `/var/lib/postgresql` (not the older
   `/var/lib/postgresql/data` convention) — check `docker-compose.yml`'s inline comment if the
   Postgres container fails to start after a Postgres image update.
@@ -866,7 +927,7 @@ at scale-out; the measurement here can be re-produced by running `make seed-perf
   (no Docker available there) — automated test coverage exists for the underlying logic, but an
   operator should run this runbook's F-004/F-006 Happy Path and Regression-sensitive steps at least
   once against a real `make up` stack before relying on Phase 1 in anything resembling production.
-- Phase 2's Integration Agent environment *did* have Docker available, and found the stack already
+- Phase 2's Integration Agent environment _did_ have Docker available, and found the stack already
   running (`app`+`postgres`, both healthy) with 1,002 crawled repositories and 2,000 `Score` rows
   present — but that running container predates the F-008/F-009 code (its logs show no
   summarization/trend activity at all despite qualifying scores existing) and LM Studio's local
