@@ -2,18 +2,18 @@
 
 **A self-hosted GitHub "hidden gems" discovery platform.** GitCrawler crawls GitHub for repositories
 that are relatively new, well-built, and gaining early traction — the projects that never make it
-onto GitHub Trending because Trending only ever shows what's *already* popular — scores them on
+onto GitHub Trending because Trending only ever shows what's _already_ popular — scores them on
 concrete signals (license, commit activity, contributors, forks, stars), and generates AI summaries
 so you can judge relevance in seconds instead of reading every README yourself.
 
-![GitCrawler dashboard — Hidden Gems grid with score badges, filters, and sort controls](docs/images/dashboard.png)
+![GitCrawler dashboard — Hidden Gems grid with score badges, filters, and sort controls](docs/screenshots/dashboard.png)
 
 ## Why
 
 Existing discovery methods fall short: GitHub Trending favors what's already popular, search results
 are noisy, and manually trawling GitHub to evaluate a repository's quality takes time nobody has.
 GitCrawler is built around one principle — **optimize for signal over popularity**. If Trending shows
-what's already successful, this platform tries to surface what's *about to become* successful.
+what's already successful, this platform tries to surface what's _about to become_ successful.
 
 ## Features
 
@@ -24,7 +24,7 @@ what's already successful, this platform tries to surface what's *about to becom
 - **AI summaries, two depths** — a short, glanceable summary on every card, and a longer detailed
   summary (purpose, features, tech stack, caveats) one click away — both generated locally via
   [LM Studio](https://lmstudio.ai/), no cloud AI vendor or per-call cost.
-- **Per-repository trend growth** — each card shows how *that specific repository's* own score has
+- **Per-repository trend growth** — each card shows how _that specific repository's_ own score has
   moved since its last re-crawl, not a blended average across every repo in its language.
 - **Filter and sort** — by language, star range, topic, and license; sort by newest, score, stars, or
   commit activity.
@@ -35,13 +35,13 @@ what's already successful, this platform tries to surface what's *about to becom
   what's new. Sent independently of the crawl pipeline via SMTP; a failed send is logged, never
   silently dropped.
 
-![Repository detail dialog — full AI summary, topics, and score breakdown](docs/images/details-pane.png)
+![Repository detail dialog — full AI summary, topics, and score breakdown](docs/screenshots/details-pane.png)
 
-![Filter panel — language multi-select and active filter chips](docs/images/filters.png)
+![Filter panel — language multi-select and active filter chips](docs/screenshots/filters.png)
 
-![Narrow-viewport layout](docs/images/narrow-viewport.png)
+![Narrow-viewport layout](docs/screenshots/narrow-viewport.png)
 
-![Daily digest email — top hidden gems and trend summaries with growth pills](docs/images/digest.png)
+![Daily digest email — top hidden gems and trend summaries with growth pills](docs/screenshots/digest.png)
 
 ## How it works
 
@@ -71,13 +71,13 @@ behind these decisions.
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Backend | .NET 10, ASP.NET Core, [Wolverine](https://wolverine.netlify.app/) (vertical slice + CQRS), EF Core, Hangfire |
-| Frontend | Angular 22 (standalone components, signals), Angular Material |
-| Data store | PostgreSQL 18 |
-| AI inference | LM Studio, running locally (Llama 3.2 3B Instruct) |
-| Orchestration | Docker Compose (app + Postgres) + a `Makefile` that also drives the host-installed LM Studio |
+| Layer         | Technology                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| Backend       | .NET 10, ASP.NET Core, [Wolverine](https://wolverine.netlify.app/) (vertical slice + CQRS), EF Core, Hangfire |
+| Frontend      | Angular 22 (standalone components, signals), Angular Material                                                 |
+| Data store    | PostgreSQL 18                                                                                                 |
+| AI inference  | LM Studio, running locally (Llama 3.2 3B Instruct)                                                            |
+| Orchestration | Docker Compose (app + Postgres) + a `Makefile` that also drives the host-installed LM Studio                  |
 
 ## Getting started
 
@@ -124,23 +124,31 @@ npm run lint
 
 ## Project status
 
-Solo-operator project, actively developed. Phases 0–4 (scaffolding, data pipeline, AI
-summarization/trends, dashboard + API + bookmarking, daily email digest + observability) are done;
-security/reliability/scalability hardening is planned next. See
-[`docs/project-management.md`](docs/project-management.md) for the full feature backlog and
-[`docs/handoff.md`](docs/handoff.md) for a running log of what's changed most recently.
+Solo-operator project, actively developed. **Tranche v1 (the MVP) is closed** — all six phases
+shipped, F-001 through F-018: scaffolding, data pipeline, AI summarization and trends, dashboard +
+API + bookmarking, daily email digest + observability, and security/reliability/scalability
+hardening (secret scanning, job idempotency guards, dashboard indexes with server-side
+sort/pagination). The v1 backlog and handoff are archived under
+[`docs/archive/v1-mvp/`](docs/archive/v1-mvp/).
+
+**Tranche v2 is open with an empty backlog** — its phases and feature IDs get assigned during
+triage, so there is no in-flight work right now. See
+[`docs/project-management.md`](docs/project-management.md) for the backlog,
+[`docs/handoff.md`](docs/handoff.md) for the running change log, and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how new work enters.
 
 ## Documentation
 
-| Doc | What's in it |
-|---|---|
-| [`docs/prd.md`](docs/prd.md) | Product requirements — problem statement, goals, non-goals, user stories |
-| [`docs/architecture.md`](docs/architecture.md) | System design, component breakdown, technology decisions |
-| [`docs/adr/`](docs/adr) | Architecture Decision Records behind the technology/design choices |
-| [`docs/project-management.md`](docs/project-management.md) | Phases, feature backlog, acceptance criteria |
-| [`docs/setup.md`](docs/setup.md) | Full local setup walkthrough |
-| [`docs/handoff.md`](docs/handoff.md) | Running log of recent changes and their rationale |
-| [`docs/test-runbook.md`](docs/test-runbook.md) / [`docs/test-cases.md`](docs/test-cases.md) | Test strategy and case inventory |
+| Doc                                                                                         | What's in it                                                             |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [`docs/prd.md`](docs/prd.md)                                                                | Product requirements — problem statement, goals, non-goals, user stories |
+| [`docs/architecture.md`](docs/architecture.md)                                              | System design, component breakdown, technology decisions                 |
+| [`docs/adr/`](docs/adr)                                                                     | Architecture Decision Records behind the technology/design choices       |
+| [`docs/project-management.md`](docs/project-management.md)                                  | Phases, feature backlog, acceptance criteria                             |
+| [`docs/setup.md`](docs/setup.md)                                                            | Full local setup walkthrough                                             |
+| [`docs/handoff.md`](docs/handoff.md)                                                        | Running log of recent changes and their rationale                        |
+| [`docs/test-runbook.md`](docs/test-runbook.md) / [`docs/test-cases.md`](docs/test-cases.md) | Test strategy and case inventory                                         |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                        | Dev loop, quality gate, the constraints that are non-negotiable          |
 
 ## License
 
