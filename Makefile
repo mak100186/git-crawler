@@ -155,7 +155,7 @@ dev: check-env check-docker
 	@echo "  backend:   cd src/backend/GitCrawler.Api && dotnet watch run --launch-profile http"
 	@echo "  frontend:  cd src/frontend && npm start"
 	@echo ""
-	@echo "Dashboard  -> http://localhost:4200/ (Angular dev server; proxies /api/* to the backend)"
+	@echo "Dashboard  -> http://localhost:4400/ (Angular dev server; proxies /api/* to the backend)"
 	@echo "Backend API-> http://localhost:5073/ (direct, no proxy)"
 	@echo "Mailpit UI -> http://localhost:8025/ (catches F-013 digest emails - appsettings.Development.json"
 	@echo "              points Smtp:Host at it, no real mailbox needed)"

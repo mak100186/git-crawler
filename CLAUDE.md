@@ -37,7 +37,7 @@ up`.** `make up` rebuilds the whole app image (Angular build + .NET publish + Do
 change, which is slow for a tight edit-verify loop. `make dev` starts only Postgres in Docker, then
 prints the commands to run the backend (`dotnet watch run` in `src/backend/GitCrawler.Api`) and
 frontend (`npm start` in `src/frontend`) bare — both hot-reload on save. The dashboard is then at
-`http://localhost:4200/` (proxying `/api/*` to the bare backend on `:5073` via
+`http://localhost:4400/` (proxying `/api/*` to the bare backend on `:5073` via
 `src/frontend/proxy.conf.json`), not `:8080`. Stop `make up`'s `app` container first if it's
 running (`make down`) — otherwise it and the bare backend both process the same Postgres data. See
 docs/setup.md §3a for the full explanation.

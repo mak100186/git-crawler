@@ -22,6 +22,15 @@
   &__brand {
     font-family: var(--font-display);
     font-size: 21px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &__brand-mark {
+    width: 28px;
+    height: 28px;
+    font-size: 28px;
   }
 
   &__spacer {

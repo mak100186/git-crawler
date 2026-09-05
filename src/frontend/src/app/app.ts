@@ -1,5 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { MatIconRegistry } from '@angular/material/icon';
+import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { DomSanitizer } from '@angular/platform-browser';
 import { RouterOutlet } from '@angular/router';
@@ -17,7 +17,7 @@ import { registerAppIcons } from './core/icons/icon-registry.service';
 // (desktop top nav vs. mobile bottom pill nav) went with it, since there's no nav left to collapse.
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, MatToolbarModule],
+  imports: [RouterOutlet, MatToolbarModule, MatIconModule],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

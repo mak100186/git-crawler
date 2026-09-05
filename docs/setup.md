@@ -134,7 +134,7 @@ cd src/backend/GitCrawler.Api && dotnet watch run --launch-profile http
 cd src/frontend && npm start
 ```
 
-The dashboard is then at `http://localhost:4200/` (Angular's own dev server — `ng serve`), which
+The dashboard is then at `http://localhost:4400/` (Angular's own dev server — `ng serve`), which
 proxies every `/api/*` call through to the backend at `http://localhost:5073/`
 (`src/frontend/proxy.conf.json`, wired into `angular.json`'s `serve` target). The backend itself
 picks up `localhost:$POSTGRES_PORT` for its connection string when it detects it isn't running
