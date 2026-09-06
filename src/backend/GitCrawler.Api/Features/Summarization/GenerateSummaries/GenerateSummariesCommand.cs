@@ -17,7 +17,10 @@ namespace GitCrawler.Api.Features.Summarization.GenerateSummaries;
 // endpoint.
 public record GenerateSummariesCommand;
 
-public record GenerateSummariesResult(int SummarizedCount, int SkippedCount, int FailedCount);
+// StoppedOnRateLimit distinguishes "this run summarized 3 of 20 because GitHub cut us off" from
+// "this run summarized 3 of 20 because 17 individual repositories failed" (review finding M-3). Both
+// used to look identical in the logs, and the first is not a summarization problem at all.
+public record GenerateSummariesResult(int SummarizedCount, int SkippedCount, int FailedCount, bool StoppedOnRateLimit = false);
 
 // Wolverine discovers this handler by convention (a public Handle/HandleAsync method on a class
 // named *Handler in the same assembly) - no manual registration required.
@@ -86,6 +89,7 @@ public class GenerateSummariesCommandHandler(
 
         var summarizedCount = 0;
         var failedCount = 0;
+        var stoppedOnRateLimit = false;
 
         foreach (var repository in toSummarize)
         {
@@ -112,6 +116,30 @@ public class GenerateSummariesCommandHandler(
 
                 summarizedCount++;
             }
+            catch (GitHubRateLimitException ex)
+            {
+                // Back the whole batch out rather than failing each repository in turn (review
+                // finding M-3). A rate limit is one root cause affecting every remaining repository
+                // in this run, not N independent failures: the old behaviour logged up to BatchSize
+                // warnings for it, burned the rest of the batch against a budget that was already
+                // exhausted, and then did the same thing again an hour later.
+                //
+                // Backing out rather than waiting is deliberate, and is why this slice does not
+                // share the Crawler's Polly pipeline (ADR-018). That pipeline waits indefinitely
+                // because a crawl is the whole point of its run; here the README is one optional
+                // input to a summary, GitHub's reset can be the better part of an hour away, and
+                // this job runs hourly anyway - so stopping is strictly better than holding an
+                // LM Studio-bound job open waiting on GitHub. Everything already summarized is
+                // saved below; everything else still has no Summary row and is picked back up by
+                // the "without one" filter on the next run.
+                logger.LogWarning(
+                    ex,
+                    "GitHub rate limit hit while fetching READMEs; stopping this run after {SummarizedCount} of {BatchCount} repositories. The remainder are retried on the next scheduled run",
+                    summarizedCount,
+                    toSummarize.Count);
+                stoppedOnRateLimit = true;
+                break;
+            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Same philosophy as F-005's GitHubContributorListUnavailableException handling
@@ -131,10 +159,17 @@ public class GenerateSummariesCommandHandler(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // SkippedCount covers everything that didn't even get attempted this run: repos with no
-        // score yet, repos below MinimumScore, and repos that qualified but fell past BatchSize -
-        // all three are "try again next run" cases, not failures, so they're not folded into
-        // FailedCount (which is reserved for attempts that actually threw).
-        return new GenerateSummariesResult(summarizedCount, candidates.Count - toSummarize.Count, failedCount);
+        // score yet, repos below MinimumScore, repos that qualified but fell past BatchSize, and -
+        // since M-3 - repos left unattempted when a rate limit cut the batch short. All are "try
+        // again next run" cases, not failures, so they're not folded into FailedCount (which is
+        // reserved for attempts that actually threw). Derived by subtraction rather than from
+        // toSummarize.Count so the early-exit case is counted correctly; when the loop runs to
+        // completion the two are identical, since every iteration increments exactly one counter.
+        return new GenerateSummariesResult(
+            summarizedCount,
+            candidates.Count - summarizedCount - failedCount,
+            failedCount,
+            stoppedOnRateLimit);
     }
 
     // GET /repos/{owner}/{repo}/readme (GitHub REST) - the cheapest PRD-compliant way to read a
@@ -156,6 +191,22 @@ public class GenerateSummariesCommandHandler(
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
+        }
+
+        // The crawler's own REST calls run through ADR-018's Polly pipeline; this one does not, so
+        // without these two checks a 403 would fall through to EnsureSuccessStatusCode, surface as
+        // a generic HttpRequestException, and be logged as "summarization failed for this repo" -
+        // once per repository in the batch, for a cause that has nothing to do with any of them
+        // (review finding M-3). Detection is shared with GitHubDiscoveryClient rather than
+        // reimplemented, so the two cannot drift apart on GitHub's header contract.
+        if (GitHubDiscoveryClient.IsRestPrimaryRateLimited(response, out var resetAtUtc))
+        {
+            throw new GitHubRestRateLimitExceededException(resetAtUtc);
+        }
+
+        if (GitHubDiscoveryClient.IsRestSecondaryRateLimited(response, timeProvider, out var retryAfter))
+        {
+            throw new GitHubSecondaryRateLimitException(retryAfter);
         }
 
         response.EnsureSuccessStatusCode();

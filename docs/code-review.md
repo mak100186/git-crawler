@@ -174,7 +174,9 @@ At the configured page size of 50, that is 50 database round-trips per page, plu
 
 ### M-3 — The README fetch bypasses the resilience pipeline built for the same API
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 23, via the second option the recommendation offered (detect and back the batch out) rather than the first (share the pipeline). `TryFetchReadmeAsync` now recognises both REST rate-limit signals before `EnsureSuccessStatusCode`, using `GitHubDiscoveryClient`'s own detection methods rather than a second copy of the header contract, and throws the matching `GitHubRateLimitException`. The batch loop catches that ahead of its per-repository catch, logs the single root cause once, and stops - keeping everything already summarized and counting the remainder as skipped, not failed. `GenerateSummariesResult` gained `StoppedOnRateLimit` so the two cases are distinguishable in the logs.
+
+Not sharing the Polly pipeline is deliberate, not a shortcut: that pipeline waits indefinitely because a crawl is the whole point of its run, whereas here a README is one optional input to a summary, GitHub's reset can be most of an hour away, and this job runs hourly regardless.
 
 ADR-018 wrapped the crawler's GitHub calls in a Polly pipeline that handles primary rate limits, secondary rate limits, and transient failures. `GenerateSummariesCommandHandler.TryFetchReadmeAsync:147-174` calls the _same GitHub REST API_, on the _same shared rate-limit budget_, through the _same named HttpClient_ — with no pipeline at all. It handles `404` and then calls `EnsureSuccessStatusCode()`.
 

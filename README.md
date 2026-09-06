@@ -202,11 +202,15 @@ blanket-retrying every failure.
   every discovery query and go straight into the logs, so the real budget is measured rather than
   assumed.
 
-**Known gap:** the summarizer fetches READMEs over REST without going through this pipeline, so a
-rate-limit response there fails each repository in the batch individually instead of backing the
-batch out cleanly. Tracked as M-3 in [`docs/code-review.md`](docs/code-review.md). There is also no
-proactive pause when the remaining budget runs low — the crawler reacts once a limit is hit rather
-than stopping short of it, which the spike recommends as a later hardening step.
+- **The summarizer backs its batch out instead of thrashing.** It fetches READMEs from the same
+  REST budget but deliberately does not share the crawler's pipeline: a README is one optional input
+  to a summary, and holding an inference-bound job open for an hour waiting on GitHub is worse than
+  stopping. It recognises the same two signals using the same detection code, logs the one root
+  cause once, keeps everything already summarized, and lets the next hourly run pick up the rest.
+
+**Known gap:** there is no proactive pause when the remaining budget runs low — the crawler reacts
+once a limit is hit rather than stopping short of it, which the spike recommends as a later
+hardening step.
 
 ## Tech stack
 

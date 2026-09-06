@@ -329,4 +329,105 @@ public class GenerateSummariesCommandHandlerTests : IDisposable
         Assert.Equal(2, result.SummarizedCount);
         Assert.Equal(1, result.SkippedCount);
     }
+
+    // GitHub REST's primary rate-limit signal: 403/429 carrying x-ratelimit-remaining: 0 alongside
+    // an x-ratelimit-reset timestamp. Detection is shared with GitHubDiscoveryClient, so this also
+    // guards against the two slices drifting apart on the header contract.
+    private static HttpResponseMessage PrimaryRateLimitedResponse(DateTimeOffset resetAtUtc)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
+        response.Headers.Add("x-ratelimit-remaining", "0");
+        response.Headers.Add("x-ratelimit-reset", resetAtUtc.ToUnixTimeSeconds().ToString());
+        return response;
+    }
+
+    private async Task SeedEligibleRepositoriesAsync(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            var repository = NewRepository(200 + i);
+            _dbContext.Repositories.Add(repository);
+            await _dbContext.SaveChangesAsync();
+            _dbContext.Scores.Add(NewScore(repository.Id, 90 - i));
+            await _dbContext.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Handle_ReadmeFetchPrimaryRateLimited_BacksTheBatchOut_InsteadOfFailingEachRepository()
+    {
+        await SeedEligibleRepositoriesAsync(3);
+        UseReadmeResponder(_ => PrimaryRateLimitedResponse(_timeProvider.GetUtcNow().AddMinutes(30)));
+
+        var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
+
+        // The whole point of M-3: one root cause produces one stop, not one failure per repository.
+        Assert.True(result.StoppedOnRateLimit);
+        Assert.Equal(0, result.SummarizedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(3, result.SkippedCount);
+        Assert.Empty(_summarizer.Requests);
+    }
+
+    [Fact]
+    public async Task Handle_ReadmeFetchSecondaryRateLimited_BacksTheBatchOut()
+    {
+        await SeedEligibleRepositoriesAsync(2);
+        UseReadmeResponder(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.Add("Retry-After", "60");
+            return response;
+        });
+
+        var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
+
+        Assert.True(result.StoppedOnRateLimit);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(2, result.SkippedCount);
+    }
+
+    [Fact]
+    public async Task Handle_RateLimitedPartwayThrough_KeepsWhatItAlreadySummarized()
+    {
+        await SeedEligibleRepositoriesAsync(3);
+
+        var call = 0;
+        UseReadmeResponder(_ => ++call == 1
+            ? ReadmeFoundResponse("# First")
+            : PrimaryRateLimitedResponse(_timeProvider.GetUtcNow().AddMinutes(30)));
+
+        _summarizer.EnqueueSummary("Summary A.", "Detailed summary A.");
+
+        var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
+
+        // Backing out must not discard completed work - the first repository's Summary row is
+        // saved, and the two that never got attempted are skipped, not failed.
+        Assert.True(result.StoppedOnRateLimit);
+        Assert.Equal(1, result.SummarizedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(2, result.SkippedCount);
+        Assert.Equal(1, await _dbContext.Summaries.CountAsync());
+    }
+
+    [Fact]
+    public async Task Handle_NonRateLimitReadmeFailure_StillFailsOnlyThatRepository()
+    {
+        // A 500 from GitHub is not a shared budget problem, so the old per-repository behaviour is
+        // exactly right for it: skip that one and carry on with the rest of the batch.
+        await SeedEligibleRepositoriesAsync(2);
+
+        var call = 0;
+        UseReadmeResponder(_ => ++call == 1
+            ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            : ReadmeFoundResponse("# Second"));
+
+        _summarizer.EnqueueSummary("Summary B.", "Detailed summary B.");
+
+        var result = await CreateHandler().HandleAsync(new GenerateSummariesCommand(), CancellationToken.None);
+
+        Assert.False(result.StoppedOnRateLimit);
+        Assert.Equal(1, result.SummarizedCount);
+        Assert.Equal(1, result.FailedCount);
+    }
 }

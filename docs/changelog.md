@@ -1,7 +1,58 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 22
+> Revision: 23
 > Last updated: 2026-09-06
+
+## Revision 23 - 2026-09-06 - The summarizer stops on a rate limit instead of burning the batch against it
+
+**M-3 - the README fetch now recognises GitHub's rate limits.** It calls the same REST API, on the
+same shared budget, through the same named `HttpClient` as the crawler - but with no rate-limit
+handling at all. A 403 fell through to `EnsureSuccessStatusCode`, surfaced as a generic
+`HttpRequestException`, and was caught by the per-repository handler and logged as "summarization
+failed for this repo". One rate-limited window therefore produced up to `Summarization:BatchSize`
+warnings for a single root cause, burned the rest of the batch against an already-exhausted budget,
+and did it again an hour later.
+
+`TryFetchReadmeAsync` now checks both REST signals before `EnsureSuccessStatusCode` and throws the
+matching `GitHubRateLimitException`. The batch loop catches that **ahead of** its general
+per-repository catch and breaks.
+
+- **Detection is shared, not reimplemented.** `GitHubDiscoveryClient.IsRestPrimaryRateLimited` and
+  `IsRestSecondaryRateLimited` changed from `private` to `internal` and are called from the
+  summarization slice. A second copy of GitHub's header contract in another slice is how the two
+  drift apart.
+- **Backing out, not waiting - and this is why the Polly pipeline is still not shared.** ADR-018's
+  pipeline waits indefinitely because a crawl is the entire point of the crawler's run. Here a
+  README is one optional input to a summary, GitHub's reset can be most of an hour away, and this
+  job runs hourly anyway, so stopping beats holding an LM Studio-bound job open waiting on GitHub.
+  The recommendation offered both options; this is the second one, as directed.
+- **Completed work survives.** `SaveChangesAsync` still runs after the break, so summaries already
+  produced in the run are kept. Repositories never attempted still have no `Summary` row and are
+  picked back up by the "without one" filter next run.
+- `GenerateSummariesResult` gained `StoppedOnRateLimit`, so "summarized 3 of 20 because GitHub cut
+  us off" is distinguishable from "summarized 3 of 20 because 17 repositories failed" - previously
+  identical in the logs.
+- `SkippedCount` is now derived by subtraction (`candidates - summarized - failed`) so the
+  early-exit case counts correctly. Identical to the old value whenever the loop runs to completion.
+
+**Non-rate-limit failures are unchanged**: a 500 from GitHub, or LM Studio erroring on one
+repository, still fails only that repository and the batch continues. That behaviour was correct and
+is pinned by a test so the new early exit cannot swallow it.
+
+**README updated**: the rate-limit section's "Known gap" paragraph no longer lists M-3; the
+summarizer's back-out is described as part of the approach. The remaining gap - no proactive pause
+before a budget runs out - stands.
+
+**Modules/files affected**:
+`Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs`,
+`Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs` (two visibility changes),
+`tests/.../GenerateSummariesCommandHandlerTests.cs`, `README.md`, `docs/code-review.md`.
+
+**Breaking changes**: none. `StoppedOnRateLimit` is an optional record parameter with a default.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (171 passed, 4 new covering the primary
+signal, the secondary signal, partial progress being kept, and a non-rate-limit failure still
+scoping to one repository), `dotnet format --verify-no-changes`.
 
 ## Revision 22 - 2026-09-06 - Filter options now come from the catalog, not from what you have already scrolled past
 

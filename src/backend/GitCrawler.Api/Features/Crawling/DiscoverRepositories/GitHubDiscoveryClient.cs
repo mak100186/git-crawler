@@ -179,7 +179,10 @@ public class GitHubDiscoveryClient(
     private static bool IsPrimaryRateLimitError(GraphQLException ex) =>
         ex.Message.Contains("RATE_LIMITED", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRestPrimaryRateLimited(HttpResponseMessage response, out DateTimeOffset resetAtUtc)
+    // Internal, not private: GenerateSummariesCommandHandler fetches READMEs from the same GitHub
+    // REST API on the same shared budget, so it has to recognise the same two signals (review
+    // finding M-3). Duplicating the header contract in a second slice is how the two drift apart.
+    internal static bool IsRestPrimaryRateLimited(HttpResponseMessage response, out DateTimeOffset resetAtUtc)
     {
         resetAtUtc = default;
 
@@ -222,7 +225,8 @@ public class GitHubDiscoveryClient(
         return body.Contains("too large to list contributors", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsRestSecondaryRateLimited(HttpResponseMessage response, TimeProvider timeProvider, out TimeSpan retryAfter)
+    // Internal for the same reason as IsRestPrimaryRateLimited above.
+    internal static bool IsRestSecondaryRateLimited(HttpResponseMessage response, TimeProvider timeProvider, out TimeSpan retryAfter)
     {
         retryAfter = default;
 
