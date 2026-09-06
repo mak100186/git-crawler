@@ -39,9 +39,12 @@ too-many-to-list contributor case matching the at-the-cap case.
 - **How scoring works**: rewritten as the project's positioning rather than a spec dump. Leads with
   the distinction the whole product rests on - the score is not a verdict on the repository, it is a
   measure of how likely the reader is to have missed it - and states plainly that a famous
-  repository scoring low is not being criticised. Carries a new bar-and-curve diagram
-  (`docs/diagrams/img/star-score-curve.svg`, hand-authored on the product palette, values computed
-  from the same Gaussian the code uses), the weight table with a "what it is evidence of" column,
+  repository scoring low is not being criticised. Carries two new hand-authored SVG diagrams on
+  the product palette: `docs/diagrams/img/score-weights.svg`, a stacked bar breaking a score of 100
+  into its five weighted parts, and `docs/diagrams/img/star-score-curve.svg`, the 12 buckets as bars
+  against the continuous Gaussian with the hidden-gem band marked at buckets 3-7. Both compute their
+  numbers from the same formulas the code uses. Also the weight table with a "what it is evidence
+  of" column,
   and a closing note that ranking accomplished projects is a different question deferred to a future
   tranche. The 12-row bucket table was dropped from the README as redundant with the diagram; it
   still lives in ADR-019.

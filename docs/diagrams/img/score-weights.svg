@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 292" width="920" height="292" role="img" aria-label="A score of 100 is made of five weighted signals: star count 50 percent, contributor count 20 percent, commits per week 15 percent, license present 10 percent, fork count 5 percent">
+<style>text{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;fill:#201e1d}.ttl{font-size:22px;font-weight:700}.sub{font-size:13.5px;fill:#645c50}.pct{font-size:15px;font-weight:700}.nm{font-size:12.5px;font-weight:600;fill:#474238}.note{font-size:12.5px;fill:#645c50}</style>
+<rect width="920" height="292" rx="18" fill="#f5ead8"/>
+<text class="ttl" x="96" y="44">What makes up a score of 100</text>
+<text class="sub" x="96" y="68">Five signals, weighted. Every one of them is shown separately on the repository itself.</text>
+<clipPath id="track"><rect x="96" y="92" width="728" height="56" rx="10"/></clipPath>
+<g clip-path="url(#track)">
+<rect x="96.0" y="92" width="364.0" height="56" fill="#c67139"/>
+<rect x="460.0" y="92" width="145.6" height="56" fill="#3d472b"/>
+<rect x="605.6" y="92" width="109.2" height="56" fill="#f6a06b"/>
+<rect x="714.8" y="92" width="72.8" height="56" fill="#a19786"/>
+<rect x="787.6" y="92" width="36.4" height="56" fill="#8c491a"/>
+</g>
+<text class="pct" x="278.0" y="125.0" text-anchor="middle" style="fill:#f5ead8">50%</text>
+<line x1="460.0" y1="92" x2="460.0" y2="148" stroke="#f5ead8" stroke-width="2"/>
+<text class="pct" x="532.8" y="125.0" text-anchor="middle" style="fill:#f5ead8">20%</text>
+<line x1="605.6" y1="92" x2="605.6" y2="148" stroke="#f5ead8" stroke-width="2"/>
+<text class="pct" x="660.2" y="125.0" text-anchor="middle" style="fill:#201e1d">15%</text>
+<line x1="714.8" y1="92" x2="714.8" y2="148" stroke="#f5ead8" stroke-width="2"/>
+<text class="pct" x="751.2" y="125.0" text-anchor="middle" style="fill:#201e1d">10%</text>
+<line x1="787.6" y1="92" x2="787.6" y2="148" stroke="#f5ead8" stroke-width="2"/>
+<text class="pct" x="805.8" y="125.0" text-anchor="middle" style="fill:#f5ead8">5%</text>
+<rect x="96" y="92" width="728" height="56" rx="10" fill="none" stroke="#201e1d" stroke-opacity="0.10"/>
+<text class="nm" x="278.0" y="172" text-anchor="middle">Star count</text>
+<text class="nm" x="532.8" y="172" text-anchor="middle">Contributor count</text>
+<text class="nm" x="660.2" y="172" text-anchor="middle">Commits / week</text>
+<line x1="751.2" y1="154" x2="751.2" y2="185.0" stroke="#c0b6a5" stroke-width="1.5"/>
+<text class="nm" x="751.2" y="196" text-anchor="middle">License present</text>
+<line x1="805.8" y1="154" x2="805.8" y2="209.0" stroke="#c0b6a5" stroke-width="1.5"/>
+<text class="nm" x="824.0" y="220" text-anchor="end">Fork count</text>
+<text class="note" x="96" y="252">Half the score answers one question: is this in the star band where undiscovered projects live?</text>
+<text class="note" x="96" y="270">The other half asks whether the project is alive, shared, and legally usable.</text>
+</svg>

@@ -97,6 +97,8 @@ disagree with the weighting and judge the raw evidence yourself.
 | License present   |    10% | Binary                                           | You are actually allowed to use it           |
 | Fork count        |     5% | Log curve, saturating at 200                     | Other people found it worth building on      |
 
+![A score of 100 broken into its five weighted parts: star count 50%, contributor count 20%, commits per week 15%, license present 10%, fork count 5%](docs/diagrams/img/score-weights.svg)
+
 Four of the five are ordinary "more is better" signals, log-normalized so a handful of enormous
 repositories cannot drown out everyone else — going from 0 to 5 commits/week earns most of that
 signal, going from 45 to 50 earns almost none. Saturation is deliberate: past a certain point,
