@@ -304,7 +304,7 @@ public class SendDigestCommandHandler(
         };
 
         var content = new StringBuilder();
-        content.AppendLine($"<div style=\"font-size:12.5px;line-height:1.5;color:{BodyText};margin-bottom:14px;\">Every hidden gem's score blends five signals, weighted by how strongly each predicts a well-maintained, actively developed project:</div>");
+        content.AppendLine($"<div style=\"font-size:12.5px;line-height:1.5;color:{BodyText};margin-bottom:14px;\">Every hidden gem's score blends five signals. Four reward a well-maintained, actively developed project. Stars are scored on a curve that peaks in the middle - a repo nobody has starred is unproven, and one with 100k stars is not hidden:</div>");
 
         foreach (var (label, weight) in signals)
         {

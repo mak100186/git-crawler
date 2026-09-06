@@ -1,7 +1,64 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 19
-> Last updated: 2026-09-05
+> Revision: 20
+> Last updated: 2026-09-06
+
+## Revision 20 - 2026-09-06 - Scoring reshape (ADR-019) and a README section on rate limits
+
+**Scoring algorithm reweighted and star count reshaped (ADR-019, operator direction):**
+
+- New weights: star count 50%, contributor count 20%, commits per week 15%, license present 10%,
+  fork count 5% (was 10/22.5/27/18/22.5). Still sums to 1.0, still independently identifiable per
+  FR-002.
+- **Star count no longer uses the log curve.** It is bucketed into 12 bands and scored on a
+  symmetric Gaussian centred between buckets 6 and 7, so bucket 1 (0-100 stars) and bucket 12
+  (100,001+) score identically and the middle bands win. A monotonic star signal says the ideal
+  repository is the most-starred one on GitHub, which is the opposite of this platform's purpose;
+  no weight or cap can fix that, because the function was the wrong shape. The old cap of 50 also
+  made every repository above 50 stars indistinguishable on the signal. Full rationale, bucket
+  table, and the rejected alternatives are in ADR-019.
+- The other four signals keep their log-normalization and caps unchanged.
+
+**Review finding L-6 fixed in the same pass**: a contributor count GitHub refuses to enumerate
+("too large to list contributors") now scores full marks for that signal instead of zero.
+`ComputeScoresCommandHandler` distinguishes it from "never fetched" using the existing
+`ContributorCount is null && ContributorCountFetchedAtUtc is not null` state - no schema change.
+At the new 20% weight this was docking the repositories with the healthiest communities.
+
+**Consequence worth knowing**: `Score` rows are append-only, so nothing is rewritten - the next
+crawl writes rows under the new algorithm, and each repository's trend-growth pill will show a
+one-off step change across that boundary before settling.
+
+**Test changes**: the "more stars scores higher" assertion is no longer a valid invariant and was
+replaced with coverage of what actually defines the curve - mirrored buckets scoring identically,
+buckets 6 and 7 sitting at exactly 1.0, the sequence rising to the peak and then falling, and the
+too-many-to-list contributor case matching the at-the-cap case.
+
+**README - two new sections:**
+
+- **How scoring works**: the weight table, why four signals are log curves, and the full 12-bucket
+  star table with the reasoning behind the bell shape.
+- **Staying inside GitHub's rate limits**: the three limits GitHub actually enforces (GraphQL 5,000
+  points/hour, REST 5,000 requests/hour as a separate pool, and secondary abuse-detection limits),
+  the wire signal that identifies each, and what the crawler does about them - GraphQL-first to keep
+  the REST budget for the one thing it is needed for, 7-day contributor-count caching, header-only
+  contributor counts via `per_page=1` + `Link`, server-provided waits rather than guessed backoff,
+  a permanent-failure pathway that bypasses retries entirely, and per-page cost logging. Two known
+  gaps are stated rather than glossed: the summarizer's README fetch bypasses the pipeline (M-3),
+  and there is no proactive pause before a budget runs out.
+
+**Modules/files affected**: `Features/Scoring/ComputeScores/ScoringWeights.cs`,
+`Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Digest/SendDigest/SendDigestCommand.cs` (the "How We Score" copy - the percentages
+themselves were already read from the `ScoringWeights` constants),
+`tests/.../ScoringWeightsTests.cs`, `docs/adr/ADR-019-star-count-bell-curve-scoring.md` (new),
+`README.md`.
+
+**Breaking changes**: none structurally. Scores computed before this revision are not comparable
+with scores computed after it.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (158 passed, 12 new covering the curve
+and the contributor fix), `dotnet format --verify-no-changes`, `npm run format:docs:check`.
 
 ## Revision 19 - 2026-09-05 - Code-review remediation pass
 

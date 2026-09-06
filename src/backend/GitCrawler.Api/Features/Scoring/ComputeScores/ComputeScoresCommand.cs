@@ -80,11 +80,19 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, TimeProv
         var hasLicense = !string.IsNullOrEmpty(repository.LicenseIdentifier) || !string.IsNullOrEmpty(repository.LicenseName);
         var licenseType = repository.LicenseIdentifier ?? repository.LicenseName;
         var commitsPerWeek = ScoringWeights.ComputeCommitsPerWeek(repository.CommitCount, repository.CreatedAtUtc, now);
-        var contributorCount = repository.ContributorCount ?? 0;
+        // Null ContributorCount alongside a non-null ContributorCountFetchedAtUtc means the crawler
+        // did ask and GitHub refused - "too large to list contributors" (see
+        // DiscoverRepositoriesCommandHandler's catch of GitHubContributorListUnavailableException,
+        // which stamps the timestamp precisely so this state is distinguishable). ScoringWeights
+        // reads that null as full marks rather than zero. Null with no timestamp is a repo whose
+        // contributor count has genuinely never been fetched, which still scores as zero.
+        var contributorCountForScore = repository.ContributorCount is null && repository.ContributorCountFetchedAtUtc is not null
+            ? (int?)null
+            : repository.ContributorCount ?? 0;
         var forkCount = repository.ForkCount;
         var starCount = repository.StarCount;
 
-        var totalScore = ScoringWeights.ComputeTotalScore(hasLicense, commitsPerWeek, contributorCount, forkCount, starCount);
+        var totalScore = ScoringWeights.ComputeTotalScore(hasLicense, commitsPerWeek, contributorCountForScore, forkCount, starCount);
 
         return new Score
         {
@@ -92,7 +100,7 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, TimeProv
             HasLicense = hasLicense,
             LicenseType = licenseType,
             CommitsPerWeek = commitsPerWeek,
-            ContributorCount = contributorCount,
+            ContributorCount = repository.ContributorCount ?? 0,
             ForkCount = forkCount,
             StarCount = starCount,
             TotalScore = totalScore,
