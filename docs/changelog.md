@@ -36,8 +36,15 @@ too-many-to-list contributor case matching the at-the-cap case.
 
 **README - two new sections:**
 
-- **How scoring works**: the weight table, why four signals are log curves, and the full 12-bucket
-  star table with the reasoning behind the bell shape.
+- **How scoring works**: rewritten as the project's positioning rather than a spec dump. Leads with
+  the distinction the whole product rests on - the score is not a verdict on the repository, it is a
+  measure of how likely the reader is to have missed it - and states plainly that a famous
+  repository scoring low is not being criticised. Carries a new bar-and-curve diagram
+  (`docs/diagrams/img/star-score-curve.svg`, hand-authored on the product palette, values computed
+  from the same Gaussian the code uses), the weight table with a "what it is evidence of" column,
+  and a closing note that ranking accomplished projects is a different question deferred to a future
+  tranche. The 12-row bucket table was dropped from the README as redundant with the diagram; it
+  still lives in ADR-019.
 - **Staying inside GitHub's rate limits**: the three limits GitHub actually enforces (GraphQL 5,000
   points/hour, REST 5,000 requests/hour as a separate pool, and secondary abuse-detection limits),
   the wire signal that identifies each, and what the crawler does about them - GraphQL-first to keep

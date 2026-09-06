@@ -73,43 +73,88 @@ behind these decisions.
 
 ## How scoring works
 
-Five signals, weighted, producing a score out of 100.
+**The score is not a verdict on the repository. It is a measure of how likely you are to have
+missed it.**
 
-| Signal            | Weight | Shape                                            |
-| ----------------- | -----: | ------------------------------------------------ |
-| Star count        |    50% | Bell curve over 12 buckets — peaks in the middle |
-| Contributor count |    20% | Log curve, saturating at 25                      |
-| Commits per week  |    15% | Log curve, saturating at 10                      |
-| License present   |    10% | Binary                                           |
-| Fork count        |     5% | Log curve, saturating at 200                     |
+That distinction is the whole product. Every repository here is somebody's hard work, and this
+platform is in no position to rank one person's craft above another's. What it can do is answer a
+narrower, more honest question: _of the projects that look genuinely healthy, which ones has the
+GitHub firehose never put in front of you?_ A high score means "you probably have not seen this and
+you probably should." A low score means "this is not what you came here for" — never "this is bad
+code."
+
+Read one number and you learn nothing about a project. That is why the score is never shown alone:
+open any repository and the five signals that produced it are broken out individually, so you can
+disagree with the weighting and judge the raw evidence yourself.
+
+### The five signals
+
+| Signal            | Weight | Shape                                            | What it is evidence of                       |
+| ----------------- | -----: | ------------------------------------------------ | -------------------------------------------- |
+| Star count        |    50% | Bell curve over 12 buckets — peaks in the middle | Discovered enough to be real, not yet famous |
+| Contributor count |    20% | Log curve, saturating at 25                      | More than one person's weekend               |
+| Commits per week  |    15% | Log curve, saturating at 10                      | Someone is still working on it               |
+| License present   |    10% | Binary                                           | You are actually allowed to use it           |
+| Fork count        |     5% | Log curve, saturating at 200                     | Other people found it worth building on      |
 
 Four of the five are ordinary "more is better" signals, log-normalized so a handful of enormous
 repositories cannot drown out everyone else — going from 0 to 5 commits/week earns most of that
-signal, going from 45 to 50 earns almost none.
+signal, going from 45 to 50 earns almost none. Saturation is deliberate: past a certain point,
+_more_ stops being _better_, it is just _bigger_.
 
-**Star count is deliberately not one of them.** A monotonic star signal would rank the most famous
-repository on GitHub highest, which is the opposite of this project's purpose. Instead stars fall
-into 12 buckets scored on a symmetric bell curve:
+### Star count is not one of them
 
-| Bucket | Stars       | Star component | Bucket | Stars          | Star component |
-| -----: | ----------- | -------------: | -----: | -------------- | -------------: |
-|      1 | 0–100       |           0.09 |      7 | 5,001–10,000   |           1.00 |
-|      2 | 101–250     |           0.20 |      8 | 10,001–15,000  |           0.85 |
-|      3 | 251–500     |           0.38 |      9 | 15,001–25,000  |           0.62 |
-|      4 | 501–1,000   |           0.62 |     10 | 25,001–50,000  |           0.38 |
-|      5 | 1,001–2,500 |           0.85 |     11 | 50,001–100,000 |           0.20 |
-|      6 | 2,501–5,000 |           1.00 |     12 | 100,001+       |           0.09 |
+![Star count is scored on a bell curve: buckets 1 and 12 both score 0.09, and the middle buckets 6 and 7 peak at 1.00](docs/diagrams/img/star-score-curve.svg)
 
-Bucket 1 and bucket 12 score identically, as do 2 and 11, and so on. A repository nobody has
-starred yet is unproven; a repository with 100,000 stars is not hidden. Neither is what this
-platform is for. The curve is a Gaussian centred between buckets 6 and 7 (sigma 2.5), normalized so
-the peak is exactly 1.0 — the constants live in
-[`ScoringWeights.cs`](src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/ScoringWeights.cs)
-and the shape is pinned by tests.
+Every other discovery tool treats stars as a ladder — more is better, all the way up. Run that logic
+to its conclusion and the perfect repository is the single most-starred project on GitHub. Which is
+a result you did not need a crawler to find.
 
-Commits per week is derived, not fetched: GitHub gives a total commit count, which is divided by
+So stars fall into 12 buckets scored on a symmetric bell curve. Bucket 1 (0–100 stars) and bucket
+12 (100,001+) score identically. So do 2 and 11, 3 and 10, and so on. Both tails are the same kind
+of unhelpful for opposite reasons:
+
+- **The left tail is unproven.** Nobody has vouched for it yet. That is not a criticism — everything
+  starts there — but "nobody has looked at this" is not the same claim as "nobody has _found_ this,"
+  and the platform cannot tell those apart from star count alone.
+- **The right tail is already famous.** React is excellent. React is also not a hidden gem, and
+  surfacing it tells you nothing you did not already know.
+
+The hidden-gem band is buckets 3 through 7 — roughly 250 to 10,000 stars. That is where a project
+has been validated by real users but has not yet been swept up by the algorithms, the newsletters,
+and the conference talks. It sits slightly left of the curve's peak on purpose: a 400-star project
+is more likely to be genuinely undiscovered than an 8,000-star one, even though the curve scores
+the latter higher on star count alone.
+
+The consequence worth stating plainly: **a famous repository scoring low here is not being
+criticised.** Linux scores 0.09 on the star signal. That number means "you already know about
+Linux," and nothing else.
+
+The curve is a Gaussian centred between buckets 6 and 7 with σ = 2.5, normalised so the peak is
+exactly 1.0 and the component stays in `[0,1]` like every other signal. σ is the one tunable knob —
+it sets how sharply the score falls away from the middle, and at 2.5 the edge buckets keep about 9%
+rather than being zeroed, so a well-maintained 50-star project can still out-score a dormant one in
+the same bucket. The constants live in
+[`ScoringWeights.cs`](src/backend/GitCrawler.Api/Features/Scoring/ComputeScores/ScoringWeights.cs),
+the shape is pinned by tests, and the full rationale plus the rejected alternatives are in
+[ADR-019](docs/adr/ADR-019-star-count-bell-curve-scoring.md).
+
+### Two details that matter
+
+**Commits per week is derived, not fetched.** GitHub gives a total commit count, which is divided by
 the repository's age in weeks, floored at one week so a two-day-old repo with 50 commits does not
 read as 175/week.
+
+**A contributor list too large to enumerate scores full marks, not zero.** GitHub refuses to list
+contributors past a certain size. Treating that refusal as "zero contributors" would dock 20% from
+exactly the projects with the healthiest communities, so it is scored as the top of the bucket
+instead.
+
+### What this score is not for
+
+Ranking accomplished, well-known projects against each other is a different question with different
+signals, and this algorithm would answer it badly on purpose. A separate scoring mechanism for that
+is a candidate for a future tranche; nothing here attempts it today.
 
 ## Staying inside GitHub's rate limits
 
