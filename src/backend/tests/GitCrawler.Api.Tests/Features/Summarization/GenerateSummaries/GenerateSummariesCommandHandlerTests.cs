@@ -312,6 +312,74 @@ public class GenerateSummariesCommandHandlerTests : PostgresTestBase
         Assert.Equal(1, result.SkippedCount);
     }
 
+    // Review finding H-3 moved the candidate filter, ranking and BatchSize cap out of
+    // LINQ-to-Objects and into SQL. These pin what that move could have changed.
+
+    [Fact]
+    public async Task Handle_MinimumScoreOfZero_StillExcludesRepositoriesWithNoScoreAtAll()
+    {
+        // The in-memory version required "LatestScore is not null". Its SQL equivalent reads the
+        // latest TotalScore with FirstOrDefault(), which yields 0.0 for a repository that has no
+        // Score rows - and 0.0 passes a >= 0 comparison. Without the explicit Scores.Any() guard an
+        // unscored repository would be summarized, spending inference budget on something the
+        // pipeline has not yet judged at all.
+        var unscored = NewRepository(1);
+        DbContext.Repositories.Add(unscored);
+        await DbContext.SaveChangesAsync();
+
+        var scored = NewRepository(2);
+        DbContext.Repositories.Add(scored);
+        await DbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(scored.Id, 10));
+        await DbContext.SaveChangesAsync();
+
+        // Two summaries queued deliberately: if the guard is missing, the unscored repository is
+        // also picked up and succeeds, so SummarizedCount becomes 2. Queuing only one would let a
+        // missing guard hide as a failed attempt with SummarizedCount still 1.
+        _summarizer.EnqueueSummary("Summary.", "Detailed summary.");
+        _summarizer.EnqueueSummary("Second.", "Detailed second.");
+
+        var result = await CreateHandler(ConfigWith(minimumScore: 0)).HandleAsync(
+            new GenerateSummariesCommand(), CancellationToken.None);
+
+        Assert.Equal(1, result.SummarizedCount);
+        Assert.Equal(0, result.FailedCount);
+        Assert.Equal(1, result.SkippedCount);
+        var summarized = await DbContext.Summaries.SingleAsync();
+        Assert.Equal(scored.Id, summarized.RepositoryId);
+    }
+
+    [Fact]
+    public async Task Handle_BatchCappedInSql_TakesTheHighestScoringCandidates_NotAnArbitrarySubset()
+    {
+        // Ordering now happens in SQL before the cap rather than in memory after the load, so the
+        // "highest scoring first" contract has to survive the translation. Scores are seeded out of
+        // insertion order so a handler that took the first N rows by Id would fail.
+        var lowest = NewRepository(1);
+        var highest = NewRepository(2);
+        var middle = NewRepository(3);
+        DbContext.Repositories.AddRange(lowest, highest, middle);
+        await DbContext.SaveChangesAsync();
+
+        DbContext.Scores.Add(NewScore(lowest.Id, 20));
+        DbContext.Scores.Add(NewScore(highest.Id, 90));
+        DbContext.Scores.Add(NewScore(middle.Id, 55));
+        await DbContext.SaveChangesAsync();
+
+        _summarizer.EnqueueSummary("A.", "Detailed A.");
+        _summarizer.EnqueueSummary("B.", "Detailed B.");
+
+        var result = await CreateHandler(ConfigWith(batchSize: 2)).HandleAsync(
+            new GenerateSummariesCommand(), CancellationToken.None);
+
+        Assert.Equal(2, result.SummarizedCount);
+
+        // The two highest, and the one left over is counted as skipped rather than failed.
+        var summarizedIds = await DbContext.Summaries.Select(x => x.RepositoryId).ToListAsync();
+        Assert.Equal([highest.Id, middle.Id], summarizedIds.Order());
+        Assert.Equal(1, result.SkippedCount);
+    }
+
     // GitHub REST's primary rate-limit signal: 403/429 carrying x-ratelimit-remaining: 0 alongside
     // an x-ratelimit-reset timestamp. Detection is shared with GitHubDiscoveryClient, so this also
     // guards against the two slices drifting apart on the header contract.

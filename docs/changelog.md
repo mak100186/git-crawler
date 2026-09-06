@@ -1,7 +1,73 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 24
+> Revision: 25
 > Last updated: 2026-09-06
+
+## Revision 25 - 2026-09-06 - The write path stops loading whole tables to make small decisions
+
+**H-3 - the three pipeline stages that materialised their entire working set now filter, rank and
+cap in SQL.** F-017 did this for the read path and stopped there. The write path kept deciding in
+LINQ-to-Objects, and the reason it gave was portability across the test suite's SQLite provider -
+which H-4 has now removed, so this was unblocked rather than merely overdue.
+
+**`ComputeScoresCommandHandler`** was the worst of the three: no `WHERE` clause at all. It loaded
+the entire `Repositories` table joined to the entire `Scores` table and then decided in memory which
+repositories needed re-scoring. `Scores` is append-only, so at the 100k-repository scale F-017
+measured against, re-crawled daily for a year, that is roughly 36M rows in a single query.
+
+- The "needs re-scoring" test is now a SQL predicate, and `Include(r => r.Scores)` is gone entirely -
+  it existed only to feed a client-side `Max()`.
+- Repositories are processed in batches of `Scoring:BatchSize` (new setting, default 500) with a
+  `SaveChangesAsync` and a `ChangeTracker.Clear()` per batch. Without the clear, the change tracker
+  would hold every Score added across the run and the memory problem would simply move.
+- The loop pages by **keyset** (`Id > lastId`), not `Skip/Take`. Writing a Score removes that
+  repository from the predicate, so the result set shrinks while the loop runs and a numeric offset
+  would step straight over unscored repositories.
+
+**`GenerateSummariesCommandHandler`** loaded every unsummarized repository with its full score
+history in order to sort by score and take twenty - on a fresh database, or any time summarization
+falls behind, most of the table to select a batch. It now filters, ranks and caps in SQL through
+`RepositoryCardQuery.ApplySort`, which already encodes the "latest by ComputedAtUtc, never
+highest-ever" convention as an ORDER BY correlated subquery. `SkippedCount` is measured with its own
+`CountAsync`, since the batch is now capped before it is loaded.
+
+**`SendDigestCommandHandler`** pulled every scored-and-summarized repository, with its scores,
+summaries and bookmarks, then took the top eight. It now sorts and takes `TopN` before
+`IncludeForCards` runs. `Rank` still executes, on those few rows, because it is what projects into
+the shape the digest renders from.
+
+**A correction to the finding's own recommendation, worth recording.** H-3 suggested the predicate
+`!r.Scores.Any(s => s.ComputedAtUtc >= r.LastCrawledAtUtc)`. That is not equivalent to the code it
+replaces. For a repository that has a Score but a null `LastCrawledAtUtc`, the SQL comparison against
+NULL is never true, so `Any()` is false, so the repository looks like it needs scoring **on every
+run** - unbounded growth in `Scores`, the exact opposite of the intent. The in-memory version it
+replaced skipped that case because its second clause required a non-null `LastCrawledAtUtc`, and the
+shipped predicate keeps that check.
+
+**New coverage** (5 tests): the null-`LastCrawledAtUtc` case; 7 repositories at a batch size of 2, so
+the keyset boundary is crossed three times and the run ends on a partial batch, asserting exactly one
+Score row per repository; mixed scored/unscored counting now that `SkippedCount` is derived by
+subtraction; the summarizer still excluding never-scored repositories at `MinimumScore: 0`, where
+`FirstOrDefault()`'s 0.0 would otherwise qualify them; and SQL ranking taking the highest-scoring
+candidates rather than the first N by Id.
+
+Both risk points were checked by deliberate mutation rather than assumed. The first attempt at the
+`MinimumScore: 0` test did **not** catch its mutation - the fake summarizer ran out of queued
+summaries, so the wrongly-included repository failed instead of succeeding and the assertion still
+read 1. It was strengthened to queue two summaries and assert `FailedCount`/`SkippedCount` as well,
+and then confirmed to fail against the mutation.
+
+**Modules/files affected**: `Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs`,
+`Features/Digest/SendDigest/SendDigestCommand.cs`, `appsettings.json`,
+`tests/.../ComputeScoresCommandHandlerTests.cs`, `tests/.../GenerateSummariesCommandHandlerTests.cs`,
+`docs/architecture.md` (v34), `docs/code-review.md`.
+
+**Breaking changes**: none. `Scoring:BatchSize` is new with a default, and changes no observable
+outcome - only how much of a run is held in memory at once.
+
+**Smoke tests**: `dotnet build` (0 errors), `dotnet test` (191 passed, 5 new),
+`dotnet format --verify-no-changes`, plus the two mutations described above.
 
 ## Revision 24 - 2026-09-06 - The tests now run on the database the product ships on
 

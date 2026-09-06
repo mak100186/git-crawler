@@ -29,6 +29,12 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, IConfigu
     // to look back over a crawl week when diagnosing a scoring change without keeping a year.
     private readonly int _historyRetentionCount = configuration.GetValue("Scoring:ScoreHistoryRetentionCount", 10);
 
+    // How many repositories are scored per round trip / SaveChanges. Trades round trips against
+    // peak memory and changes no observable outcome, so the default suits every deployment this
+    // ships to - it is configurable mainly so the batch-boundary behaviour is testable, which
+    // matters because the loop below pages by keyset and that is where an off-by-one would hide.
+    private readonly int _batchSize = Math.Max(1, configuration.GetValue("Scoring:BatchSize", 500));
+
     public async Task<ComputeScoresResult> HandleAsync(ComputeScoresCommand command, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -38,43 +44,68 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, IConfigu
         // re-crawl rather than only ever scoring once. Score's existing schema (F-004) allows
         // multiple rows per repo specifically to support this history rather than an upsert.
         //
-        // Loaded into memory before filtering: EF Core can't translate "each repo's *latest* Score"
-        // into a single SQL predicate as cleanly as a correlated subquery would need, and this
-        // pipeline has no pagination anywhere else at this single-operator-v1 scale - revisit if
-        // the Repositories table grows large enough for that to matter. The "latest" itself is also
-        // resolved client-side (Enumerable.Max over the loaded Scores, not an ORDER BY translated
-        // to SQL) rather than as a correlated-subquery projection. That was originally for
-        // portability across the suite's SQLite provider, which cannot translate ORDER BY over a
-        // DateTimeOffset column; with the suite moved to real PostgreSQL (review finding H-4) that
-        // reason is gone, and the only remaining one is that every row is already in memory here
-        // anyway. Making this bounded is review finding H-3, which H-4 unblocked.
-        var repositoriesWithScores = await dbContext.Repositories
-            .Include(r => r.Scores)
-            .ToListAsync(cancellationToken);
+        // Evaluated in SQL and processed in batches (review finding H-3). This used to load the
+        // entire Repositories table joined to the entire Scores table and decide in
+        // LINQ-to-Objects. With no WHERE clause at all and Score being append-only, that is roughly
+        // 36M rows in one query at the 100k-repository scale F-017 measured against.
+        //
+        // The predicate is deliberately not the one H-3's recommendation suggested
+        // (`!r.Scores.Any(s => s.ComputedAtUtc >= r.LastCrawledAtUtc)`). That form changes
+        // behaviour for a repository that has a Score but a null LastCrawledAtUtc: the SQL
+        // comparison against NULL is never true, so Any() is false, so the repository would be
+        // re-scored on every single run. The original skipped it, and so does this. The remaining
+        // clause restates "max(ComputedAtUtc) < LastCrawledAtUtc" as "no Score at or after
+        // LastCrawledAtUtc", which is an index probe on (RepositoryId, ComputedAtUtc) rather than
+        // an aggregate over each repository's history.
+        var needsScoring = dbContext.Repositories.Where(r =>
+            !r.Scores.Any()
+            || (r.LastCrawledAtUtc != null && !r.Scores.Any(s => s.ComputedAtUtc >= r.LastCrawledAtUtc)));
+
+        // SkippedCount is "everything that did not need re-scoring", which was previously counted
+        // in the loop over every repository. With the loop now seeing only the ones that do need
+        // it, the total has to be asked for separately.
+        var totalRepositoryCount = await dbContext.Repositories.CountAsync(cancellationToken);
 
         var scoredCount = 0;
-        var skippedCount = 0;
+        var lastId = 0;
 
-        foreach (var repository in repositoriesWithScores)
+        while (true)
         {
-            var latestScoreAtUtc = repository.Scores.Count == 0
-                ? (DateTimeOffset?)null
-                : repository.Scores.Max(s => s.ComputedAtUtc);
+            // Keyset pagination on Id, not Skip/Take. Adding a Score row removes that repository
+            // from the predicate above, so the result set shrinks as this loop runs and a numeric
+            // offset would step straight over unscored repositories.
+            //
+            // AsNoTracking because BuildScore only reads scalar columns off the Repository - the
+            // Include of r.Scores that used to be here fed a client-side Max() that no longer
+            // exists, and nothing writes back to these entities.
+            var batch = await needsScoring
+                .Where(r => r.Id > lastId)
+                .OrderBy(r => r.Id)
+                .Take(_batchSize)
+                .AsNoTracking()
+                .ToListAsync(cancellationToken);
 
-            var needsScoring = latestScoreAtUtc is null
-                || (repository.LastCrawledAtUtc is not null && latestScoreAtUtc < repository.LastCrawledAtUtc);
-
-            if (!needsScoring)
+            if (batch.Count == 0)
             {
-                skippedCount++;
-                continue;
+                break;
             }
 
-            dbContext.Scores.Add(BuildScore(repository, now));
-            scoredCount++;
+            foreach (var repository in batch)
+            {
+                dbContext.Scores.Add(BuildScore(repository, now));
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            // Without this the change tracker holds every Score added across the whole run, which
+            // would move the memory problem this method is fixing rather than solve it.
+            dbContext.ChangeTracker.Clear();
+
+            scoredCount += batch.Count;
+            lastId = batch[^1].Id;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var skippedCount = totalRepositoryCount - scoredCount;
 
         var prunedScoreCount = await PruneScoreHistoryAsync(cancellationToken);
 

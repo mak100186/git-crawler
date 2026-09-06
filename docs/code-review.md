@@ -79,7 +79,15 @@ The consequence is not a crash. `SendDigestCommandHandler` degrades gracefully b
 
 ### H-3 — Three of the four pipeline stages load whole tables into memory
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 25, unblocked by H-4 removing the SQLite provider that forced the in-memory resolution in the first place. All three handlers now push their filter, ranking and cap into SQL:
+
+- **`ComputeScoresCommandHandler`** evaluates "needs re-scoring" as a SQL predicate and processes in batches of `Scoring:BatchSize` (default 500), with `SaveChangesAsync` and a `ChangeTracker.Clear()` per batch so the run does not accumulate. The batch loop pages by keyset (`Id > lastId`), not `Skip/Take`, because writing a Score removes that repository from the predicate and a numeric offset would step over unscored rows as the set shrinks. `Include(r => r.Scores)` is gone - it only ever fed a client-side `Max()`.
+- **`GenerateSummariesCommandHandler`** filters, ranks and caps at `BatchSize` in SQL via `RepositoryCardQuery.ApplySort`, so it no longer materializes every unsummarized repository to select twenty. `SkippedCount` is measured with a separate `CountAsync` since the batch is now capped before it is loaded.
+- **`SendDigestCommandHandler`** sorts and takes `TopN` before `IncludeForCards` runs, instead of loading the whole eligible catalog with its scores, summaries and bookmarks and then taking eight.
+
+**One correction to this finding's recommendation.** The predicate it suggested - `!r.Scores.Any(s => s.ComputedAtUtc >= r.LastCrawledAtUtc)` - is not equivalent to the code it replaces. For a repository that has a Score but a null `LastCrawledAtUtc`, the SQL comparison against NULL is never true, so `Any()` is false and the repository would be re-scored on every run, growing `Scores` without bound - the opposite of the intent. The shipped predicate keeps an explicit `LastCrawledAtUtc != null` clause. `Handle_RepositoryWithAScoreButNeverCrawled_IsSkipped_NotReScoredEveryRun` pins this, and was confirmed to fail against the recommended form.
+
+**Coverage added**: the null-`LastCrawledAtUtc` case above; scoring 7 repositories at a batch size of 2 to cross the keyset boundary three times and end on a partial batch, asserting exactly one Score row per repository; mixed scored/unscored counting; the summarizer excluding never-scored repositories even at `MinimumScore: 0` (where `FirstOrDefault()`'s 0.0 would otherwise qualify them); and the SQL ranking still taking the highest-scoring candidates rather than the first N by Id. Both the predicate and the guard were verified by deliberate mutation.
 
 F-017 rewrote the read path to push `ORDER BY` and `LIMIT/OFFSET` into SQL. The write path was not touched. Three handlers still materialise their entire working set:
 

@@ -84,9 +84,20 @@ public class SendDigestCommandHandler(
         // off-limits to sharing), and ranking by RepositorySortField.Score already resolves each
         // repo's *latest* Score by ComputedAtUtc, not its historical peak - this Task Packet's own
         // constraint, already enforced by that shared helper.
-        var candidates = await RepositoryCardQuery.IncludeForCards(eligibleRepositories).ToListAsync(cancellationToken);
+        //
+        // Ranked and capped in SQL before anything is materialized (review finding H-3): this used
+        // to pull every scored+summarized repository, with its scores, summaries and bookmarks, and
+        // then Take(_topN) from the result - the whole catalog to build a list of eight. ApplySort
+        // pushes that ORDER BY down, so only the top rows are fetched with their related data.
+        // Rank still runs, on those few rows, because it is what projects a Repository into the
+        // RankedRepository shape the digest renders from - and because ordering is not guaranteed
+        // to survive materialization through Include.
+        var candidates = await RepositoryCardQuery.IncludeForCards(
+                RepositoryCardQuery.ApplySort(eligibleRepositories, RepositorySortField.Score, SortDirection.Desc)
+                    .ThenBy(r => r.Id)
+                    .Take(_topN))
+            .ToListAsync(cancellationToken);
         var topGems = RepositoryCardQuery.Rank(candidates, RepositorySortField.Score, SortDirection.Desc)
-            .Take(_topN)
             .ToList();
 
         // "Current period" = whatever TrendAggregate rows AggregateTrendsCommandHandler most recently

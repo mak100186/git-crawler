@@ -5,6 +5,7 @@ using System.Text;
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
+using GitCrawler.Api.Features.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -61,30 +62,40 @@ public class GenerateSummariesCommandHandler(
         // deliberate divergence from the Scoring Engine's re-scoring-on-recrawl behavior (Task
         // Packet's explicit callout).
         //
-        // Loaded into memory before filtering/ranking by score, same as
-        // ComputeScoresCommandHandler's own "repositoriesWithScores" load. The portability
-        // rationale both once gave is gone with review finding H-4; what remains is that this
-        // pipeline has no pagination anywhere else at this single-operator-v1 scale. Bounding it is
-        // review finding H-3.
-        var candidates = await dbContext.Repositories
-            .Include(r => r.Scores)
-            .Where(r => !r.Summaries.Any())
-            .ToListAsync(cancellationToken);
+        var eligible = dbContext.Repositories.Where(r => !r.Summaries.Any());
 
+        // SkippedCount is measured against every repository still lacking a summary, not against
+        // the batch (see the return at the end of this method), so the total is asked for
+        // separately now that the batch is capped in SQL rather than in memory.
+        var candidateCount = await eligible.CountAsync(cancellationToken);
+
+        // Filtered, ranked and capped in SQL (review finding H-3). This used to load every
+        // unsummarized repository with its full score history purely to sort them and take
+        // BatchSize - on a fresh database, or any time summarization falls behind, that is most of
+        // the table materialized to select twenty rows.
+        //
         // The "latest" Score is the one with the max ComputedAtUtc (chronologically most recent),
         // not the one with the highest TotalScore - the same distinction ComputeScoresCommandHandler
-        // draws for its own re-scoring check (repository.Scores.Max(s => s.ComputedAtUtc)). A repo
-        // that scored well once but has since gone stale (fewer commits/contributors on a re-crawl)
-        // must be judged on its current standing, not its historical peak - otherwise a repo that
-        // dips below MinimumScore on a later re-score could still get summarized (and, since
-        // Summary is create-once, permanently so) off an old high score that no longer reflects it.
-        var toSummarize = candidates
-            .Select(r => (Repository: r, LatestScore: r.Scores.Count == 0 ? (double?)null : r.Scores.OrderByDescending(s => s.ComputedAtUtc).First().TotalScore))
-            .Where(x => x.LatestScore is not null && x.LatestScore >= _minimumScore)
-            .OrderByDescending(x => x.LatestScore)
+        // draws for its own re-scoring check. A repo that scored well once but has since gone stale
+        // (fewer commits/contributors on a re-crawl) must be judged on its current standing, not its
+        // historical peak - otherwise a repo that dips below MinimumScore on a later re-score could
+        // still get summarized (and, since Summary is create-once, permanently so) off an old high
+        // score that no longer reflects it. RepositoryCardQuery.ApplySort already encodes exactly
+        // that convention as an ORDER BY correlated subquery, so it is reused here rather than
+        // restated - the WHERE below mirrors its sort key deliberately.
+        //
+        // The explicit Scores.Any() guard is not redundant with the score comparison: without it a
+        // repository with no Score rows would take FirstOrDefault()'s 0.0 and pass whenever
+        // MinimumScore is configured to 0, which the old "LatestScore is not null" check excluded.
+        var toSummarize = await RepositoryCardQuery
+            .ApplySort(
+                eligible.Where(r => r.Scores.Any()
+                    && r.Scores.OrderByDescending(s => s.ComputedAtUtc).Select(s => s.TotalScore).FirstOrDefault() >= _minimumScore),
+                RepositorySortField.Score,
+                SortDirection.Desc)
+            .ThenBy(r => r.Id)
             .Take(_batchSize)
-            .Select(x => x.Repository)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         var summarizedCount = 0;
         var failedCount = 0;
@@ -166,7 +177,7 @@ public class GenerateSummariesCommandHandler(
         // completion the two are identical, since every iteration increments exactly one counter.
         return new GenerateSummariesResult(
             summarizedCount,
-            candidates.Count - summarizedCount - failedCount,
+            candidateCount - summarizedCount - failedCount,
             failedCount,
             stoppedOnRateLimit);
     }

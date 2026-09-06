@@ -19,6 +19,14 @@ public class ComputeScoresCommandHandlerTests(PostgresFixture fixture) : Postgre
     private ComputeScoresCommandHandler CreateHandler(IConfiguration? configuration = null) =>
         new(DbContext, configuration ?? new ConfigurationBuilder().Build(), _timeProvider);
 
+    private static IConfiguration ConfigurationWithBatchSize(int batchSize) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Scoring:BatchSize"] = batchSize.ToString(),
+            })
+            .Build();
+
     private static IConfiguration ConfigurationWithRetention(int retentionCount) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -198,6 +206,116 @@ public class ComputeScoresCommandHandlerTests(PostgresFixture fixture) : Postgre
         Assert.Equal(0, result.ScoredCount);
         Assert.Equal(0, result.SkippedCount);
         Assert.Equal(0, result.PrunedScoreCount);
+    }
+
+    // Review finding H-3 moved the "needs scoring" decision out of LINQ-to-Objects and into SQL.
+    // These pin the two things that move could plausibly have broken: the null-handling of the
+    // predicate, and the batch loop's paging.
+
+    [Fact]
+    public async Task Handle_RepositoryWithAScoreButNeverCrawled_IsSkipped_NotReScoredEveryRun()
+    {
+        // The predicate H-3's recommendation suggested - !r.Scores.Any(s => s.ComputedAtUtc >=
+        // r.LastCrawledAtUtc) - gets this case wrong. In SQL the comparison against a NULL
+        // LastCrawledAtUtc is never true, so Any() is false, so the repository looks like it needs
+        // scoring on every single run and the Scores table grows without bound. The in-memory
+        // version it replaced skipped it, because its second clause required a non-null
+        // LastCrawledAtUtc. This test is the reason the shipped predicate keeps that null check.
+        var repository = NewRepository(1);
+        repository.LastCrawledAtUtc = null;
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+
+        DbContext.Scores.Add(new Score
+        {
+            RepositoryId = repository.Id,
+            HasLicense = true,
+            LicenseType = "MIT",
+            CommitsPerWeek = 1,
+            ContributorCount = 1,
+            ForkCount = 1,
+            StarCount = 1,
+            TotalScore = 50,
+            ComputedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
+        });
+        await DbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(0, result.ScoredCount);
+        Assert.Equal(1, result.SkippedCount);
+        Assert.Equal(1, await DbContext.Scores.CountAsync());
+    }
+
+    [Fact]
+    public async Task Handle_MoreRepositoriesThanOneBatch_ScoresEveryOneExactlyOnce()
+    {
+        // The loop pages by keyset (Id > lastId) rather than Skip/Take, because writing a Score
+        // removes that repository from the predicate and a numeric offset would then step over
+        // unscored rows. With a batch size of 2 and 7 repositories this crosses the boundary three
+        // times and ends on a partial batch - an off-by-one in either direction shows up as a
+        // missing or duplicated Score row.
+        for (var i = 1; i <= 7; i++)
+        {
+            DbContext.Repositories.Add(NewRepository(i));
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        var result = await CreateHandler(ConfigurationWithBatchSize(2))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(7, result.ScoredCount);
+        Assert.Equal(0, result.SkippedCount);
+        Assert.Equal(7, await DbContext.Scores.CountAsync());
+
+        // Exactly one Score per repository - not six, not eight, and none scored twice.
+        var perRepository = await DbContext.Scores
+            .GroupBy(s => s.RepositoryId)
+            .Select(g => g.Count())
+            .ToListAsync();
+
+        Assert.Equal(7, perRepository.Count);
+        Assert.All(perRepository, count => Assert.Equal(1, count));
+    }
+
+    [Fact]
+    public async Task Handle_BatchingWithAMixOfScoredAndUnscored_CountsBothCorrectly()
+    {
+        // SkippedCount used to be incremented inside a loop over every repository. It is now
+        // derived as total - scored, since the loop only ever sees repositories that need scoring.
+        for (var i = 1; i <= 5; i++)
+        {
+            DbContext.Repositories.Add(NewRepository(i));
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        // Score three of them after their last crawl, so only two still need scoring.
+        var alreadyCurrent = await DbContext.Repositories.OrderBy(r => r.Id).Take(3).ToListAsync();
+        foreach (var repository in alreadyCurrent)
+        {
+            DbContext.Scores.Add(new Score
+            {
+                RepositoryId = repository.Id,
+                HasLicense = true,
+                LicenseType = "MIT",
+                CommitsPerWeek = 1,
+                ContributorCount = 1,
+                ForkCount = 1,
+                StarCount = 1,
+                TotalScore = 50,
+                ComputedAtUtc = _timeProvider.GetUtcNow().AddDays(1),
+            });
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        var result = await CreateHandler(ConfigurationWithBatchSize(1))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(2, result.ScoredCount);
+        Assert.Equal(3, result.SkippedCount);
     }
 
     [Fact]
