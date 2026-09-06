@@ -9,6 +9,7 @@ using GitCrawler.Api.Features.Categories.GetCategories;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
 using GitCrawler.Api.Features.Diagnostics.Ping;
 using GitCrawler.Api.Features.Digest.SendDigest;
+using GitCrawler.Api.Features.Facets.GetFacetOptions;
 using GitCrawler.Api.Features.Repositories.GetHiddenGems;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
 using GitCrawler.Api.Features.Summarization.GenerateSummaries;
@@ -370,6 +371,7 @@ app.MapPingEndpoint();
 // every card still needs them.
 app.MapGetHiddenGemsEndpoint();
 app.MapGetCategoriesEndpoint();
+app.MapGetFacetOptionsEndpoint();
 app.MapCreateBookmarkEndpoint();
 app.MapDeleteBookmarkEndpoint();
 

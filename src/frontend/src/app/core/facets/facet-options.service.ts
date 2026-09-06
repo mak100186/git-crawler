@@ -1,25 +1,24 @@
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 
-import { RepositoryCardDto } from '../models/repository.model';
 import { CategoryApiService } from '../api/category-api.service';
+import { FacetApiService } from '../api/facet-api.service';
 
-// F-010's contract has no dedicated "distinct facet values" endpoint (no /api/languages,
-// /api/licenses, /api/topics) - the mat-select multiple / mat-autocomplete controls (FR-004, dashboard
-// -ux-brief.md §5.1) need *some* bounded option list to populate from, though. This service closes
-// that gap client-side rather than inventing a new backend endpoint:
+// Populates the option lists behind the mat-select multiple / mat-autocomplete filter controls
+// (FR-004). All three facets now come from the catalog, not from what the session happens to have
+// on screen:
 //  - Language options come from GET /api/categories, since Category === Repository.PrimaryLanguage
 //    server-side (F-010 D2) - the categories list already is the catalog's distinct-language set.
-//  - License and topic options have no equivalent existing endpoint to piggyback on, so they're
-//    accumulated client-side from every repository card the app has already fetched this session
-//    (hidden gems responses call recordRepositories(); discovery feed and category drill-down did
-//    too before both were removed as standalone views - see the changelog entries for those
-//    removals). This means the option list only grows to cover what's been seen, not the full
-//    catalog upfront - an accepted approximation, called out as a deviation in the Task Packet
-//    output.
+//  - License and topic options come from GET /api/facets.
+//
+// Until the code-review remediation pass (finding L-4), the latter two were instead accumulated
+// client-side from every repository card the app had already fetched, which meant you could only
+// filter by a license or topic that happened to be on a page you had already looked at. Two of the
+// three facets were therefore useless for discovery, which is the product's whole point.
 @Injectable({ providedIn: 'root' })
 export class FacetOptionsService {
   private readonly categoryApi = inject(CategoryApiService);
+  private readonly facetApi = inject(FacetApiService);
 
   private readonly languagesSubject = new BehaviorSubject<string[]>([]);
   private readonly licensesSubject = new BehaviorSubject<string[]>([]);
@@ -30,6 +29,7 @@ export class FacetOptionsService {
   readonly topicOptions$: Observable<string[]> = this.topicsSubject.asObservable();
 
   private languagesLoaded = false;
+  private facetsLoaded = false;
 
   ensureLanguageOptionsLoaded(): void {
     if (this.languagesLoaded) {
@@ -45,26 +45,28 @@ export class FacetOptionsService {
       },
       error: () => {
         // Facet options are a convenience, not a critical path - a failed load just leaves the
-        // language select empty rather than blocking the view.
+        // language select empty rather than blocking the view. Resetting the flag lets the next
+        // caller retry.
         this.languagesLoaded = false;
       },
     });
   }
 
-  recordRepositories(items: RepositoryCardDto[]): void {
-    const licenses = new Set(this.licensesSubject.value);
-    const topics = new Set(this.topicsSubject.value);
-
-    for (const item of items) {
-      if (item.licenseIdentifier) {
-        licenses.add(item.licenseIdentifier);
-      }
-      for (const topic of item.topics) {
-        topics.add(topic);
-      }
+  ensureFacetOptionsLoaded(): void {
+    if (this.facetsLoaded) {
+      return;
     }
-
-    this.licensesSubject.next([...licenses].sort((a, b) => a.localeCompare(b)));
-    this.topicsSubject.next([...topics].sort((a, b) => a.localeCompare(b)));
+    this.facetsLoaded = true;
+    this.facetApi.getFacetOptions().subscribe({
+      next: (result) => {
+        // The backend already returns these distinct and ordinally sorted; re-sorting here uses the
+        // viewer's locale, which is what a human reading a dropdown expects.
+        this.licensesSubject.next([...result.licenses].sort((a, b) => a.localeCompare(b)));
+        this.topicsSubject.next([...result.topics].sort((a, b) => a.localeCompare(b)));
+      },
+      error: () => {
+        this.facetsLoaded = false;
+      },
+    });
   }
 }

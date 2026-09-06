@@ -1,7 +1,53 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 21
+> Revision: 22
 > Last updated: 2026-09-06
+
+## Revision 22 - 2026-09-06 - Filter options now come from the catalog, not from what you have already scrolled past
+
+**L-4 - `GET /api/facets`.** The dashboard's License and Topic dropdowns built their option lists
+client-side, accumulating values off every repository card the session had already fetched. That
+meant you could only filter by a license or topic that happened to be on a page you had already
+looked at - two of the three facets were useless for discovery, which is the product's whole point.
+Language never had the problem, because `/api/categories` already returns the catalog's distinct
+languages.
+
+**Backend** - new vertical slice `Features/Facets/GetFacetOptions/` (query + handler + endpoint,
+ADR-015 layout, mirroring `Features/Categories/GetCategories/`):
+
+- Returns distinct licenses and distinct topics, both sorted ordinally, both `Distinct()`-ed
+  server-side so what crosses the wire is the option list rather than one row per repository.
+- Filtered by `Scores.Any()`, the same eligibility rule `GetHiddenGemsQueryHandler` and
+  `GetCategoriesQueryHandler` use - an option that could never return a result does not belong in
+  the list.
+- Deliberately does **not** return languages. Duplicating them here would leave `/api/categories`
+  either dead or a second source of truth.
+- **Provider split, carried knowingly**: flattening the `Topics` primitive collection needs to unnest
+  one row into many. Npgsql translates that to `unnest()` and does the `Distinct()` in SQL, which is
+  what production runs. SQLite rejects it outright ("Translating this query requires the SQL APPLY
+  operation"), so the test path pulls the arrays and flattens in memory. This is the same
+  provider-capability split `GetHiddenGemsQueryHandler` already carries for its sort path, and it
+  goes away with review finding H-4's move to PostgreSQL Testcontainers.
+
+**Frontend** - `FacetOptionsService.recordRepositories` is deleted along with its call site in
+`HiddenGems`; `ensureFacetOptionsLoaded()` replaces it, called once from `ngOnInit` alongside the
+existing `ensureLanguageOptionsLoaded()`. Both loaders share the same failure behaviour: a failed
+request leaves the dropdown empty rather than blocking the view, and does not latch, so the next
+caller retries. New `FacetApiService` and `FacetOptionsDto` mirror the backend contract.
+
+**Modules/files affected**: `Features/Facets/GetFacetOptions/GetFacetOptionsQuery.cs` (new),
+`Features/Facets/GetFacetOptions/GetFacetOptionsEndpoint.cs` (new), `Program.cs` (registration),
+`core/api/facet-api.service.ts` (new), `core/models/facet.model.ts` (new),
+`core/facets/facet-options.service.ts`, `features/hidden-gems/hidden-gems.ts`,
+`tests/.../GetFacetOptionsQueryHandlerTests.cs` (new), `facet-options.service.spec.ts`,
+`hidden-gems.spec.ts`, `docs/architecture.md` (v32), `docs/code-review.md`.
+
+**Breaking changes**: none. `/api/categories` is untouched and still backs the Language filter.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (167 passed, 5 new covering distinctness,
+topic flattening, the eligibility filter, and null/empty handling), `dotnet format
+--verify-no-changes`, `npm run lint`, `npm test` (47 passed, 3 new covering the catalog-wide load,
+single-fetch behaviour, and retry-after-failure), `npm run format:check`.
 
 ## Revision 21 - 2026-09-06 - Score retention, a bounded history fetch, and cached middleware reflection
 

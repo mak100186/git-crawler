@@ -80,12 +80,12 @@ export class HiddenGems implements OnInit {
         this.page.set(result.page);
         this.pageSize.set(result.pageSize);
         this.loading.set(false);
-        this.facetOptions.recordRepositories(result.items);
       });
   }
 
   ngOnInit(): void {
     this.facetOptions.ensureLanguageOptionsLoaded();
+    this.facetOptions.ensureFacetOptionsLoaded();
     this.fetch();
   }
 

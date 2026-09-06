@@ -268,7 +268,7 @@ Separately, `ExtractRecordsProcessed` (from line 150) calls `result.GetType().Ge
 
 ### L-4 — License and topic filter options only cover pages already viewed
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 22. New `GET /api/facets` (`Features/Facets/GetFacetOptions/`) returns the catalog's distinct licenses and topics, filtered by the same `Scores.Any()` eligibility rule Hidden Gems itself uses so no option can be selected that could never return a result. `FacetOptionsService.recordRepositories` is gone; the service now loads all three facets from the backend. Languages were not duplicated onto the new endpoint - `/api/categories` already is that list.
 
 `FacetOptionsService:54-69` accumulates license and topic options from repository cards the session has fetched. Language options come from the real `/api/categories` endpoint; the other two do not.
 
