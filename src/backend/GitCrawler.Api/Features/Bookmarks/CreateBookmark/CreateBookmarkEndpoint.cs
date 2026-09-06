@@ -10,8 +10,13 @@ public static class CreateBookmarkEndpoint
     {
         // 200 OK for both "created" and "already bookmarked" (see CreateBookmarkCommandHandler's
         // comment) - idempotent by design, not a 409/500 on a repeat call.
+        // 404 when the repository doesn't exist - the foreign key would otherwise turn that into a
+        // 500 (see CreateBookmarkCommandHandler).
         app.MapPost("/api/repositories/{repositoryId:int}/bookmark", async (int repositoryId, IMessageBus bus) =>
-                Results.Ok(await bus.InvokeAsync<BookmarkDto>(new CreateBookmarkCommand(repositoryId))))
+            {
+                var result = await bus.InvokeAsync<CreateBookmarkResult>(new CreateBookmarkCommand(repositoryId));
+                return result.Bookmark is null ? Results.NotFound() : Results.Ok(result.Bookmark);
+            })
             .WithName("CreateBookmark");
 
         return app;

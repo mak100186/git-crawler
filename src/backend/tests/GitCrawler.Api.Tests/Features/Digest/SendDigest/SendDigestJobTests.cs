@@ -42,4 +42,34 @@ public class SendDigestJobTests
         var invoked = Assert.Single(messageBus.InvokedMessages);
         Assert.IsType<SendDigestCommand>(invoked);
     }
+
+    [Fact]
+    public async Task RunAsync_SendFailureReported_Throws_SoHangfireMarksTheJobFailed()
+    {
+        // The handler swallows SMTP exceptions by design (FR-006), which used to leave Hangfire
+        // reporting Succeeded for a digest that never left the process. The job rethrows instead,
+        // carrying the real SMTP message into the dashboard.
+        var messageBus = new FakeMessageBus
+        {
+            NextResult = new SendDigestResult(Sent: false, RepositoryCount: 3, TrendCount: 1, SendFailure: "SMTP host unreachable"),
+        };
+        var job = new SendDigestJob(messageBus);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(job.RunAsync);
+
+        Assert.Contains("SMTP host unreachable", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_SkippedSend_DoesNotThrow()
+    {
+        // A skip (no recipient configured, or already sent today) is a correct outcome, not a
+        // failure - the job must stay Succeeded.
+        var messageBus = new FakeMessageBus
+        {
+            NextResult = new SendDigestResult(Sent: false, RepositoryCount: 0, TrendCount: 0),
+        };
+
+        await new SendDigestJob(messageBus).RunAsync();
+    }
 }

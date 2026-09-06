@@ -56,9 +56,24 @@ public class CreateBookmarkCommandHandlerTests : IDisposable
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new CreateBookmarkCommand(repository.Id), CancellationToken.None);
 
-        Assert.Equal(repository.Id, result.RepositoryId);
-        Assert.Equal(_timeProvider.GetUtcNow(), result.CreatedAtUtc);
+        Assert.NotNull(result.Bookmark);
+        Assert.Equal(repository.Id, result.Bookmark.RepositoryId);
+        Assert.Equal(_timeProvider.GetUtcNow(), result.Bookmark.CreatedAtUtc);
         Assert.Equal(1, await _dbContext.Bookmarks.CountAsync());
+    }
+
+    [Fact]
+    public async Task Handle_UnknownRepository_ReturnsNoBookmark_AndInsertsNothing()
+    {
+        // Bookmark.RepositoryId is a foreign key: without the existence check in the handler this
+        // reaches the database and comes back as a DbUpdateException, which the endpoint can only
+        // surface as a 500 for what is plainly a 404.
+        var handler = CreateHandler();
+
+        var result = await handler.HandleAsync(new CreateBookmarkCommand(999999), CancellationToken.None);
+
+        Assert.Null(result.Bookmark);
+        Assert.Equal(0, await _dbContext.Bookmarks.CountAsync());
     }
 
     [Fact]
@@ -72,7 +87,9 @@ public class CreateBookmarkCommandHandlerTests : IDisposable
         // violation on Bookmark.RepositoryId - it must return the existing row instead.
         var second = await handler.HandleAsync(new CreateBookmarkCommand(repository.Id), CancellationToken.None);
 
-        Assert.Equal(first.Id, second.Id);
+        Assert.NotNull(first.Bookmark);
+        Assert.NotNull(second.Bookmark);
+        Assert.Equal(first.Bookmark.Id, second.Bookmark.Id);
         Assert.Equal(1, await _dbContext.Bookmarks.CountAsync());
     }
 

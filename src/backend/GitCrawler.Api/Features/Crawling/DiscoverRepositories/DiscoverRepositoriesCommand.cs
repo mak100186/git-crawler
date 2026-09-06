@@ -40,6 +40,15 @@ public class DiscoverRepositoriesCommandHandler(
     private const int MaxGenericRetries = 2;
     private static readonly TimeSpan GenericRetryDelay = TimeSpan.FromMinutes(1);
 
+    // Floor under every rate-limit wait. The pathway retries indefinitely (see
+    // BuildResiliencePipeline) because a rate limit always resolves at a signal-provided time -
+    // but two paths could produce a zero delay: a reset timestamp already in the past (stale
+    // header, clock skew) and the DelayGenerator's fallback arm for a GitHubRateLimitException
+    // subtype it doesn't name. Unbounded attempts plus a zero delay is a tight loop against the
+    // GitHub API, inside a job whose only bound is a lock-acquisition timeout that does not stop a
+    // run already in flight.
+    private static readonly TimeSpan MinimumRateLimitRetryDelay = TimeSpan.FromSeconds(30);
+
     // ADR-018: two Polly pathways chained into one pipeline instead of the two bespoke catch/loop
     // blocks this used to be. The rate-limit pathway retries indefinitely with an exact,
     // signal-driven delay (wait until resetAt / the server-specified Retry-After); the
@@ -65,6 +74,15 @@ public class DiscoverRepositoriesCommandHandler(
             hasNextPage = page.HasNextPage;
             cursor = page.EndCursor;
 
+            // One lookup for the whole page instead of one per repository inside the loop below -
+            // at the configured page size that is a single round-trip rather than fifty. The
+            // unique index on GitHubId (GitCrawlerDbContext.OnModelCreating) backs both shapes
+            // equally; only the round-trip count differs.
+            var pageGitHubIds = page.Repositories.Select(r => r.GitHubId).ToList();
+            var existingByGitHubId = await dbContext.Repositories
+                .Where(r => pageGitHubIds.Contains(r.GitHubId))
+                .ToDictionaryAsync(r => r.GitHubId, cancellationToken);
+
             foreach (var discovered in page.Repositories)
             {
                 discoveredCount++;
@@ -73,14 +91,18 @@ public class DiscoverRepositoriesCommandHandler(
                 // repo must update its row, not insert a duplicate or throw a unique-constraint
                 // violation (F-001 spike finding; see Repository.cs / GitCrawlerDbContext.cs for
                 // the schema-level enforcement this relies on).
-                var existing = await dbContext.Repositories.SingleOrDefaultAsync(r => r.GitHubId == discovered.GitHubId, cancellationToken);
-                if (existing is null)
+                if (!existingByGitHubId.TryGetValue(discovered.GitHubId, out var existing))
                 {
                     // FirstDiscoveredAtUtc (F-010 D1) is set once, here, and never touched again -
                     // it backs the dashboard's "Newest" sort, which must reflect genuine discovery
                     // order rather than LastCrawledAtUtc's re-crawl churn.
                     existing = new Repository { GitHubId = discovered.GitHubId, FirstDiscoveredAtUtc = timeProvider.GetUtcNow() };
                     dbContext.Repositories.Add(existing);
+
+                    // A single page can list the same repository twice (GitHub search results
+                    // shift under an active cursor); tracking it here keeps that from becoming a
+                    // second Add and a unique-constraint violation on SaveChanges.
+                    existingByGitHubId[discovered.GitHubId] = existing;
                 }
 
                 ApplyDiscoveredFields(existing, discovered);
@@ -168,7 +190,7 @@ public class DiscoverRepositoriesCommandHandler(
                     GitHubGraphQlRateLimitExceededException ex => ResetDelay(ex.ResetAtUtc, timeProvider),
                     GitHubRestRateLimitExceededException ex => ResetDelay(ex.ResetAtUtc, timeProvider),
                     GitHubSecondaryRateLimitException ex => ex.RetryAfter,
-                    _ => TimeSpan.Zero,
+                    _ => MinimumRateLimitRetryDelay,
                 }),
                 OnRetry = args =>
                 {
@@ -198,6 +220,6 @@ public class DiscoverRepositoriesCommandHandler(
     private static TimeSpan ResetDelay(DateTimeOffset resetAtUtc, TimeProvider timeProvider)
     {
         var wait = resetAtUtc - timeProvider.GetUtcNow();
-        return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
+        return wait > MinimumRateLimitRetryDelay ? wait : MinimumRateLimitRetryDelay;
     }
 }

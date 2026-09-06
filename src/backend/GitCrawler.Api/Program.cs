@@ -84,6 +84,28 @@ if (!string.IsNullOrEmpty(postgresDb) && !string.IsNullOrEmpty(postgresUser)
         $"Host=localhost;Port={postgresPort};Database={postgresDb};Username={postgresUser};Password={postgresPassword}";
 }
 
+// F-013 digest SMTP settings, same flat-name bridge as above so `dotnet run` outside Docker sees
+// what docker-compose.yml already passes the container as Smtp__*/Digest__RecipientEmail. Each is
+// guarded on non-empty, which is what keeps a blank .env entry from stomping the Mailpit values
+// appsettings.Development.json sets for `make dev`.
+foreach (var (flatName, configKey) in new[]
+{
+    ("SMTP_HOST", "Smtp:Host"),
+    ("SMTP_PORT", "Smtp:Port"),
+    ("SMTP_USERNAME", "Smtp:Username"),
+    ("SMTP_PASSWORD", "Smtp:Password"),
+    ("SMTP_ENABLE_SSL", "Smtp:EnableSsl"),
+    ("SMTP_FROM_ADDRESS", "Smtp:FromAddress"),
+    ("DIGEST_RECIPIENT_EMAIL", "Digest:RecipientEmail"),
+})
+{
+    var value = Environment.GetEnvironmentVariable(flatName);
+    if (!string.IsNullOrEmpty(value))
+    {
+        builder.Configuration[configKey] = value;
+    }
+}
+
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -221,6 +243,11 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
 // fail to report healthy even though the process itself is fine.
 builder.Services.AddHealthChecks();
 
+// Without these, any handler exception surfaces as a bare 500 with no body (and, in Development, a
+// full stack trace) - no endpoint here had an error contract at all. AddProblemDetails + the
+// exception handler give every route the same RFC 7807 response shape.
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
 // Apply pending migrations against a fresh PostgreSQL instance on every startup (F-004 AC2) so
@@ -309,13 +336,19 @@ if (!string.IsNullOrEmpty(postgresConnectionString))
         digestCronSchedule);
 }
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline. UseExceptionHandler must come first so it wraps everything
+// below it (see AddProblemDetails above).
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// Deliberately no UseHttpsRedirection: the container sets ASPNETCORE_HTTP_PORTS=8080 and exposes
+// no HTTPS port (see src/backend/Dockerfile), so the middleware can't resolve a redirect target -
+// it logs a warning on the first request and passes everything through. TLS terminates at a
+// reverse proxy in front of this process, if anywhere.
 
 app.MapHealthChecks("/health");
 

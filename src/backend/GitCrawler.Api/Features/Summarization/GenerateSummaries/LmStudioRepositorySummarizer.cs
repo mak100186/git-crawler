@@ -119,7 +119,16 @@ public class LmStudioRepositorySummarizer(IHttpClientFactory httpClientFactory, 
             return readmeContent;
         }
 
-        return readmeContent[.._maxReadmeCharacters] + "\n\n[README truncated for length]";
+        // Step back one when the cut lands between the halves of a surrogate pair - common enough
+        // with emoji-laden READMEs - so the prompt doesn't end in an unpaired surrogate that
+        // serialises to U+FFFD.
+        var cut = _maxReadmeCharacters;
+        if (char.IsHighSurrogate(readmeContent[cut - 1]))
+        {
+            cut--;
+        }
+
+        return readmeContent[..cut] + "\n\n[README truncated for length]";
     }
 
     private async Task<string> CallLmStudioAsync(string systemPrompt, string userPrompt, int maxTokens, RepositorySummarizationContext context, CancellationToken cancellationToken)

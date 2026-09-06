@@ -181,7 +181,7 @@ public class SendDigestCommandHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task Handle_EmailSenderThrows_LogsFailure_ReturnsNotSent_DoesNotPropagate()
+    public async Task Handle_EmailSenderThrows_LogsFailure_ReportsSendFailure_DoesNotPropagate()
     {
         var repository = NewRepository(gitHubId: 5);
         _dbContext.Repositories.Add(repository);
@@ -199,6 +199,24 @@ public class SendDigestCommandHandlerTests : IDisposable
         Assert.False(result.Sent);
         Assert.Equal(1, result.RepositoryCount);
         Assert.Empty(_emailSender.SentMessages);
+
+        // SendDigestJob rethrows on this, so the Hangfire job is marked Failed instead of the
+        // Succeeded it used to report for a digest that never left the process.
+        Assert.Equal("SMTP host unreachable", result.SendFailure);
+    }
+
+    [Fact]
+    public async Task Handle_SkippedRatherThanFailed_ReportsNoSendFailure()
+    {
+        // A skip is a correct outcome, not a failure: SendFailure must stay null so SendDigestJob
+        // leaves the Hangfire job Succeeded.
+        var first = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+        var second = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
+
+        Assert.True(first.Sent);
+        Assert.Null(first.SendFailure);
+        Assert.False(second.Sent);
+        Assert.Null(second.SendFailure);
     }
 
     [Fact]

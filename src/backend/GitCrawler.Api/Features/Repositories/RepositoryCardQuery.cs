@@ -81,6 +81,12 @@ public static class RepositoryCardQuery
     // generous for manual browsing while still bounding a single response's size.
     public const int MaxPageSize = 100;
 
+    // The language/topic/license query parameters bind as arrays straight off the query string and
+    // each element becomes one entry in a SQL IN (...) list, so an unbounded array is an unbounded
+    // clause. page/pageSize were already clamped; these were not. 50 is well past any real facet
+    // selection while still bounding the generated SQL.
+    public const int MaxFilterValues = 50;
+
     // F-017: eagerly loads navigation collections for client-side Rank/Paginate. Superseded by
     // server-side sort/pagination in GetHiddenGemsQueryHandler (the only remaining caller of the
     // Rank/Paginate path) which fetches only page-scoped details instead. Kept rather than removed
@@ -139,6 +145,7 @@ public static class RepositoryCardQuery
     {
         if (filter.Language is { Count: > 0 } languages)
         {
+            languages = ClampFilterValues(languages);
             query = query.Where(r => r.PrimaryLanguage != null && languages.Contains(r.PrimaryLanguage));
         }
 
@@ -154,11 +161,13 @@ public static class RepositoryCardQuery
 
         if (filter.Topic is { Count: > 0 } topics)
         {
+            topics = ClampFilterValues(topics);
             query = query.Where(r => r.Topics.Any(t => topics.Contains(t)));
         }
 
         if (filter.License is { Count: > 0 } licenses)
         {
+            licenses = ClampFilterValues(licenses);
             query = query.Where(r => r.LicenseIdentifier != null && licenses.Contains(r.LicenseIdentifier));
         }
 
@@ -222,6 +231,12 @@ public static class RepositoryCardQuery
     public static int ClampPage(int page) => Math.Max(page, 1);
 
     public static int ClampPageSize(int pageSize) => Math.Clamp(pageSize, 1, MaxPageSize);
+
+    // Truncates rather than rejects: an over-long facet list is far more likely to be a malformed
+    // or hostile URL than a user who genuinely selected 51 languages, and silently narrowing beats
+    // failing a dashboard request outright.
+    public static IReadOnlyList<string> ClampFilterValues(IReadOnlyList<string> values) =>
+        values.Count <= MaxFilterValues ? values : [.. values.Take(MaxFilterValues)];
 
     private static IOrderedEnumerable<T> OrderBy<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, SortDirection direction) =>
         direction == SortDirection.Asc ? source.OrderBy(keySelector) : source.OrderByDescending(keySelector);

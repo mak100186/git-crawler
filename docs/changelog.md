@@ -1,7 +1,132 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 18
-> Last updated: 2026-08-07
+> Revision: 19
+> Last updated: 2026-09-05
+
+## Revision 19 - 2026-09-05 - Code-review remediation pass
+
+Acts on `docs/code-review.md` (full review at commit 54fbfa1). 15 of its 24 findings are fixed
+here; the nine that need design work rather than a bounded edit stay open and are listed at the
+bottom of this entry.
+
+**Security and deployment:**
+
+- **Published ports bound to 127.0.0.1** (`docker-compose.yml`, review H-5). The Hangfire
+  dashboard at `/hangfire` runs with authorization disabled - it can trigger, delete, and re-queue
+  jobs - and was published on every host interface, as were Postgres and (under the `dev` profile)
+  Mailpit. The operator reaches all of them from the host either way.
+- **App container no longer runs as root** (`src/backend/Dockerfile`, review M-7): `USER $APP_UID`.
+  Port 8080 is unprivileged and the process writes nothing to disk.
+- **`Smtp:Password` removed from `appsettings.json`** (review L-10). It shipped empty, but a
+  committed key named `Password` invites a real value being committed into it. Sourced from the
+  environment now, like `GitHub:Token`.
+
+**Daily digest (F-013) can actually send from `make up`:**
+
+- `docker-compose.yml` passes `Smtp__Host/Port/Username/Password/EnableSsl/FromAddress` and
+  `Digest__RecipientEmail` through to the app container; `Program.cs` bridges the same flat
+  `SMTP_*`/`DIGEST_RECIPIENT_EMAIL` names for a bare `dotnet run`; `.env.example` defines them
+  (review H-2). Previously the only place these were configured was
+  `appsettings.Development.json`, pointing at a Mailpit container that `make up` never starts - so
+  the 06:00 UTC job ran daily, skipped, and reported success, in a deployment whose README
+  advertises the digest as shipped. All seven are optional: blank still means "skip with a
+  warning".
+- `SmtpEmailSender` reads `Smtp:Port`/`Smtp:EnableSsl` via `TryParse` instead of `GetValue<T>`,
+  which throws on the empty string those unconditional Compose passthroughs produce.
+
+- **Mailpit runs under `make up`, not just `make dev`**: its `profiles: ["dev"]` line is gone, and
+  `.env.example` now defaults `SMTP_HOST=mailpit` / `SMTP_PORT=1025` / `SMTP_ENABLE_SSL=false`. A
+  fresh `cp .env.example .env` therefore composes and delivers a real digest that lands in Mailpit's
+  UI at `http://localhost:8025/` - inspectable, no credentials, and it cannot mail anyone by
+  accident. `mailpit` is the Compose DNS name; `localhost:1025` (what
+  `appsettings.Development.json` uses, correctly, for `make dev`'s bare backend) resolves to the app
+  container itself and would never reach it.
+
+**Correctness:**
+
+- **Rate-limit retries have a 30-second floor** (`DiscoverRepositoriesCommand`, review M-1). The
+  pathway retries indefinitely by design, but `ResetDelay` returned `TimeSpan.Zero` for a reset
+  timestamp already in the past, and the `DelayGenerator` fallback arm returned `TimeSpan.Zero`
+  outright - unbounded attempts at zero delay is a tight loop against the GitHub API.
+- **404 instead of 500 for bookmarking an unknown repository** (review M-4).
+  `CreateBookmarkCommandHandler` checks the repository exists rather than letting the foreign key
+  reject the insert; it returns `CreateBookmarkResult` (a nullable `BookmarkDto`) which the
+  endpoint maps. `AddProblemDetails` + `UseExceptionHandler` give every route an RFC 7807 error
+  contract - there was none before, so any handler exception was a bare 500.
+- **`GitHubDiscoveryClient` takes `TimeProvider`** instead of calling `DateTimeOffset.UtcNow`
+  directly in `BuildSearchQuery` and `IsRestSecondaryRateLimited` (review L-2), matching every
+  handler around it and making both testable.
+- **README truncation no longer splits a surrogate pair** (`LmStudioRepositorySummarizer`, review
+  L-7).
+- **Removed the no-op `UseHttpsRedirection`** (review L-9): the container exposes no HTTPS port, so
+  it logged a warning and passed everything through.
+
+**Performance and robustness:**
+
+- **One query per crawl page instead of one per repository** (`DiscoverRepositoriesCommand`,
+  review M-2) - 50 round-trips become 1 at the configured page size. The page's newly-added
+  entities go into the same dictionary, so a repository listed twice in one page (GitHub search
+  results shift under an active cursor) can't become a duplicate insert.
+- **`Summarization:BatchSize` corrected from 200 to 20** (review H-1). The handler's default and
+  the comment justifying it as "low minutes even at several seconds/repo" both assume 20; at 200,
+  each run is up to 400 sequential LM Studio calls against an hourly schedule and a 30-minute
+  `DisableConcurrentExecution` timeout. `Summarization:MaxSummaryLength` likewise corrected from
+  180 to the 220 its code comment specifies (review L-5).
+- **Facet filter arrays capped at 50 values** (`RepositoryCardQuery.ClampFilterValues`, review
+  M-5). `language`/`topic`/`license` bind straight off the query string, one `IN (...)` entry per
+  element, with no bound - unlike `page`/`pageSize`, which were already clamped.
+- **Dashboard cancels superseded requests** (`hidden-gems.ts`, review M-6). Fetches now go through
+  a `Subject` + `switchMap` + `takeUntilDestroyed` instead of a bare `.subscribe()` per filter
+  change, so two in-flight requests can no longer settle out of order and leave the grid showing
+  results for a filter the user has already changed.
+
+**Build hygiene:**
+
+- `TreatWarningsAsErrors` added to `src/backend/Directory.Build.props`; removed the dead
+  `"e2e/**/*.ts"` glob from the frontend's `format`/`format:check` scripts (review L-8).
+
+- **A failed digest send no longer reports `Succeeded` to Hangfire.** `SendDigestResult` gained a
+  `SendFailure` field carrying the SMTP exception's message, and `SendDigestJob.RunAsync` rethrows
+  when it is set - so the dashboard shows `Failed` with the real reason (verified live: a stopped
+  Mailpit produced `Retry attempt 1 of 10: The daily digest email failed to send: ...` where the
+  same scenario previously showed `Succeeded`). The handler still catches and logs rather than
+  propagating, so FR-006's "must not crash" contract is intact; what changed is that the outcome
+  reaches the caller. Hangfire's automatic retry now applies, which is safe because `DigestSendLog`
+  is written only after a send actually succeeds. A skip (no recipient, or already sent today)
+  leaves `SendFailure` null and stays `Succeeded`.
+- **Mailpit's captured mail survives a restart**: `MP_DATA_FILE=/data/mailpit.db` plus a
+  `./data/mailpit` bind mount (git-ignored, same shape as `./data/postgres`). It previously kept
+  everything in memory, so `make down`/`make up` silently discarded captured digests - which is
+  exactly what made a successful send look like a failed one during this session.
+
+**Modules/files affected**: `docker-compose.yml`, `.env.example`, `src/backend/Dockerfile`,
+`src/backend/Directory.Build.props`, `src/backend/GitCrawler.Api/Program.cs`,
+`appsettings.json`, `Features/Crawling/DiscoverRepositories/DiscoverRepositoriesCommand.cs`,
+`Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs`,
+`Features/Bookmarks/CreateBookmark/CreateBookmarkCommand.cs`,
+`Features/Bookmarks/CreateBookmark/CreateBookmarkEndpoint.cs`,
+`Features/Repositories/RepositoryCardQuery.cs`,
+`Features/Digest/SendDigest/SmtpEmailSender.cs`,
+`Features/Summarization/GenerateSummaries/LmStudioRepositorySummarizer.cs`,
+`src/frontend/package.json`, `src/frontend/src/app/features/hidden-gems/hidden-gems.ts`,
+`Features/Digest/SendDigest/SendDigestCommand.cs`, `Features/Digest/SendDigest/SendDigestJob.cs`,
+`.gitignore`, `Makefile`, `docs/setup.md`, `docs/code-review.md`.
+
+**Breaking changes**: none for an existing deployment. `.env` files written before this revision
+keep working - the seven new variables are optional and default to empty. The one visible
+behaviour change is that `http://<host-lan-ip>:8080` no longer resolves; use the host itself.
+
+**Still open** (see `docs/code-review.md` for detail): H-3 (three pipeline handlers load whole
+tables), H-4 (no test coverage of the production Npgsql sort/pagination branch - every fixture uses
+SQLite), M-3 (README fetch bypasses the crawler's Polly pipeline), M-8 (score history never
+pruned), L-1, L-3, L-4, L-6, L-11.
+
+**Smoke tests**: `dotnet build` (0 warnings, now error-gated), `dotnet test` (146 passed; new
+coverage for the unknown-repository bookmark path, `SendFailure` on both the skip and failure paths,
+and `SendDigestJob`'s rethrow), `npm run lint`, `npm test` (45 passed),
+`dotnet format --verify-no-changes`, `npm run format:check`, `docker compose config`. End-to-end
+against the live stack: digest delivered into Mailpit, survived `make down && make up`, and a
+stopped Mailpit produced a `Failed` Hangfire job instead of a `Succeeded` one.
 
 ## Revision 18 — 2026-08-07 — MVP closeout pass (documentation only)
 

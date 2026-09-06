@@ -121,6 +121,7 @@ up: check-env check-docker compose-up check-lmstudio load-model
 	@echo "Stack is up:"
 	@echo "  dashboard       -> http://localhost:$(APP_PORT)/ (Hidden Gems, Bookmarks)"
 	@echo "  app + postgres  -> docker compose (see 'make logs')"
+	@echo "  digest mailbox  -> http://localhost:8025/ (Mailpit - where the daily digest lands)"
 	@echo "  LM Studio       -> host-installed, model '$(LMSTUDIO_MODEL)' loaded on port $(LMSTUDIO_PORT)"
 
 # Fast inner loop for active development: only Postgres runs in Docker (the one piece that's

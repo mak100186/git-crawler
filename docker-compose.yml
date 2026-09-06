@@ -20,8 +20,13 @@ services:
     build:
       context: .
       dockerfile: src/backend/Dockerfile
+    # Bound to 127.0.0.1, not 0.0.0.0: the Hangfire dashboard at /hangfire runs without
+    # authorization (see Program.cs's UseHangfireDashboard comment) and can trigger, delete, and
+    # re-queue jobs, so publishing it on every host interface would hand pipeline control to
+    # anyone on the same network. The operator reaches it from the host either way; nothing off-box
+    # needs it. Put it behind an authenticating reverse proxy if remote access is ever wanted.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # Host is "postgres" - the Compose service's internal DNS name - not env-driven, since it's
@@ -37,6 +42,21 @@ services:
       # Must match the identifier `make up`/`lms load --identifier` assigns the loaded model (see
       # Makefile's LMSTUDIO_IDENTIFIER) - this is the fixed alias, not the catalog model name.
       LmStudio__Model: "${LMSTUDIO_IDENTIFIER:?Set LMSTUDIO_IDENTIFIER in .env - see .env.example}"
+      # F-013 daily digest. Unguarded (no ${VAR:?...}) unlike everything above: blank is a valid
+      # value here - SendDigestCommandHandler/SmtpEmailSender both check and skip with a warning
+      # rather than failing, so an operator who doesn't want the email just leaves these empty in
+      # .env. Without these lines the digest could never send in this deployment no matter what
+      # .env said, because appsettings.json ships them blank and only appsettings.Development.json
+      # (Mailpit, `make dev` only) fills them in. The `-` in ${VAR-} is an empty default for the
+      # unset case only, so an .env written before these existed doesn't warn on every `make up`;
+      # it duplicates no real default, because blank is what "not configured" already means.
+      Smtp__Host: "${SMTP_HOST-}"
+      Smtp__Port: "${SMTP_PORT-}"
+      Smtp__Username: "${SMTP_USERNAME-}"
+      Smtp__Password: "${SMTP_PASSWORD-}"
+      Smtp__EnableSsl: "${SMTP_ENABLE_SSL-}"
+      Smtp__FromAddress: "${SMTP_FROM_ADDRESS-}"
+      Digest__RecipientEmail: "${DIGEST_RECIPIENT_EMAIL-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -59,7 +79,7 @@ services:
     # reach Postgres from the host - the app container itself never uses this, it talks over the
     # internal Compose network via the "postgres" hostname/5432 above.
     ports:
-      - "${POSTGRES_PORT:?Set POSTGRES_PORT in .env - see .env.example}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env - see .env.example}:5432"
     # PostgreSQL 18+ images store data in a major-version-specific subdirectory under
     # /var/lib/postgresql (not directly at /var/lib/postgresql/data as in older images) - mounting
     # the volume at /var/lib/postgresql/data breaks startup. Verified live against postgres:18.4.
@@ -78,25 +98,34 @@ services:
       retries: 5
       start_period: 10s
 
-  # Dev-only SMTP capture tool for F-013 (Digest Service) local testing - see
-  # appsettings.Development.json's Smtp section and docs/setup.md §3a. Mailpit is the actively-
-  # maintained successor to MailHog (which has had no meaningful releases since 2022) - same
-  # catch-all SMTP server + web UI to inspect what got "sent" idea, still developed. Not part of
-  # the self-hosted deployment ADR-002 describes (app + postgres, LM Studio host-installed) - it
-  # exists purely so `make dev`'s bare backend has something to send digest emails to without a
-  # real mailbox.
+  # SMTP capture tool for F-013 (Digest Service) testing - see appsettings.Development.json's Smtp
+  # section and docs/setup.md §3a. Mailpit is the actively-maintained successor to MailHog (which
+  # has had no meaningful releases since 2022) - same catch-all SMTP server + web UI to inspect
+  # what got "sent" idea, still developed. Not part of the self-hosted deployment ADR-002
+  # describes (app + postgres, LM Studio host-installed) - it exists so digest emails have
+  # somewhere to land without a real mailbox.
   #
-  # `profiles: ["dev"]` keeps this out of `make up`'s unqualified `docker compose up -d --build`
-  # (no profile flag = no profiled services start) - only `make dev`'s explicit
-  # `docker compose up -d postgres mailpit` starts it, since naming a profiled service directly
-  # on the command line starts it regardless of active profiles (Compose's documented behavior).
+  # Started by both `make up` and `make dev`: it used to sit behind `profiles: ["dev"]` so only
+  # `make dev` started it, which meant `make up` had no SMTP target at all - the digest job ran
+  # daily, found nothing configured, and skipped. Point .env's SMTP_HOST at `mailpit` (the Compose
+  # DNS name, not localhost - inside the app container localhost is the app itself) with
+  # SMTP_PORT=1025 and SMTP_ENABLE_SSL=false to capture the digest here instead of sending it to a
+  # real provider.
   #
-  # Unpinned (`latest`), unlike postgres above: this holds no persistent data and a breaking image
-  # update is immediately visible in a throwaway dev tool - the pinning discipline that matters for
-  # production data durability doesn't buy anything here.
+  # Unpinned (`latest`), unlike postgres above: what it stores is disposable captured mail, not
+  # production data, and a breaking image update is immediately visible in a tool whose whole job is
+  # to be looked at - the pinning discipline that matters for data durability doesn't buy anything
+  # here.
   mailpit:
     image: axllent/mailpit:latest
-    profiles: ["dev"]
+    environment:
+      # Without MP_DATA_FILE Mailpit keeps everything in memory, so `make down`/`make up` - or any
+      # rebuild - silently discards whatever digests had been captured. Bind-mounted to a repo-root
+      # folder for the same reasons postgres above is (visible as plain files, safe from
+      # `docker volume prune`); git-ignored.
+      MP_DATA_FILE: /data/mailpit.db
+    volumes:
+      - ./data/mailpit:/data
     ports:
-      - "1025:1025" # SMTP - matches appsettings.Development.json's Smtp:Port
-      - "8025:8025" # Web UI - http://localhost:8025 to see captured digest emails
+      - "127.0.0.1:1025:1025" # SMTP - matches appsettings.Development.json's Smtp:Port
+      - "127.0.0.1:8025:8025" # Web UI - http://localhost:8025 to see captured digest emails

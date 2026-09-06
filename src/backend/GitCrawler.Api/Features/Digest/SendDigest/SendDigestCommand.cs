@@ -17,7 +17,12 @@ namespace GitCrawler.Api.Features.Digest.SendDigest;
 // other pipeline-stage command in this codebase, this is a plain command with no HTTP endpoint.
 public record SendDigestCommand(bool IsHtml = true);
 
-public record SendDigestResult(bool Sent, int RepositoryCount, int TrendCount);
+// SendFailure is non-null only when the SMTP send itself threw - it carries that exception's
+// message so SendDigestJob can fail the Hangfire job with the real reason instead of a generic one.
+// A skip (no recipient configured, or already sent today) leaves it null: those are correct
+// outcomes, not failures. Without it every outcome looked identical to Hangfire, which reported
+// Succeeded for a digest that never left the process.
+public record SendDigestResult(bool Sent, int RepositoryCount, int TrendCount, string? SendFailure = null);
 
 // Wolverine discovers this handler by convention (a public Handle/HandleAsync method on a class
 // named *Handler in the same assembly) - no manual registration required.
@@ -128,13 +133,14 @@ public class SendDigestCommandHandler(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // FR-006: a send failure must be logged, not silently dropped, and must not crash the
-            // Hangfire job/host - same bounded "log and move on" philosophy
-            // GenerateSummariesCommandHandler applies to its own per-repo LM Studio failures. No
-            // retry here either (Task Packet's explicit "no retry requirement") - the next scheduled
-            // run tries again on its own cron.
+            // FR-006: a send failure must be logged, not silently dropped, and must not propagate out
+            // of the handler - same bounded "log and move on" philosophy
+            // GenerateSummariesCommandHandler applies to its own per-repo LM Studio failures. The
+            // failure is reported upward in SendFailure rather than thrown, so SendDigestJob can mark
+            // the Hangfire job Failed (which is not the same as crashing the host - the fear behind
+            // the original wording of this comment) while the handler itself still degrades cleanly.
             logger.LogError(ex, "Failed to send the daily digest email to {Recipient}", _recipientEmail);
-            return new SendDigestResult(Sent: false, RepositoryCount: topGems.Count, TrendCount: trends.Count);
+            return new SendDigestResult(Sent: false, RepositoryCount: topGems.Count, TrendCount: trends.Count, SendFailure: ex.Message);
         }
 
         // Marker written only after SendAsync above has already succeeded (Task Packet's explicit

@@ -15,6 +15,7 @@ public class GitHubDiscoveryClient(
     Connection graphQlConnection,
     IHttpClientFactory httpClientFactory,
     IConfiguration configuration,
+    TimeProvider timeProvider,
     ILogger<GitHubDiscoveryClient> logger) : IGitHubDiscoveryClient
 {
     // Name of the HttpClientFactory-registered client this class expects (see Program.cs) -
@@ -82,7 +83,7 @@ public class GitHubDiscoveryClient(
             throw new GitHubRestRateLimitExceededException(resetAtUtc);
         }
 
-        if (IsRestSecondaryRateLimited(response, out var retryAfter))
+        if (IsRestSecondaryRateLimited(response, timeProvider, out var retryAfter))
         {
             throw new GitHubSecondaryRateLimitException(retryAfter);
         }
@@ -156,7 +157,7 @@ public class GitHubDiscoveryClient(
 
     private string BuildSearchQuery()
     {
-        var since = DateTimeOffset.UtcNow.AddDays(-_lookbackDays).ToString("yyyy-MM-dd");
+        var since = timeProvider.GetUtcNow().AddDays(-_lookbackDays).ToString("yyyy-MM-dd");
         return $"pushed:>={since} stars:>={_minimumStars} fork:false archived:false";
     }
 
@@ -221,7 +222,7 @@ public class GitHubDiscoveryClient(
         return body.Contains("too large to list contributors", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsRestSecondaryRateLimited(HttpResponseMessage response, out TimeSpan retryAfter)
+    private static bool IsRestSecondaryRateLimited(HttpResponseMessage response, TimeProvider timeProvider, out TimeSpan retryAfter)
     {
         retryAfter = default;
 
@@ -238,7 +239,7 @@ public class GitHubDiscoveryClient(
 
         if (response.Headers.RetryAfter?.Date is { } date)
         {
-            retryAfter = date - DateTimeOffset.UtcNow;
+            retryAfter = date - timeProvider.GetUtcNow();
             return true;
         }
 
