@@ -12,7 +12,7 @@ namespace GitCrawler.Api.Features.Scoring.ComputeScores;
 // HTTP endpoint.
 public record ComputeScoresCommand;
 
-public record ComputeScoresResult(int ScoredCount, int SkippedCount);
+public record ComputeScoresResult(int ScoredCount, int SkippedCount, int PrunedScoreCount);
 
 // Wolverine discovers this handler by convention (a public Handle/HandleAsync method on a class
 // named *Handler in the same assembly) - no manual registration required.
@@ -20,8 +20,15 @@ public record ComputeScoresResult(int ScoredCount, int SkippedCount);
 // Pure computation, no external calls (Architecture §3): this handler only reads/writes
 // GitCrawlerDbContext. All of the actual scoring math lives in ScoringWeights, kept separate so it
 // can be unit-tested without a DbContext at all - this class is purely data-access orchestration.
-public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, TimeProvider timeProvider)
+public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, IConfiguration configuration, TimeProvider timeProvider)
 {
+    // How many Score rows to keep per repository (review finding M-8). Score history is append-only
+    // by design - GetHiddenGemsQueryHandler reads the latest two rows to compute TrendGrowth - but
+    // nothing used to delete the rest, so a daily crawl accrued 365 rows per repository per year of
+    // which two were ever read. 10 is a deliberate margin over the two that are used, leaving room
+    // to look back over a crawl week when diagnosing a scoring change without keeping a year.
+    private readonly int _historyRetentionCount = configuration.GetValue("Scoring:ScoreHistoryRetentionCount", 10);
+
     public async Task<ComputeScoresResult> HandleAsync(ComputeScoresCommand command, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -69,7 +76,44 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, TimeProv
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new ComputeScoresResult(scoredCount, skippedCount);
+        var prunedScoreCount = await PruneScoreHistoryAsync(cancellationToken);
+
+        return new ComputeScoresResult(scoredCount, skippedCount, prunedScoreCount);
+    }
+
+    // Retention for M-8, run here rather than as its own recurring job: this is the one place that
+    // adds Score rows, so it is also the only place history can grow. A separate Hangfire job would
+    // need its own schedule, its own concurrency guard (F-016), and would spend most of its runs
+    // finding nothing to do.
+    //
+    // One statement, one round trip. A window function is used because "keep the N most recent rows
+    // per repository" is not expressible in LINQ - EF Core has no ROW_NUMBER() translation - and the
+    // portable alternatives are either a query per repository or loading every row into memory,
+    // which is the problem this is meant to solve. The SQL is deliberately provider-neutral:
+    // double-quoted identifiers, ROW_NUMBER() OVER (PARTITION BY ...) and a subquery are all
+    // supported by both Npgsql/PostgreSQL and the SQLite provider the test suite runs against
+    // (window functions since SQLite 3.25).
+    private async Task<int> PruneScoreHistoryAsync(CancellationToken cancellationToken)
+    {
+        // A retention count below 2 would delete the row TrendGrowth compares against, silently
+        // flattening every growth pill on the dashboard. Treated as a misconfiguration to clamp, not
+        // to honour.
+        var keep = Math.Max(2, _historyRetentionCount);
+
+        return await dbContext.Database.ExecuteSqlAsync(
+            $"""
+            DELETE FROM "Scores"
+            WHERE "Id" IN (
+                SELECT "Id" FROM (
+                    SELECT "Id", ROW_NUMBER() OVER (
+                        PARTITION BY "RepositoryId" ORDER BY "ComputedAtUtc" DESC, "Id" DESC
+                    ) AS "RowNumber"
+                    FROM "Scores"
+                ) AS "Ranked"
+                WHERE "Ranked"."RowNumber" > {keep}
+            )
+            """,
+            cancellationToken);
     }
 
     private static Score BuildScore(Repository repository, DateTimeOffset now)

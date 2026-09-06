@@ -228,7 +228,7 @@ Nothing else in the image needs root at runtime — the app binds port 8080 (non
 
 ### M-8 — Score history grows without bound and nothing prunes it
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 21. `ComputeScoresCommandHandler.PruneScoreHistoryAsync` runs at the end of every scoring run and deletes everything past the `Scoring:ScoreHistoryRetentionCount` most recent rows per repository (default 10, clamped to a floor of 2 so TrendGrowth keeps its comparison row). One window-function statement, one round trip; run inline rather than as its own recurring job because this handler is the only thing that adds `Score` rows.
 
 `ComputeScoresCommandHandler` appends a new `Score` row on every re-crawl by design — that history is what `GetHiddenGemsQueryHandler` reads to compute per-repository trend growth. But it only ever reads the **latest two rows**, and nothing deletes the rest.
 
@@ -242,7 +242,7 @@ At the daily crawl schedule, each repository accrues 365 score rows a year, of w
 
 ### L-1 — `GetHiddenGems` fetches full score history for every repository on the page
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 21 — by giving the estimate a mechanism rather than by rewriting the query. M-8's retention caps history at the configured count per repository, so the worst case is genuinely that count × `MaxPageSize` (default ~1000 rows) instead of one row per crawl since the repo was first seen. The comment now states the bound and names the setting that controls it.
 
 `GetHiddenGemsQueryHandler:157-161` loads **all** `Score` rows for the page's repositories and then uses `scores[0]` and `scores[1]`. The comment estimates "~10 rows per repo × ≤100 repos = ~1000 rows max" — that estimate has no mechanism behind it (see M-8). After a year of daily crawls it is ~36,500 rows fetched per page request to read 200 of them.
 
@@ -258,7 +258,7 @@ At the daily crawl schedule, each repository accrues 365 score rows a year, of w
 
 ### L-3 — Observability middleware: a leakable static dictionary and uncached reflection
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 21. The property scan is resolved once per result type into a cached `Func<object, int>`, so the hot path is a dictionary lookup plus one reflective read. The stopwatch dictionary is unchanged, as recommended — the assumption it rests on (every chain Wolverine compiles gets one of the postprocessors that removes the entry) is now recorded in a comment alongside the symptom to look for if it ever stops holding.
 
 `ObservabilityMiddleware:59` keeps a `static ConcurrentDictionary<Guid, Stopwatch>`, populated in `Before` and removed in `ElapsedMillisecondsSince`. Any path where neither the success nor the exception postprocessor runs leaves the entry permanently. The dictionary is static and never swept, so entries accumulate for the process lifetime.
 
@@ -286,7 +286,7 @@ So a user can only filter by a license or topic that happens to appear in the ca
 
 ### L-6 — Repositories with unavailable contributor lists are scored as having zero contributors
 
-**Status: open.**
+**Status: fixed** in the scoring reshape recorded as changelog revision 20. `ComputeScoresCommandHandler` distinguishes "GitHub refused to enumerate" from "never fetched" using the existing `ContributorCount is null && ContributorCountFetchedAtUtc is not null` state — no schema change — and `ScoringWeights.ComputeTotalScore` reads that null as full marks for the signal. See ADR-019.
 
 When GitHub returns "too large to list contributors", `DiscoverRepositoriesCommandHandler:99-107` logs, stamps `ContributorCountFetchedAtUtc`, and moves on — leaving `ContributorCount` at its previous value, or `null` for a newly discovered repository. `ComputeScoresCommandHandler:83` then coerces `null` to `0`, and the 22.5%-weighted contributor signal contributes nothing.
 

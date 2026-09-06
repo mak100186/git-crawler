@@ -150,7 +150,11 @@ public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
             .ToListAsync(cancellationToken);
 
         // Score history for the page's repos - needed for the score breakdown (latest row) and
-        // TrendGrowth (latest two rows). ~10 rows per repo × ≤100 repos = ~1000 rows max.
+        // TrendGrowth (latest two rows). Bounded, not estimated (review finding L-1): retention in
+        // ComputeScoresCommandHandler.PruneScoreHistoryAsync caps history at
+        // Scoring:ScoreHistoryRetentionCount rows per repository (default 10), so the worst case
+        // here is that value × MaxPageSize rather than one row per crawl since the repo was first
+        // seen. Raising that setting raises this fetch proportionally.
         // Sort is done client-side after fetch because the SQLite provider (xUnit suite) rejects
         // DateTimeOffset in ORDER BY; the production Npgsql provider handles it server-side, but
         // the result is identical either way (LINQ-to-Objects on a bounded page-scoped set).

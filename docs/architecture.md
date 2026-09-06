@@ -1,7 +1,7 @@
 # Architecture: GitHub Hidden Gems Discovery Platform
 
 > Status: APPROVED
-> Version: v30
+> Version: v31
 > Last updated: 2026-08-07
 > PRD: docs/prd.md (built against v8)
 
@@ -252,8 +252,13 @@ read/write shared state, which keeps each stage independently testable and resta
 - **Dependencies:** None (leaf component).
 - **Technology:** PostgreSQL 18.4, accessed via EF Core (ADR-003, ADR-014).
 - **Partitioning/archiving strategy (F-017):** No physical table partitioning at the 1M-record
-  scale. `Score` is the one unbounded append-per-recrawl table (~10 rows per repo, growing with
-  each daily crawl cycle), and the composite index on `Score(RepositoryId, ComputedAtUtc DESC)`
+  scale. `Score` is the one append-per-recrawl table, and since the code-review remediation pass it
+  is **bounded rather than unbounded**: `ComputeScoresCommandHandler.PruneScoreHistoryAsync` deletes
+  everything past the `Scoring:ScoreHistoryRetentionCount` most recent rows per repository (default
+  10, clamped to a floor of 2 so TrendGrowth always has its comparison row) in a single window-
+  function statement at the end of each scoring run. Steady-state `Score` row count is therefore
+  repository count × that setting, not repository count × crawl cycles since first sight. The
+  composite index on `Score(RepositoryId, ComputedAtUtc DESC)`
   keeps the dominant _lookup_ pattern (latest Score per repository) as a bounded index scan
   regardless of total row count. The sort/pagination rewrite (see NFR-004 Notes) bounds filtered
   queries and the Newest/Stars sort paths to page-size work, but the **unfiltered Score/Commits
@@ -270,7 +275,9 @@ read/write shared state, which keeps each stage independently testable and resta
     since it touches F-007's write path and F-017 deliberately did not implement it)
   - EXPLAIN ANALYZE on unfiltered Score/Commits sort (via `make seed-perf` at scale) shows p95
     approaching or exceeding NFR-001's 2s budget
-  - `Score` row count exceeds 10M (10× the current NFR-004 target)
+  - `Score` row count exceeds 10M (10× the current NFR-004 target) — note that retention makes this
+    a function of repository count and the retention setting, so raising
+    `Scoring:ScoreHistoryRetentionCount` moves this trigger closer
   - EXPLAIN ANALYZE on the dashboard's other sort/filter paths shows sequential scans on `Score`
     replacing the current index scans
   - VACUUM/autovacuum pressure on `Score` becomes operationally visible (bloat, long-running
@@ -378,3 +385,4 @@ the dashboard and receiving the digest.
 | v28     | 2026-08-07 | F-017 Integration pass correction: §3 Web API and NFR-004 Notes corrected — the server-side sort/pagination is Npgsql/PostgreSQL-only, not translatable on the xUnit suite's SQLite provider (`DateTimeOffset` in ORDER BY throws `NotSupportedException`; `.DateTime`, `.Ticks` also untranslatable). `GetHiddenGemsQueryHandler` now detects SQLite at runtime and falls back to client-side Rank/Paginate (same response contract, same semantics). Score detail query's sort also moved client-side for the same portability reason. The Developer's "translates on both SQLite and Npgsql" claim (v27) was inaccurate for the Newest sort key and the Score detail sort — corrected here                                                                                                                                                                                                                                                                                                                                                                            | Integration Agent                                                                                                                                                                                                                              |
 | v29     | 2026-08-07 | Partitioning/archiving strategy tightened per operator decision 2026-08-07 (F-017 "accept + document the gap" choice): the unfiltered Score/Commits sort path's correlated-subquery bottleneck (bounded by match count, not page size) is now named explicitly as the one path the current indexing strategy cannot cheaply serve at scale-out; the denormalized-latest-score columns option is promoted from "one of the options" to "first action when approaching scale-out" (ADR-worthy, touches F-007's write path — F-017 deliberately did not implement it); first revisit trigger renamed to "repository count approaches 100k target — denormalize first". New PMBook open item PM-008 tracks the decision; operator should re-run `make seed-perf` before relying on any agent-reported measurement at scale-out (the Developer and Integration reported different numbers for this path, and neither was independently re-verified in this session due to Docker Desktop networking instability — recorded honestly as a caveat rather than a claimed figure) | Orchestrator (recording operator decision on F-017 gap)                                                                                                                                                                                        |
 | v30     | 2026-08-07 | **MVP closeout pass**: risks A1 and A5 updated with MVP-closeout notes reflecting current state. A1 (GitHub GraphQL rate-limit budget) — deferred to post-MVP scale validation; F-001's spike validated the point-cost model and F-005's mitigations are genuinely in place, but the model has not been re-tested against a live 1K-5K/day discovery run or the 100k+ scale-out target. A5 (single-node Docker cap) — F-017's partitioning strategy + PM-008's authoritative measurement at 100k repos / 1M scores (4.8–4.9s unfiltered Score/Commits sort, 2.5× over NFR-001's 2s budget) confirm the query-performance half of the scale-out trigger is concretely measured; horizontal scaling (bigger instance vs. service split) remains unevaluated, PM-003 tracks this. No new §3 sections, NFRs, or Technology Decisions — these are status updates to existing risk rows, not architectural changes.                                                                                                                                                            | Orchestrator (MVP closeout pass)                                                                                                                                                                                                               |
+| v31     | 2026-09-06 | Code-review remediation, second pass. §3 Data Store: `Score` is no longer described as unbounded — `ComputeScoresCommandHandler.PruneScoreHistoryAsync` now caps history at `Scoring:ScoreHistoryRetentionCount` rows per repository (default 10, floored at 2 so TrendGrowth keeps its comparison row) in one window-function statement per scoring run, making steady-state row count a function of repository count × the setting rather than crawl cycles since first sight (review findings M-8 and L-1). The 10M-row revisit trigger is annotated accordingly. No new §3 sections, NFRs, or Technology Decisions.                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Code-review remediation                                                                                                                                                                                                                        |

@@ -4,6 +4,7 @@ using GitCrawler.Api.Features.Scoring.ComputeScores;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace GitCrawler.Api.Tests.Features.Scoring.ComputeScores;
 
@@ -34,7 +35,16 @@ public class ComputeScoresCommandHandlerTests : IDisposable
         _connection.Dispose();
     }
 
-    private ComputeScoresCommandHandler CreateHandler() => new(_dbContext, _timeProvider);
+    private ComputeScoresCommandHandler CreateHandler(IConfiguration? configuration = null) =>
+        new(_dbContext, configuration ?? new ConfigurationBuilder().Build(), _timeProvider);
+
+    private static IConfiguration ConfigurationWithRetention(int retentionCount) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Scoring:ScoreHistoryRetentionCount"] = retentionCount.ToString(),
+            })
+            .Build();
 
     private Repository NewRepository(
         long gitHubId,
@@ -206,5 +216,109 @@ public class ComputeScoresCommandHandlerTests : IDisposable
 
         Assert.Equal(0, result.ScoredCount);
         Assert.Equal(0, result.SkippedCount);
+        Assert.Equal(0, result.PrunedScoreCount);
+    }
+
+    [Fact]
+    public async Task Handle_ScoreHistoryExceedsRetentionCount_DeletesTheOldestRowsOnly()
+    {
+        var repository = NewRepository(gitHubId: 10);
+        _dbContext.Repositories.Add(repository);
+        await _dbContext.SaveChangesAsync();
+
+        // Eight days of history, oldest first. The repository's LastCrawledAtUtc is newer than all
+        // of them, so this run also appends a ninth, current row before retention runs.
+        await SeedScoreHistoryAsync(repository.Id, days: 8);
+
+        var result = await CreateHandler(ConfigurationWithRetention(3))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        var remaining = await _dbContext.Scores
+            .Where(s => s.RepositoryId == repository.Id)
+            .Select(s => s.ComputedAtUtc)
+            .ToListAsync();
+
+        // Nine rows in, three kept: the six oldest go, and what survives is the newest three.
+        Assert.Equal(6, result.PrunedScoreCount);
+        Assert.Equal(3, remaining.Count);
+        Assert.All(remaining, computedAt => Assert.True(computedAt >= HistoryDay(6)));
+    }
+
+    [Fact]
+    public async Task Handle_ScoreHistoryWithinRetentionCount_DeletesNothing()
+    {
+        var repository = NewRepository(gitHubId: 11);
+        _dbContext.Repositories.Add(repository);
+        await _dbContext.SaveChangesAsync();
+
+        await SeedScoreHistoryAsync(repository.Id, days: 4);
+
+        var result = await CreateHandler(ConfigurationWithRetention(10))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        // Four seeded rows plus the one this run appends, all under the limit of ten.
+        Assert.Equal(0, result.PrunedScoreCount);
+        Assert.Equal(5, await _dbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
+    }
+
+    [Fact]
+    public async Task Handle_RetentionConfiguredBelowTwo_StillKeepsTheRowTrendGrowthComparesAgainst()
+    {
+        // TrendGrowth needs the latest two rows. A retention count of 1 (or 0) would silently
+        // flatten every growth pill on the dashboard, so the handler clamps rather than obeying.
+        var repository = NewRepository(gitHubId: 12);
+        _dbContext.Repositories.Add(repository);
+        await _dbContext.SaveChangesAsync();
+
+        await SeedScoreHistoryAsync(repository.Id, days: 5);
+
+        await CreateHandler(ConfigurationWithRetention(1)).HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(2, await _dbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
+    }
+
+    [Fact]
+    public async Task Handle_MultipleRepositories_PrunesEachIndependently()
+    {
+        var kept = NewRepository(gitHubId: 13);
+        var pruned = NewRepository(gitHubId: 14);
+        _dbContext.Repositories.AddRange(kept, pruned);
+        await _dbContext.SaveChangesAsync();
+
+        await SeedScoreHistoryAsync(kept.Id, days: 2);
+        await SeedScoreHistoryAsync(pruned.Id, days: 7);
+
+        await CreateHandler(ConfigurationWithRetention(4)).HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        // Retention partitions by repository. Both gain a row from this run: the first ends at
+        // three, under the limit and untouched; the second is cut from eight back to four.
+        Assert.Equal(3, await _dbContext.Scores.CountAsync(s => s.RepositoryId == kept.Id));
+        Assert.Equal(4, await _dbContext.Scores.CountAsync(s => s.RepositoryId == pruned.Id));
+    }
+
+    private static DateTimeOffset HistoryDay(int dayIndex) =>
+        new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero).AddDays(dayIndex);
+
+    // Rows dated before the fixture clock so the handler treats these repositories as already
+    // scored and the only thing under test is retention.
+    private async Task SeedScoreHistoryAsync(int repositoryId, int days)
+    {
+        for (var day = 0; day < days; day++)
+        {
+            _dbContext.Scores.Add(new Score
+            {
+                RepositoryId = repositoryId,
+                HasLicense = true,
+                LicenseType = "MIT",
+                CommitsPerWeek = 1,
+                ContributorCount = 1,
+                ForkCount = 1,
+                StarCount = 1,
+                TotalScore = 50,
+                ComputedAtUtc = HistoryDay(day),
+            });
+        }
+
+        await _dbContext.SaveChangesAsync();
     }
 }

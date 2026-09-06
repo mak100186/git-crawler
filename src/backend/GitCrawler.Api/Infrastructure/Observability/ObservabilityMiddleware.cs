@@ -56,7 +56,22 @@ public class ObservabilityMiddleware
     // static, per-invocation dictionary keyed by it sidesteps the bug entirely without touching
     // Wolverine internals. Guid keys are unique per invocation (a fresh Envelope.Id every call), so
     // there's no cross-invocation collision risk even under full concurrency.
+    //
+    // Assumption this rests on (review finding L-3): every entry is removed by whichever
+    // postprocessor runs - RecordSuccess/RecordSuccessVoid on the happy path, OnException on the
+    // failure path - and Wolverine compiles one or the other into every chain, so an entry added by
+    // Before is always removed. If a future Wolverine change ever produced a chain with neither, its
+    // entries would accumulate for the process lifetime; the dictionary is deliberately not swept,
+    // because a sweeper would be speculative machinery guarding a path that does not currently
+    // exist. The symptom to look for would be a steadily growing managed heap alongside
+    // "in -1ms" in the completion logs.
     private static readonly ConcurrentDictionary<Guid, Stopwatch> Stopwatches = new();
+
+    // A handler chain's result type is fixed, so the property scan below only has to happen once per
+    // type rather than on every command and query invocation (review finding L-3). Keyed by the
+    // runtime result type; the delegate closes over the resolved PropertyInfo, so the steady-state
+    // cost on the hot path is one dictionary lookup plus one reflective property read.
+    private static readonly ConcurrentDictionary<Type, Func<object, int>> RecordsProcessedExtractors = new();
 
     [WolverineBefore]
     public static void Before(Envelope envelope, ILogger<ObservabilityMiddleware> logger)
@@ -155,23 +170,37 @@ public class ObservabilityMiddleware
             return 1;
         }
 
-        var properties = result.GetType().GetProperties();
+        return RecordsProcessedExtractors
+            .GetOrAdd(result.GetType(), BuildRecordsProcessedExtractor)
+            .Invoke(result);
+    }
+
+    // Runs once per result type, on first sight of that type. Resolves which property (if any)
+    // carries the count and returns a delegate that reads it, so the priority-order scan above is
+    // not repeated per invocation.
+    private static Func<object, int> BuildRecordsProcessedExtractor(Type resultType)
+    {
+        var properties = resultType.GetProperties();
 
         var namedCountProperty = properties.FirstOrDefault(p =>
             (p.PropertyType == typeof(int) || p.PropertyType == typeof(long))
             && p.Name.Contains("Count", StringComparison.OrdinalIgnoreCase));
         if (namedCountProperty is not null)
         {
-            return Convert.ToInt32(namedCountProperty.GetValue(result));
+            return result => Convert.ToInt32(namedCountProperty.GetValue(result));
         }
 
         var collectionProperty = properties.FirstOrDefault(p =>
             typeof(IEnumerable).IsAssignableFrom(p.PropertyType) && p.PropertyType != typeof(string));
-        if (collectionProperty?.GetValue(result) is IEnumerable enumerable)
+        if (collectionProperty is not null)
         {
-            return enumerable is ICollection collection ? collection.Count : enumerable.Cast<object>().Count();
+            // The property is resolved once; whether it holds null on a given invocation is not, so
+            // the null check stays inside the delegate.
+            return result => collectionProperty.GetValue(result) is IEnumerable enumerable
+                ? enumerable is ICollection collection ? collection.Count : enumerable.Cast<object>().Count()
+                : 1;
         }
 
-        return 1;
+        return static _ => 1;
     }
 }

@@ -1,7 +1,63 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 20
+> Revision: 21
 > Last updated: 2026-09-06
+
+## Revision 21 - 2026-09-06 - Score retention, a bounded history fetch, and cached middleware reflection
+
+Three code-review findings closed. No behaviour visible to a dashboard user changes.
+
+**M-8 - `Score` history is now bounded.** It was append-only with nothing pruning it: at a daily
+crawl each repository accrued 365 rows a year of which exactly two were ever read (the latest for
+the breakdown, the second-latest for TrendGrowth).
+`ComputeScoresCommandHandler.PruneScoreHistoryAsync` now deletes everything past the
+`Scoring:ScoreHistoryRetentionCount` most recent rows per repository at the end of each scoring run.
+
+- **New setting**: `Scoring:ScoreHistoryRetentionCount`, default 10 - a deliberate margin over the
+  two rows actually used, so a crawl week is still available when diagnosing a scoring change.
+- **Clamped at 2.** A configured 1 or 0 would silently flatten every growth pill on the dashboard,
+  so it is treated as a misconfiguration to correct rather than an instruction to obey.
+- **Run inline, not as a new recurring job** (the review offered either). This handler is the only
+  thing that adds `Score` rows, so it is the only place history can grow; a separate job would need
+  its own schedule and its own F-016 concurrency guard and would spend most runs finding nothing.
+- **One statement, one round trip.** "Keep the N most recent rows per partition" has no LINQ
+  expression - EF Core does not translate `ROW_NUMBER()` - and the portable alternatives are a query
+  per repository or loading every row into memory, which is the problem being solved. The raw SQL is
+  provider-neutral (double-quoted identifiers, a `ROW_NUMBER() OVER (PARTITION BY ...)` subquery) and
+  runs on both Npgsql/PostgreSQL and the SQLite the test suite uses.
+- `ComputeScoresResult` gained `PrunedScoreCount` so the deletion is visible in the observability
+  log line rather than being silent.
+
+**L-1 - the hidden-gems score fetch is bounded rather than estimated.** Its comment claimed "~10
+rows per repo x <=100 repos = ~1000 rows max" with no mechanism behind the 10. M-8 supplies the
+mechanism, so the fetch is now genuinely capped at the retention count times the page size; the
+comment states the real bound and names the setting that moves it. The query itself is unchanged -
+rewriting it to fetch exactly two rows per repository would need the same window function and buy
+nothing once history is capped.
+
+**L-3 - the observability middleware no longer re-runs reflection per invocation.**
+`ExtractRecordsProcessed` scanned `result.GetType().GetProperties()` and LINQ-filtered it on every
+command and query, including every HTTP request. A chain's result type is fixed, so the scan is now
+resolved once per type into a cached `Func<object, int>`; steady state is a dictionary lookup plus
+one property read. The static stopwatch dictionary is deliberately left as-is, as the review
+recommended - the assumption it depends on is now written down next to it, along with the symptom
+(a growing heap alongside `in -1ms` completion lines) that would show it had stopped holding.
+
+**Governed docs synced in the same pass**: `docs/architecture.md` v31 - §3 Data Store no longer
+describes `Score` as unbounded, and the 10M-row revisit trigger notes that it is now a function of
+repository count times the retention setting.
+
+**Modules/files affected**: `Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Repositories/GetHiddenGems/GetHiddenGemsQuery.cs`,
+`Infrastructure/Observability/ObservabilityMiddleware.cs`, `appsettings.json`,
+`tests/.../ComputeScoresCommandHandlerTests.cs`, `docs/architecture.md`, `docs/code-review.md`.
+
+**Breaking changes**: none. The new setting has a default, and existing rows past the retention
+count are deleted on the next scoring run.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (162 passed, 4 new covering pruning past
+the limit, no-op under the limit, the floor-of-2 clamp, and per-repository partitioning),
+`dotnet format --verify-no-changes`.
 
 ## Revision 20 - 2026-09-06 - Scoring reshape (ADR-019) and a README section on rate limits
 
