@@ -1,35 +1,17 @@
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Categories.GetCategories;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Tests.Features.Categories.GetCategories;
 
-public class GetCategoriesQueryHandlerTests : IDisposable
+public class GetCategoriesQueryHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
     private long _nextGitHubId = 1;
 
-    public GetCategoriesQueryHandlerTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
-    private GetCategoriesQueryHandler CreateHandler() => new(_dbContext);
+    private GetCategoriesQueryHandler CreateHandler() => new(DbContext);
 
     private async Task<Repository> AddRepositoryAsync(string? primaryLanguage, bool scored)
     {
@@ -44,18 +26,18 @@ public class GetCategoriesQueryHandlerTests : IDisposable
             CreatedAtUtc = DateTimeOffset.UtcNow,
             FirstDiscoveredAtUtc = DateTimeOffset.UtcNow,
         };
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
         if (scored)
         {
-            _dbContext.Scores.Add(new Score
+            DbContext.Scores.Add(new Score
             {
                 RepositoryId = repository.Id,
                 TotalScore = 50,
                 ComputedAtUtc = DateTimeOffset.UtcNow,
             });
-            await _dbContext.SaveChangesAsync();
+            await DbContext.SaveChangesAsync();
         }
 
         return repository;

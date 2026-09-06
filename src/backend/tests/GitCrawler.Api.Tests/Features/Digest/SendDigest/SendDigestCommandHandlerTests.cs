@@ -3,45 +3,32 @@ using System.Globalization;
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Digest.SendDigest;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GitCrawler.Api.Tests.Features.Digest.SendDigest;
 
-// Same SQLite-backed DbContext approach as AggregateTrendsCommandHandlerTests/
-// GenerateSummariesCommandHandlerTests (not the EF Core InMemory provider) so the
+// Runs against the shared PostgreSQL container (see PostgresFixture) so the
 // Repository/Score/Summary/TrendAggregate navigation this handler relies on (via
-// RepositoryCardQuery, shared with GetHiddenGems) behaves like the real relational provider.
-public class SendDigestCommandHandlerTests : IDisposable
+// RepositoryCardQuery, shared with GetHiddenGems) behaves exactly as it does in production.
+//
+// Note for anyone adding tests here: this handler writes a DigestSendLog marker on a successful
+// send and skips when one already exists for the day. PostgresTestBase's reset covers that table
+// (it builds its TRUNCATE from the EF model), so each test starts with no marker.
+public class SendDigestCommandHandlerTests : PostgresTestBase
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
     private readonly FakeEmailSender _emailSender = new();
     private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 8, 4, 0, 0, 0, TimeSpan.Zero));
 
-    public SendDigestCommandHandlerTests()
+    public SendDigestCommandHandlerTests(PostgresFixture fixture) : base(fixture)
     {
-        // The in-memory SQLite database is destroyed the moment its last connection closes, so this
-        // connection must stay open for the test's lifetime rather than being opened per call.
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
     }
 
     private SendDigestCommandHandler CreateHandler(IConfiguration? configuration = null) =>
-        new(_dbContext, _emailSender, configuration ?? ConfigWith(recipientEmail: "ops@example.com"), NullLogger<SendDigestCommandHandler>.Instance, _timeProvider);
+        new(DbContext, _emailSender, configuration ?? ConfigWith(recipientEmail: "ops@example.com"), NullLogger<SendDigestCommandHandler>.Instance, _timeProvider);
 
     private static IConfiguration ConfigWith(string? recipientEmail = "ops@example.com", int? topN = null)
     {
@@ -89,11 +76,11 @@ public class SendDigestCommandHandlerTests : IDisposable
     public async Task Handle_EligibleRepositoriesAndTrends_ComposesDigest_AndSendsIt()
     {
         var repository = NewRepository(gitHubId: 1);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
-        _dbContext.Scores.Add(NewScore(repository.Id, 82, _timeProvider.GetUtcNow()));
-        _dbContext.Summaries.Add(NewSummary(repository.Id, "A concise summary of octocat/repo-1."));
-        _dbContext.TrendAggregates.Add(new TrendAggregate
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(repository.Id, 82, _timeProvider.GetUtcNow()));
+        DbContext.Summaries.Add(NewSummary(repository.Id, "A concise summary of octocat/repo-1."));
+        DbContext.TrendAggregates.Add(new TrendAggregate
         {
             Category = "C#",
             PeriodStart = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime),
@@ -102,7 +89,7 @@ public class SendDigestCommandHandlerTests : IDisposable
             AverageScore = 61,
             CreatedAtUtc = _timeProvider.GetUtcNow(),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -123,20 +110,20 @@ public class SendDigestCommandHandlerTests : IDisposable
     {
         var staleRepo = NewRepository(gitHubId: 2);
         var freshRepo = NewRepository(gitHubId: 3);
-        _dbContext.Repositories.AddRange(staleRepo, freshRepo);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.AddRange(staleRepo, freshRepo);
+        await DbContext.SaveChangesAsync();
 
         // staleRepo's historical peak (90) is higher than freshRepo's only score (50), but
         // staleRepo's *latest* (chronologically most recent) score has since dropped to 20 - the
         // same distinction AggregateTrendsCommandHandlerTests/GenerateSummariesCommandHandlerTests
         // each draw for their own Score reads. With TopN capped at 1, only the repo with the higher
         // *latest* score should appear.
-        _dbContext.Scores.Add(NewScore(staleRepo.Id, 90, _timeProvider.GetUtcNow().AddDays(-5)));
-        _dbContext.Scores.Add(NewScore(staleRepo.Id, 20, _timeProvider.GetUtcNow()));
-        _dbContext.Scores.Add(NewScore(freshRepo.Id, 50, _timeProvider.GetUtcNow()));
-        _dbContext.Summaries.Add(NewSummary(staleRepo.Id, "Stale repo summary."));
-        _dbContext.Summaries.Add(NewSummary(freshRepo.Id, "Fresh repo summary."));
-        await _dbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(staleRepo.Id, 90, _timeProvider.GetUtcNow().AddDays(-5)));
+        DbContext.Scores.Add(NewScore(staleRepo.Id, 20, _timeProvider.GetUtcNow()));
+        DbContext.Scores.Add(NewScore(freshRepo.Id, 50, _timeProvider.GetUtcNow()));
+        DbContext.Summaries.Add(NewSummary(staleRepo.Id, "Stale repo summary."));
+        DbContext.Summaries.Add(NewSummary(freshRepo.Id, "Fresh repo summary."));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler(ConfigWith(topN: 1)).HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -150,10 +137,10 @@ public class SendDigestCommandHandlerTests : IDisposable
     public async Task Handle_RepositoryScoredButNotYetSummarized_IsExcluded()
     {
         var repository = NewRepository(gitHubId: 4);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
-        _dbContext.Scores.Add(NewScore(repository.Id, 90, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(repository.Id, 90, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -168,11 +155,11 @@ public class SendDigestCommandHandlerTests : IDisposable
         for (var i = 0; i < 3; i++)
         {
             var repository = NewRepository(gitHubId: 10 + i);
-            _dbContext.Repositories.Add(repository);
-            await _dbContext.SaveChangesAsync();
-            _dbContext.Scores.Add(NewScore(repository.Id, 50 + i, _timeProvider.GetUtcNow()));
-            _dbContext.Summaries.Add(NewSummary(repository.Id));
-            await _dbContext.SaveChangesAsync();
+            DbContext.Repositories.Add(repository);
+            await DbContext.SaveChangesAsync();
+            DbContext.Scores.Add(NewScore(repository.Id, 50 + i, _timeProvider.GetUtcNow()));
+            DbContext.Summaries.Add(NewSummary(repository.Id));
+            await DbContext.SaveChangesAsync();
         }
 
         var result = await CreateHandler(ConfigWith(topN: 2)).HandleAsync(new SendDigestCommand(), CancellationToken.None);
@@ -184,11 +171,11 @@ public class SendDigestCommandHandlerTests : IDisposable
     public async Task Handle_EmailSenderThrows_LogsFailure_ReportsSendFailure_DoesNotPropagate()
     {
         var repository = NewRepository(gitHubId: 5);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
-        _dbContext.Scores.Add(NewScore(repository.Id, 70, _timeProvider.GetUtcNow()));
-        _dbContext.Summaries.Add(NewSummary(repository.Id));
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(repository.Id, 70, _timeProvider.GetUtcNow()));
+        DbContext.Summaries.Add(NewSummary(repository.Id));
+        await DbContext.SaveChangesAsync();
 
         _emailSender.FailNextSendWith(new InvalidOperationException("SMTP host unreachable"));
 
@@ -236,7 +223,7 @@ public class SendDigestCommandHandlerTests : IDisposable
     [Fact]
     public async Task Handle_TrendAggregateFromAnEarlierPeriod_IsExcluded_OnlyCurrentPeriodCounted()
     {
-        _dbContext.TrendAggregates.Add(new TrendAggregate
+        DbContext.TrendAggregates.Add(new TrendAggregate
         {
             Category = "C#",
             PeriodStart = DateOnly.FromDateTime(_timeProvider.GetUtcNow().AddDays(-2).UtcDateTime),
@@ -245,7 +232,7 @@ public class SendDigestCommandHandlerTests : IDisposable
             AverageScore = 40,
             CreatedAtUtc = _timeProvider.GetUtcNow().AddDays(-2),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -264,11 +251,11 @@ public class SendDigestCommandHandlerTests : IDisposable
         // *simultaneous* executions - so this is exercised as two sequential HandleAsync calls
         // against the same handler/DbContext, same as a real sequential retry would be.
         var repository = NewRepository(gitHubId: 20);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
-        _dbContext.Scores.Add(NewScore(repository.Id, 80, _timeProvider.GetUtcNow()));
-        _dbContext.Summaries.Add(NewSummary(repository.Id));
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(repository.Id, 80, _timeProvider.GetUtcNow()));
+        DbContext.Summaries.Add(NewSummary(repository.Id));
+        await DbContext.SaveChangesAsync();
 
         var handler = CreateHandler();
 
@@ -286,7 +273,7 @@ public class SendDigestCommandHandlerTests : IDisposable
         var sent = Assert.Single(_emailSender.SentMessages);
         Assert.Contains("octocat/repo-20", sent.Body);
 
-        Assert.Equal(1, await _dbContext.DigestSendLogs.CountAsync());
+        Assert.Equal(1, await DbContext.DigestSendLogs.CountAsync());
     }
 
     [Fact]
@@ -294,12 +281,12 @@ public class SendDigestCommandHandlerTests : IDisposable
     {
         // Edge case (Task Packet's explicit callout): yesterday's "sent" marker must not block
         // today's send - the dedupe check is scoped to the exact calendar day, not "has ever sent".
-        _dbContext.DigestSendLogs.Add(new DigestSendLog
+        DbContext.DigestSendLogs.Add(new DigestSendLog
         {
             SentForDate = DateOnly.FromDateTime(_timeProvider.GetUtcNow().AddDays(-1).UtcDateTime),
             SentAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -311,11 +298,11 @@ public class SendDigestCommandHandlerTests : IDisposable
     public async Task Handle_RecipientEmailNotConfigured_SkipsSend_NoOp()
     {
         var repository = NewRepository(gitHubId: 6);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
-        _dbContext.Scores.Add(NewScore(repository.Id, 90, _timeProvider.GetUtcNow()));
-        _dbContext.Summaries.Add(NewSummary(repository.Id));
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+        DbContext.Scores.Add(NewScore(repository.Id, 90, _timeProvider.GetUtcNow()));
+        DbContext.Summaries.Add(NewSummary(repository.Id));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler(ConfigWith(recipientEmail: string.Empty)).HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -339,9 +326,9 @@ public class SendDigestCommandHandlerTests : IDisposable
     public async Task Handle_TrendGrewSincePreviousWeek_RendersUpwardGrowthPill()
     {
         // 4 repos a week ago, 6 today: (6-4)/4*100 = +50%.
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("C#", 4, _timeProvider.GetUtcNow().AddDays(-7)));
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("C#", 6, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.TrendAggregates.Add(NewTrendAggregate("C#", 4, _timeProvider.GetUtcNow().AddDays(-7)));
+        DbContext.TrendAggregates.Add(NewTrendAggregate("C#", 6, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -354,9 +341,9 @@ public class SendDigestCommandHandlerTests : IDisposable
     public async Task Handle_TrendShrankSincePreviousWeek_RendersDownwardGrowthPill()
     {
         // 10 repos a week ago, 6 today: (6-10)/10*100 = -40%.
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Go", 10, _timeProvider.GetUtcNow().AddDays(-7)));
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Go", 6, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Go", 10, _timeProvider.GetUtcNow().AddDays(-7)));
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Go", 6, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -370,8 +357,8 @@ public class SendDigestCommandHandlerTests : IDisposable
         // No TrendAggregate row at all before today for this category - must not divide by zero or
         // claim a fabricated growth figure for a category with no prior baseline to compare against.
         // A pill must still render (never a blank gap) - just a neutral "No change" one.
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Rust", 5, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Rust", 5, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -384,9 +371,9 @@ public class SendDigestCommandHandlerTests : IDisposable
     [Fact]
     public async Task Handle_TrendUnchangedSincePreviousWeek_RendersNoChangePill_FlatIsNotUpOrDown()
     {
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Python", 8, _timeProvider.GetUtcNow().AddDays(-7)));
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Python", 8, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Python", 8, _timeProvider.GetUtcNow().AddDays(-7)));
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Python", 8, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -402,9 +389,9 @@ public class SendDigestCommandHandlerTests : IDisposable
         // is not meaningful "+50%" week-over-week growth, so this must render the same neutral
         // "No change" pill as having no baseline at all, not a computed percentage from too thin a
         // window.
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Zig", 4, _timeProvider.GetUtcNow().AddDays(-2)));
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Zig", 6, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Zig", 4, _timeProvider.GetUtcNow().AddDays(-2)));
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Zig", 6, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 
@@ -421,9 +408,9 @@ public class SendDigestCommandHandlerTests : IDisposable
         // be a meaningful comparison, so unlike the under-a-week case this should render a real
         // computed percentage, just labeled with its actual elapsed days instead of "this week".
         // (4 -> 6 repos over 10 days = +50%.)
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Kotlin", 4, _timeProvider.GetUtcNow().AddDays(-10)));
-        _dbContext.TrendAggregates.Add(NewTrendAggregate("Kotlin", 6, _timeProvider.GetUtcNow()));
-        await _dbContext.SaveChangesAsync();
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Kotlin", 4, _timeProvider.GetUtcNow().AddDays(-10)));
+        DbContext.TrendAggregates.Add(NewTrendAggregate("Kotlin", 6, _timeProvider.GetUtcNow()));
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new SendDigestCommand(), CancellationToken.None);
 

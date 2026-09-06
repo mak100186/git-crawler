@@ -101,7 +101,18 @@ Note the constraint this runs into: the SQLite test provider cannot translate `D
 
 ### H-4 — The production sort/pagination path has no automated test coverage
 
-**Status: open.**
+**Status: fixed** in the remediation pass recorded as changelog revision 24. The whole backend suite now runs against a real `postgres:18.4` container via Testcontainers, and the EF Core SQLite provider has been removed from the test project entirely rather than kept as a second target - a second provider is what created this finding in the first place.
+
+What this changed, in the order the recommendation asked for it:
+
+- **The provider branches are gone.** `GetHiddenGemsQueryHandler`'s `isSqlite` check and its client-side `IncludeForCards → Rank → Paginate` fallback are deleted; the server-side `ApplySort → ThenBy(r.Id) → Skip → Take` path is now the only one, and the one the tests exercise. `GetFacetOptionsQueryHandler`'s in-memory topic-flattening fallback is gone the same way, so its `unnest()` translation is covered too.
+- **Coverage for every sort field in both directions.** A new theory seeds four repositories whose star, commits-per-week, latest-score and first-discovered values are deliberately uncorrelated, so all eight expected orderings are distinct and a handler reading the wrong column cannot coincidentally pass. Verified by mutation: inverting the Stars sort direction fails both Stars cases.
+- **Pagination boundaries.** A companion theory pages through the full set at `PageSize: 2` and asserts the concatenated pages equal the unpaginated order exactly - the drop/duplicate failure mode `LIMIT/OFFSET` without a total order produces - then asserts the beyond-last page is empty with an accurate `TotalCount`. The pre-existing clamping and last-boundary tests now run against real SQL rather than LINQ-to-Objects.
+- **The migration chain.** `PostgresFixture` applies `MigrateAsync`, not `EnsureCreated`, so the migrations are executed against an empty database on every run. Three new tests read `pg_indexes` and assert what the migrations actually built rather than what the model declares: the GIN method on `Repositories."Topics"` (a btree there would silently full-scan the Topic facet), the `Scores` composite index, and a general check that every index the model declares exists physically.
+
+Not done: `WebApplicationFactory<Program>` HTTP-level integration tests. The recommendation's stated minimum was the sort, pagination and migration coverage above, all of which sits at the handler boundary; the `Program.cs` note about a future `WebApplicationFactory` remains accurate and unaddressed.
+
+**Consequence for contributors:** `dotnet test` now requires a running Docker daemon. Recorded in `docs/setup.md`'s prerequisites, `docs/test-runbook.md`, and `CLAUDE.md`.
 
 `GetHiddenGemsQueryHandler:112` branches on the runtime provider:
 

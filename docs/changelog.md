@@ -1,7 +1,90 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 23
+> Revision: 24
 > Last updated: 2026-09-06
+
+## Revision 24 - 2026-09-06 - The tests now run on the database the product ships on
+
+**H-4 - the backend suite moved from in-memory SQLite to a real PostgreSQL container.** The finding
+was not "the tests use the wrong database." It was that `GetHiddenGemsQueryHandler` branched on the
+runtime provider, SQLite took a client-side `IncludeForCards → Rank → Paginate` fallback, and every
+one of the suite's ten handler fixtures used SQLite - so all 26 Hidden Gems tests exercised the
+fallback and **the server-side sort/pagination path that production runs, and that F-017 existed to
+build, was never executed by a test.** The migration chain had the same gap: `EnsureCreated` meant
+the GIN index on `Topics` and the `Score` composite index were never created by a test at all.
+
+SQLite was removed rather than kept alongside PostgreSQL. Keeping two providers is what produced the
+branch, and a branch whose second arm only exists for tests is a permanent invitation for the tested
+path and the shipped path to diverge.
+
+**Infrastructure** - `Testcontainers.PostgreSql` 4.14.0 and `Npgsql.EntityFrameworkCore.PostgreSQL`
+10.0.3 in; `Microsoft.EntityFrameworkCore.Sqlite` and the `SQLitePCLRaw.bundle_e_sqlite3` advisory
+override out.
+
+- `PostgresFixture` starts one `postgres:18.4` container per test assembly and applies
+  `MigrateAsync` - the real migration chain against an empty database, which is a third of the
+  recommendation on its own.
+- `PostgresTestBase` gives each test class a fresh `DbContext` and resets with
+  `TRUNCATE ... RESTART IDENTITY CASCADE`. Reset rather than a database or transaction per test:
+  it keeps the migrated schema, and unlike a rollback it does not interfere with handlers that issue
+  raw SQL - `ComputeScoresCommandHandler`'s retention delete, for one. The suite still finishes in
+  about 7 seconds.
+- The truncation list is **built from the EF model**, not hand-written. The first version was
+  hand-written, omitted `DigestSendLogs`, and the symptom was not a missing table - it was the first
+  digest test's "already sent today" marker leaking into the other fourteen, which failed as
+  fourteen unrelated assertions. A hand-maintained list silently stops resetting every table added
+  after it.
+
+**Production code the constraint had been shaping** - all of it deleted, not merely bypassed:
+
+- `GetHiddenGemsQueryHandler`'s `isSqlite` check and client-side fallback are gone; `ApplySort →
+ThenBy(r.Id) → Skip → Take` is the only path.
+- `GetFacetOptionsQueryHandler`'s in-memory topic flattening is gone; `unnest()` is the only path.
+- Hidden Gems' score-history fetch now orders in SQL instead of after materializing, where the
+  `(RepositoryId, ComputedAtUtc)` covering index can serve it. It sorted client-side only because
+  SQLite rejects `DateTimeOffset` in `ORDER BY`.
+- Roughly a dozen comments across the pipeline justified in-memory loads on "must behave identically
+  on SQLite and Npgsql." That rationale no longer exists, so it is corrected rather than left
+  standing - in three cases the load is now attributed to review finding H-3, which is what actually
+  keeps it.
+
+**New coverage**, matching what the recommendation asked for:
+
+- All four sort fields in both directions (8 cases). Four repositories are seeded with deliberately
+  uncorrelated star / commits-per-week / latest-score / first-discovered values so that all eight
+  expected orderings differ - a handler reading the wrong column cannot pass by coincidence.
+  Verified by mutation: inverting the Stars direction fails both Stars cases and nothing else.
+- Pagination boundaries: paging the full set at `PageSize: 2` must concatenate to exactly the
+  unpaginated order (the drop/duplicate failure mode `LIMIT/OFFSET` produces without a total order,
+  which the `ThenBy(r.Id)` tie-break exists to prevent), and the beyond-last page must be empty with
+  an accurate `TotalCount`.
+- Physical index verification against `pg_indexes`: the GIN method on `Repositories."Topics"` (a
+  btree there would leave the Topic facet full-scanning), the `Scores` composite index, and a
+  general assertion that every index the model declares was actually created by a migration. None of
+  this was checkable before.
+
+**Not done**: `WebApplicationFactory<Program>` HTTP-level integration tests. The recommendation's
+stated minimum was sort, pagination and migration coverage, all at the handler boundary;
+`Program.cs`'s note about a future `WebApplicationFactory` stands unaddressed.
+
+**Modules/files affected**: `tests/.../Infrastructure/PostgresFixture.cs` and `PostgresTestBase.cs`
+(new), `GitCrawler.Api.Tests.csproj`, all eleven database-backed test fixtures,
+`Features/Repositories/GetHiddenGems/GetHiddenGemsQuery.cs`,
+`Features/Repositories/RepositoryCardQuery.cs`,
+`Features/Facets/GetFacetOptions/GetFacetOptionsQuery.cs`, `Data/GitCrawlerDbContext.cs`,
+`Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs`,
+`Features/Trends/AggregateTrends/AggregateTrendsCommand.cs`, `docs/architecture.md` (v33),
+`docs/code-review.md`, `docs/setup.md`, `docs/test-runbook.md`, `CLAUDE.md`.
+
+**Breaking changes**: none at runtime. For contributors, **`dotnet test` now requires a running
+Docker daemon** - recorded in `docs/setup.md`'s prerequisites, `docs/test-runbook.md` and
+`CLAUDE.md`. With Docker down the suite fails while the fixture tries to start the container, so
+the failure surfaces before any test assertion runs.
+
+**Smoke tests**: `dotnet build` (0 errors), `dotnet test` (186 passed, 0 failed, ~7s, 12 new),
+`dotnet format --verify-no-changes`, plus the deliberate mutation described above to confirm the new
+sort coverage is not vacuous.
 
 ## Revision 23 - 2026-09-06 - The summarizer stops on a rate limit instead of burning the batch against it
 

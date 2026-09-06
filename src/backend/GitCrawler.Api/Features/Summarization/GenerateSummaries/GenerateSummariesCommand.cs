@@ -61,12 +61,11 @@ public class GenerateSummariesCommandHandler(
         // deliberate divergence from the Scoring Engine's re-scoring-on-recrawl behavior (Task
         // Packet's explicit callout).
         //
-        // Loaded into memory before filtering/ranking by score, same rationale as
-        // ComputeScoresCommandHandler's own "repositoriesWithScores" load: resolving each repo's
-        // *latest* Score.TotalScore needs to behave identically on the xUnit suite's SQLite
-        // provider and the real Npgsql/Postgres provider, and this pipeline has no pagination
-        // anywhere else at this single-operator-v1 scale - see that class's comment for the full
-        // portability rationale, which applies unchanged here.
+        // Loaded into memory before filtering/ranking by score, same as
+        // ComputeScoresCommandHandler's own "repositoriesWithScores" load. The portability
+        // rationale both once gave is gone with review finding H-4; what remains is that this
+        // pipeline has no pagination anywhere else at this single-operator-v1 scale. Bounding it is
+        // review finding H-3.
         var candidates = await dbContext.Repositories
             .Include(r => r.Scores)
             .Where(r => !r.Summaries.Any())

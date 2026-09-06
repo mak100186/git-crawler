@@ -42,12 +42,12 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, IConfigu
         // into a single SQL predicate as cleanly as a correlated subquery would need, and this
         // pipeline has no pagination anywhere else at this single-operator-v1 scale - revisit if
         // the Repositories table grows large enough for that to matter. The "latest" itself is also
-        // resolved client-side (Enumerable.Max over the loaded Scores, not an ORDER BY translated to
-        // SQL) rather than as a correlated-subquery projection: relational providers vary in whether
-        // they can translate ORDER BY/FirstOrDefault over a DateTimeOffset column into SQL (Npgsql
-        // against Postgres can; the xUnit suite's SQLite provider cannot), and since every row is
-        // already being pulled into memory here anyway, there's no cost to deferring the max to LINQ
-        // to Objects and making this portable across both.
+        // resolved client-side (Enumerable.Max over the loaded Scores, not an ORDER BY translated
+        // to SQL) rather than as a correlated-subquery projection. That was originally for
+        // portability across the suite's SQLite provider, which cannot translate ORDER BY over a
+        // DateTimeOffset column; with the suite moved to real PostgreSQL (review finding H-4) that
+        // reason is gone, and the only remaining one is that every row is already in memory here
+        // anyway. Making this bounded is review finding H-3, which H-4 unblocked.
         var repositoriesWithScores = await dbContext.Repositories
             .Include(r => r.Scores)
             .ToListAsync(cancellationToken);
@@ -88,11 +88,9 @@ public class ComputeScoresCommandHandler(GitCrawlerDbContext dbContext, IConfigu
     //
     // One statement, one round trip. A window function is used because "keep the N most recent rows
     // per repository" is not expressible in LINQ - EF Core has no ROW_NUMBER() translation - and the
-    // portable alternatives are either a query per repository or loading every row into memory,
-    // which is the problem this is meant to solve. The SQL is deliberately provider-neutral:
-    // double-quoted identifiers, ROW_NUMBER() OVER (PARTITION BY ...) and a subquery are all
-    // supported by both Npgsql/PostgreSQL and the SQLite provider the test suite runs against
-    // (window functions since SQLite 3.25).
+    // alternatives are either a query per repository or loading every row into memory, which is the
+    // problem this is meant to solve. Raw SQL here is PostgreSQL, the only database this ships on
+    // and now the only one the test suite runs against (review finding H-4).
     private async Task<int> PruneScoreHistoryAsync(CancellationToken cancellationToken)
     {
         // A retention count below 2 would delete the row TrendGrowth compares against, silently

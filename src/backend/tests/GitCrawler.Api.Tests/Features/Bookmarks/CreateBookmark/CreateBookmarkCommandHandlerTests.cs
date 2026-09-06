@@ -1,35 +1,17 @@
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Bookmarks.CreateBookmark;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Tests.Features.Bookmarks.CreateBookmark;
 
-public class CreateBookmarkCommandHandlerTests : IDisposable
+public class CreateBookmarkCommandHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
     private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 8, 2, 0, 0, 0, TimeSpan.Zero));
 
-    public CreateBookmarkCommandHandlerTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
-    private CreateBookmarkCommandHandler CreateHandler() => new(_dbContext, _timeProvider);
+    private CreateBookmarkCommandHandler CreateHandler() => new(DbContext, _timeProvider);
 
     private async Task<Repository> AddRepositoryAsync(long gitHubId)
     {
@@ -43,8 +25,8 @@ public class CreateBookmarkCommandHandlerTests : IDisposable
             CreatedAtUtc = DateTimeOffset.UtcNow,
             FirstDiscoveredAtUtc = DateTimeOffset.UtcNow,
         };
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
         return repository;
     }
 
@@ -59,7 +41,7 @@ public class CreateBookmarkCommandHandlerTests : IDisposable
         Assert.NotNull(result.Bookmark);
         Assert.Equal(repository.Id, result.Bookmark.RepositoryId);
         Assert.Equal(_timeProvider.GetUtcNow(), result.Bookmark.CreatedAtUtc);
-        Assert.Equal(1, await _dbContext.Bookmarks.CountAsync());
+        Assert.Equal(1, await DbContext.Bookmarks.CountAsync());
     }
 
     [Fact]
@@ -73,7 +55,7 @@ public class CreateBookmarkCommandHandlerTests : IDisposable
         var result = await handler.HandleAsync(new CreateBookmarkCommand(999999), CancellationToken.None);
 
         Assert.Null(result.Bookmark);
-        Assert.Equal(0, await _dbContext.Bookmarks.CountAsync());
+        Assert.Equal(0, await DbContext.Bookmarks.CountAsync());
     }
 
     [Fact]
@@ -90,7 +72,7 @@ public class CreateBookmarkCommandHandlerTests : IDisposable
         Assert.NotNull(first.Bookmark);
         Assert.NotNull(second.Bookmark);
         Assert.Equal(first.Bookmark.Id, second.Bookmark.Id);
-        Assert.Equal(1, await _dbContext.Bookmarks.CountAsync());
+        Assert.Equal(1, await DbContext.Bookmarks.CountAsync());
     }
 
     private sealed class FakeTimeProvider(DateTimeOffset utcNow) : TimeProvider

@@ -1,38 +1,20 @@
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Facets.GetFacetOptions;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Tests.Features.Facets.GetFacetOptions;
 
-// Same SQLite-backed DbContext approach as GetCategoriesQueryHandlerTests: this handler's whole
-// point is that Distinct() runs server-side, so a provider that actually translates the query is
-// the only thing that proves it.
-public class GetFacetOptionsQueryHandlerTests : IDisposable
+// Runs against the shared PostgreSQL container (see PostgresFixture). This handler's whole point is
+// that Distinct() runs server-side, and its topic flattening needs unnest() - which the suite's
+// previous SQLite provider could not translate at all, so this is the only setup that proves it.
+public class GetFacetOptionsQueryHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
     private long _nextGitHubId = 1;
 
-    public GetFacetOptionsQueryHandlerTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
-    private GetFacetOptionsQueryHandler CreateHandler() => new(_dbContext);
+    private GetFacetOptionsQueryHandler CreateHandler() => new(DbContext);
 
     private async Task AddRepositoryAsync(string? licenseIdentifier, string[] topics, bool scored)
     {
@@ -48,18 +30,18 @@ public class GetFacetOptionsQueryHandlerTests : IDisposable
             CreatedAtUtc = DateTimeOffset.UtcNow,
             FirstDiscoveredAtUtc = DateTimeOffset.UtcNow,
         };
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
         if (scored)
         {
-            _dbContext.Scores.Add(new Score
+            DbContext.Scores.Add(new Score
             {
                 RepositoryId = repository.Id,
                 TotalScore = 50,
                 ComputedAtUtc = DateTimeOffset.UtcNow,
             });
-            await _dbContext.SaveChangesAsync();
+            await DbContext.SaveChangesAsync();
         }
     }
 
