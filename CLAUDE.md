@@ -58,7 +58,7 @@ Backend (`src/backend/`):
 
 ```bash
 dotnet build          # build
-dotnet test           # run tests
+dotnet test           # run tests - needs Docker running (PostgreSQL Testcontainers)
 dotnet format         # format
 ```
 

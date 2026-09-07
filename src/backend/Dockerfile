@@ -44,6 +44,10 @@ COPY --from=backend-build /app/publish .
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 
+# Drop root. Nothing at runtime needs it - 8080 is unprivileged and the app writes nothing to disk.
+# APP_UID is defined by the .NET base images for exactly this.
+USER $APP_UID
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 

@@ -1,43 +1,22 @@
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GitCrawler.Api.Tests.Features.Crawling.DiscoverRepositories;
 
-// Same SQLite-backed DbContext approach as GitCrawlerDbContextTests (not the EF Core InMemory
-// provider) so the upsert tests exercise the real unique-index-on-GitHubId constraint, not a
-// weaker in-memory approximation of it.
-public class DiscoverRepositoriesCommandHandlerTests : IDisposable
+// Runs against the shared PostgreSQL container (see PostgresFixture) so the upsert tests exercise
+// the real unique-index-on-GitHubId constraint, not an in-memory approximation of it.
+public class DiscoverRepositoriesCommandHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
     private readonly FakeGitHubDiscoveryClient _discoveryClient = new();
     private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 8, 2, 0, 0, 0, TimeSpan.Zero));
 
-    public DiscoverRepositoriesCommandHandlerTests()
-    {
-        // The in-memory SQLite database is destroyed the moment its last connection closes, so
-        // this connection must stay open for the test's lifetime rather than being opened per call.
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
     private DiscoverRepositoriesCommandHandler CreateHandler() =>
-        new(_dbContext, _discoveryClient, NullLogger<DiscoverRepositoriesCommandHandler>.Instance, _timeProvider);
+        new(DbContext, _discoveryClient, NullLogger<DiscoverRepositoriesCommandHandler>.Instance, _timeProvider);
 
     private static DiscoveredRepository NewDiscoveredRepo(
         long gitHubId,
@@ -70,8 +49,8 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
-        Assert.Equal(1, await _dbContext.Repositories.CountAsync());
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 123);
+        Assert.Equal(1, await DbContext.Repositories.CountAsync());
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 123);
         Assert.Equal("octocat", stored.Owner);
         Assert.Equal("hello-world", stored.Name);
         Assert.Equal(4, stored.ContributorCount);
@@ -89,7 +68,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         var handler = CreateHandler();
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 321);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 321);
         Assert.Equal(_timeProvider.GetUtcNow(), stored.FirstDiscoveredAtUtc);
     }
 
@@ -97,7 +76,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
     public async Task Handle_ExistingGitHubId_NeverOverwritesFirstDiscoveredAtUtc()
     {
         var originalFirstDiscovered = _timeProvider.GetUtcNow().AddDays(-30);
-        _dbContext.Repositories.Add(new Repository
+        DbContext.Repositories.Add(new Repository
         {
             GitHubId = 42,
             Owner = "octocat",
@@ -108,7 +87,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
             FirstDiscoveredAtUtc = originalFirstDiscovered,
             ContributorCountFetchedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(42)]));
 
@@ -117,7 +96,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
 
         // A re-crawl must not touch FirstDiscoveredAtUtc (F-010 D1) - otherwise a frequently
         // re-crawled old repo would look newer than a genuinely new discovery under "Newest" sort.
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 42);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 42);
         Assert.Equal(originalFirstDiscovered, stored.FirstDiscoveredAtUtc);
     }
 
@@ -130,7 +109,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         var handler = CreateHandler();
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 500);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 500);
         Assert.Equal(["cli", "dotnet"], stored.Topics);
 
         // Topics is refreshed every crawl (unlike FirstDiscoveredAtUtc) - a repo's topic list can
@@ -139,7 +118,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         _discoveryClient.EnqueueContributorCount(1);
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
-        stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 500);
+        stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 500);
         Assert.Equal(["cli"], stored.Topics);
     }
 
@@ -152,14 +131,14 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         var handler = CreateHandler();
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 600);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 600);
         Assert.Empty(stored.Topics);
     }
 
     [Fact]
     public async Task Handle_ExistingGitHubId_UpdatesExistingRow_DoesNotDuplicate()
     {
-        _dbContext.Repositories.Add(new Repository
+        DbContext.Repositories.Add(new Repository
         {
             GitHubId = 42,
             Owner = "octocat",
@@ -171,7 +150,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
             // Stale on purpose so this test also implicitly exercises the "refetch when stale" path.
             ContributorCountFetchedAtUtc = _timeProvider.GetUtcNow().AddDays(-30),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(42, name: "new-name")]));
         _discoveryClient.EnqueueContributorCount(9);
@@ -181,8 +160,8 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
 
         // Re-crawling an already-known GitHubId must update, not duplicate (F-001 spike finding;
         // GitCrawlerDbContext enforces this at the schema level via a unique index on GitHubId).
-        Assert.Equal(1, await _dbContext.Repositories.CountAsync(r => r.GitHubId == 42));
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 42);
+        Assert.Equal(1, await DbContext.Repositories.CountAsync(r => r.GitHubId == 42));
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 42);
         Assert.Equal("new-name", stored.Name);
         Assert.Equal(10, stored.StarCount);
         Assert.Equal(9, stored.ContributorCount);
@@ -198,7 +177,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
 
         Assert.Equal(0, result.DiscoveredCount);
         Assert.Equal(0, result.UpsertedCount);
-        Assert.Equal(0, await _dbContext.Repositories.CountAsync());
+        Assert.Equal(0, await DbContext.Repositories.CountAsync());
         Assert.Equal(0, _discoveryClient.GetContributorCountCallCount);
     }
 
@@ -211,7 +190,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         var handler = CreateHandler();
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 7);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 7);
         Assert.Null(stored.LicenseIdentifier);
         Assert.Null(stored.LicenseName);
     }
@@ -249,7 +228,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         Assert.Equal(2, _discoveryClient.GetContributorCountCallCount);
         Assert.Contains(TimeSpan.FromMinutes(5), _timeProvider.RequestedDelays);
 
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 55);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 55);
         Assert.Equal(3, stored.ContributorCount);
     }
 
@@ -302,7 +281,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         Assert.Equal(1, result.ContributorCountSkipped);
         Assert.Equal(0, result.ContributorCountFetches);
 
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 200);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 200);
         Assert.Null(stored.ContributorCount);
         Assert.Equal(_timeProvider.GetUtcNow(), stored.ContributorCountFetchedAtUtc);
     }
@@ -310,7 +289,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
     [Fact]
     public async Task Handle_ContributorCountFetchedRecently_SkipsRestCall()
     {
-        _dbContext.Repositories.Add(new Repository
+        DbContext.Repositories.Add(new Repository
         {
             GitHubId = 88,
             Owner = "octocat",
@@ -322,7 +301,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
             // Well within the 7-day freshness window (F-001 spike §7 caching cadence).
             ContributorCountFetchedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(88)]));
 
@@ -332,7 +311,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         Assert.Equal(0, _discoveryClient.GetContributorCountCallCount);
         Assert.Equal(1, result.ContributorCountSkipped);
         Assert.Equal(0, result.ContributorCountFetches);
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 88);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 88);
         Assert.Equal(12, stored.ContributorCount);
     }
 
@@ -347,14 +326,14 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
 
         Assert.Equal(1, _discoveryClient.GetContributorCountCallCount);
         Assert.Equal(1, result.ContributorCountFetches);
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 99);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 99);
         Assert.Equal(6, stored.ContributorCount);
     }
 
     [Fact]
     public async Task Handle_ContributorCountStale_RefetchesViaRest()
     {
-        _dbContext.Repositories.Add(new Repository
+        DbContext.Repositories.Add(new Repository
         {
             GitHubId = 100,
             Owner = "octocat",
@@ -366,7 +345,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
             // Older than the 7-day freshness window.
             ContributorCountFetchedAtUtc = _timeProvider.GetUtcNow().AddDays(-8),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         _discoveryClient.EnqueueDiscoveryPage(new DiscoveryPage(false, null, [NewDiscoveredRepo(100)]));
         _discoveryClient.EnqueueContributorCount(50);
@@ -375,7 +354,7 @@ public class DiscoverRepositoriesCommandHandlerTests : IDisposable
         await handler.HandleAsync(new DiscoverRepositoriesCommand(), CancellationToken.None);
 
         Assert.Equal(1, _discoveryClient.GetContributorCountCallCount);
-        var stored = await _dbContext.Repositories.SingleAsync(r => r.GitHubId == 100);
+        var stored = await DbContext.Repositories.SingleAsync(r => r.GitHubId == 100);
         Assert.Equal(50, stored.ContributorCount);
     }
 }

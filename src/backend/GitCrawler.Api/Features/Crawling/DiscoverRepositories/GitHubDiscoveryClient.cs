@@ -15,6 +15,7 @@ public class GitHubDiscoveryClient(
     Connection graphQlConnection,
     IHttpClientFactory httpClientFactory,
     IConfiguration configuration,
+    TimeProvider timeProvider,
     ILogger<GitHubDiscoveryClient> logger) : IGitHubDiscoveryClient
 {
     // Name of the HttpClientFactory-registered client this class expects (see Program.cs) -
@@ -82,7 +83,7 @@ public class GitHubDiscoveryClient(
             throw new GitHubRestRateLimitExceededException(resetAtUtc);
         }
 
-        if (IsRestSecondaryRateLimited(response, out var retryAfter))
+        if (IsRestSecondaryRateLimited(response, timeProvider, out var retryAfter))
         {
             throw new GitHubSecondaryRateLimitException(retryAfter);
         }
@@ -156,7 +157,7 @@ public class GitHubDiscoveryClient(
 
     private string BuildSearchQuery()
     {
-        var since = DateTimeOffset.UtcNow.AddDays(-_lookbackDays).ToString("yyyy-MM-dd");
+        var since = timeProvider.GetUtcNow().AddDays(-_lookbackDays).ToString("yyyy-MM-dd");
         return $"pushed:>={since} stars:>={_minimumStars} fork:false archived:false";
     }
 
@@ -178,7 +179,10 @@ public class GitHubDiscoveryClient(
     private static bool IsPrimaryRateLimitError(GraphQLException ex) =>
         ex.Message.Contains("RATE_LIMITED", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRestPrimaryRateLimited(HttpResponseMessage response, out DateTimeOffset resetAtUtc)
+    // Internal, not private: GenerateSummariesCommandHandler fetches READMEs from the same GitHub
+    // REST API on the same shared budget, so it has to recognise the same two signals (review
+    // finding M-3). Duplicating the header contract in a second slice is how the two drift apart.
+    internal static bool IsRestPrimaryRateLimited(HttpResponseMessage response, out DateTimeOffset resetAtUtc)
     {
         resetAtUtc = default;
 
@@ -221,7 +225,8 @@ public class GitHubDiscoveryClient(
         return body.Contains("too large to list contributors", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsRestSecondaryRateLimited(HttpResponseMessage response, out TimeSpan retryAfter)
+    // Internal for the same reason as IsRestPrimaryRateLimited above.
+    internal static bool IsRestSecondaryRateLimited(HttpResponseMessage response, TimeProvider timeProvider, out TimeSpan retryAfter)
     {
         retryAfter = default;
 
@@ -238,7 +243,7 @@ public class GitHubDiscoveryClient(
 
         if (response.Headers.RetryAfter?.Date is { } date)
         {
-            retryAfter = date - DateTimeOffset.UtcNow;
+            retryAfter = date - timeProvider.GetUtcNow();
             return true;
         }
 

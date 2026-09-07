@@ -1,34 +1,15 @@
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Bookmarks.DeleteBookmark;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Tests.Features.Bookmarks.DeleteBookmark;
 
-public class DeleteBookmarkCommandHandlerTests : IDisposable
+public class DeleteBookmarkCommandHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
-
-    public DeleteBookmarkCommandHandlerTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
-    private DeleteBookmarkCommandHandler CreateHandler() => new(_dbContext);
+    private DeleteBookmarkCommandHandler CreateHandler() => new(DbContext);
 
     private async Task<Repository> AddRepositoryAsync(long gitHubId)
     {
@@ -42,8 +23,8 @@ public class DeleteBookmarkCommandHandlerTests : IDisposable
             CreatedAtUtc = DateTimeOffset.UtcNow,
             FirstDiscoveredAtUtc = DateTimeOffset.UtcNow,
         };
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
         return repository;
     }
 
@@ -51,14 +32,14 @@ public class DeleteBookmarkCommandHandlerTests : IDisposable
     public async Task Handle_ExistingBookmark_DeletesIt()
     {
         var repository = await AddRepositoryAsync(1);
-        _dbContext.Bookmarks.Add(new Bookmark { RepositoryId = repository.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
-        await _dbContext.SaveChangesAsync();
+        DbContext.Bookmarks.Add(new Bookmark { RepositoryId = repository.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
+        await DbContext.SaveChangesAsync();
 
         var handler = CreateHandler();
         var result = await handler.HandleAsync(new DeleteBookmarkCommand(repository.Id), CancellationToken.None);
 
         Assert.True(result.Deleted);
-        Assert.Equal(0, await _dbContext.Bookmarks.CountAsync());
+        Assert.Equal(0, await DbContext.Bookmarks.CountAsync());
     }
 
     [Fact]

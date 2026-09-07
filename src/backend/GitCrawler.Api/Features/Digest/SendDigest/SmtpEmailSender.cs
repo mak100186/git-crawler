@@ -28,10 +28,14 @@ public class SmtpEmailSender(IConfiguration configuration) : IEmailSender
             throw new InvalidOperationException("Smtp:Host and Smtp:FromAddress must both be configured to send the digest email.");
         }
 
-        var port = configuration.GetValue("Smtp:Port", 587);
+        // TryParse rather than GetValue<T>: docker-compose.yml passes Smtp__Port/Smtp__EnableSsl
+        // through unconditionally, so they arrive as empty strings when the operator hasn't set
+        // them in .env - and GetValue<int>/<bool> throw on an empty string rather than falling back
+        // to the default. An unusable value here means "not configured", same as an unset one.
+        var port = int.TryParse(configuration["Smtp:Port"], out var configuredPort) ? configuredPort : 587;
         var username = configuration["Smtp:Username"];
         var password = configuration["Smtp:Password"];
-        var enableSsl = configuration.GetValue("Smtp:EnableSsl", true);
+        var enableSsl = !bool.TryParse(configuration["Smtp:EnableSsl"], out var configuredSsl) || configuredSsl;
 
         using var client = new SmtpClient(host, port)
         {

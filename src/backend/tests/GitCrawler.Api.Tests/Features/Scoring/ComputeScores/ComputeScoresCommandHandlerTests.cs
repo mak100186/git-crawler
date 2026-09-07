@@ -1,40 +1,39 @@
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace GitCrawler.Api.Tests.Features.Scoring.ComputeScores;
 
-// Same SQLite-backed DbContext approach as DiscoverRepositoriesCommandHandlerTests / GitCrawlerDbContextTests
-// (not the EF Core InMemory provider) so the FK/relationship navigation this handler relies on
-// (Repository.Scores) behaves like the real relational provider.
-public class ComputeScoresCommandHandlerTests : IDisposable
+// Runs against the shared PostgreSQL container (see PostgresFixture) so the FK/relationship
+// navigation this handler relies on (Repository.Scores) behaves as it does in production - and so
+// PruneScoreHistoryAsync's raw ROW_NUMBER() retention SQL is executed by the database that actually
+// runs it.
+public class ComputeScoresCommandHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
     private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 8, 2, 0, 0, 0, TimeSpan.Zero));
 
-    public ComputeScoresCommandHandlerTests()
-    {
-        // The in-memory SQLite database is destroyed the moment its last connection closes, so
-        // this connection must stay open for the test's lifetime rather than being opened per call.
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
+    private ComputeScoresCommandHandler CreateHandler(IConfiguration? configuration = null) =>
+        new(DbContext, configuration ?? new ConfigurationBuilder().Build(), _timeProvider);
 
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
+    private static IConfiguration ConfigurationWithBatchSize(int batchSize) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Scoring:BatchSize"] = batchSize.ToString(),
+            })
+            .Build();
 
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
-    private ComputeScoresCommandHandler CreateHandler() => new(_dbContext, _timeProvider);
+    private static IConfiguration ConfigurationWithRetention(int retentionCount) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Scoring:ScoreHistoryRetentionCount"] = retentionCount.ToString(),
+            })
+            .Build();
 
     private Repository NewRepository(
         long gitHubId,
@@ -66,15 +65,15 @@ public class ComputeScoresCommandHandlerTests : IDisposable
     public async Task Handle_RepositoryWithNoScore_WritesNewScoreRow_WithSignalsFromRepositoryFields()
     {
         var repository = NewRepository(gitHubId: 1, licenseIdentifier: "Apache-2.0", commitCount: 52, contributorCount: 7, forkCount: 4, starCount: 15);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
 
         Assert.Equal(1, result.ScoredCount);
         Assert.Equal(0, result.SkippedCount);
 
-        var score = await _dbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
+        var score = await DbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
         Assert.True(score.HasLicense);
         Assert.Equal("Apache-2.0", score.LicenseType);
         Assert.Equal(7, score.ContributorCount);
@@ -94,10 +93,10 @@ public class ComputeScoresCommandHandlerTests : IDisposable
     public async Task Handle_RepositoryAlreadyScoredAfterItsLastCrawl_IsSkipped()
     {
         var repository = NewRepository(gitHubId: 2, lastCrawledAtUtc: _timeProvider.GetUtcNow().AddDays(-2));
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
-        _dbContext.Scores.Add(new Score
+        DbContext.Scores.Add(new Score
         {
             RepositoryId = repository.Id,
             HasLicense = true,
@@ -110,23 +109,23 @@ public class ComputeScoresCommandHandlerTests : IDisposable
             // computed, so it should not be re-scored.
             ComputedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
 
         Assert.Equal(0, result.ScoredCount);
         Assert.Equal(1, result.SkippedCount);
-        Assert.Equal(1, await _dbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
+        Assert.Equal(1, await DbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
     }
 
     [Fact]
     public async Task Handle_RepositoryRecrawledSinceLastScore_IsReScored_AddsNewScoreRow()
     {
         var repository = NewRepository(gitHubId: 3, lastCrawledAtUtc: _timeProvider.GetUtcNow());
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
-        _dbContext.Scores.Add(new Score
+        DbContext.Scores.Add(new Score
         {
             RepositoryId = repository.Id,
             HasLicense = true,
@@ -138,7 +137,7 @@ public class ComputeScoresCommandHandlerTests : IDisposable
             // Older than the repo's LastCrawledAtUtc set above - new crawl data has landed since.
             ComputedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
         });
-        await _dbContext.SaveChangesAsync();
+        await DbContext.SaveChangesAsync();
 
         var result = await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
 
@@ -146,19 +145,19 @@ public class ComputeScoresCommandHandlerTests : IDisposable
         Assert.Equal(0, result.SkippedCount);
         // Score's schema supports multiple rows per repo (a history) by design (F-004) - re-scoring
         // adds a new row rather than overwriting the old one.
-        Assert.Equal(2, await _dbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
+        Assert.Equal(2, await DbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
     }
 
     [Fact]
     public async Task Handle_RepositoryWithNoLicense_ComputesHasLicenseFalse_NotAPlaceholder()
     {
         var repository = NewRepository(gitHubId: 4, licenseIdentifier: null, licenseName: null);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
         await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
 
-        var score = await _dbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
+        var score = await DbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
         Assert.False(score.HasLicense);
         Assert.Null(score.LicenseType);
         Assert.False(double.IsNaN(score.TotalScore));
@@ -169,12 +168,12 @@ public class ComputeScoresCommandHandlerTests : IDisposable
     public async Task Handle_ZeroContributorsForksAndStars_DoesNotCrashOrProduceNaNOrInfinity()
     {
         var repository = NewRepository(gitHubId: 5, contributorCount: 0, forkCount: 0, commitCount: 0, starCount: 0);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
         await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
 
-        var score = await _dbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
+        var score = await DbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
         Assert.Equal(0, score.ContributorCount);
         Assert.Equal(0, score.ForkCount);
         Assert.Equal(0, score.StarCount);
@@ -190,12 +189,12 @@ public class ComputeScoresCommandHandlerTests : IDisposable
         // coalesce this rather than throwing/propagating null into the Score's non-nullable int
         // column.
         var repository = NewRepository(gitHubId: 6, contributorCount: null);
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
 
         await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
 
-        var score = await _dbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
+        var score = await DbContext.Scores.SingleAsync(s => s.RepositoryId == repository.Id);
         Assert.Equal(0, score.ContributorCount);
     }
 
@@ -206,5 +205,219 @@ public class ComputeScoresCommandHandlerTests : IDisposable
 
         Assert.Equal(0, result.ScoredCount);
         Assert.Equal(0, result.SkippedCount);
+        Assert.Equal(0, result.PrunedScoreCount);
+    }
+
+    // Review finding H-3 moved the "needs scoring" decision out of LINQ-to-Objects and into SQL.
+    // These pin the two things that move could plausibly have broken: the null-handling of the
+    // predicate, and the batch loop's paging.
+
+    [Fact]
+    public async Task Handle_RepositoryWithAScoreButNeverCrawled_IsSkipped_NotReScoredEveryRun()
+    {
+        // The predicate H-3's recommendation suggested - !r.Scores.Any(s => s.ComputedAtUtc >=
+        // r.LastCrawledAtUtc) - gets this case wrong. In SQL the comparison against a NULL
+        // LastCrawledAtUtc is never true, so Any() is false, so the repository looks like it needs
+        // scoring on every single run and the Scores table grows without bound. The in-memory
+        // version it replaced skipped it, because its second clause required a non-null
+        // LastCrawledAtUtc. This test is the reason the shipped predicate keeps that null check.
+        var repository = NewRepository(1);
+        repository.LastCrawledAtUtc = null;
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+
+        DbContext.Scores.Add(new Score
+        {
+            RepositoryId = repository.Id,
+            HasLicense = true,
+            LicenseType = "MIT",
+            CommitsPerWeek = 1,
+            ContributorCount = 1,
+            ForkCount = 1,
+            StarCount = 1,
+            TotalScore = 50,
+            ComputedAtUtc = _timeProvider.GetUtcNow().AddDays(-1),
+        });
+        await DbContext.SaveChangesAsync();
+
+        var result = await CreateHandler().HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(0, result.ScoredCount);
+        Assert.Equal(1, result.SkippedCount);
+        Assert.Equal(1, await DbContext.Scores.CountAsync());
+    }
+
+    [Fact]
+    public async Task Handle_MoreRepositoriesThanOneBatch_ScoresEveryOneExactlyOnce()
+    {
+        // The loop pages by keyset (Id > lastId) rather than Skip/Take, because writing a Score
+        // removes that repository from the predicate and a numeric offset would then step over
+        // unscored rows. With a batch size of 2 and 7 repositories this crosses the boundary three
+        // times and ends on a partial batch - an off-by-one in either direction shows up as a
+        // missing or duplicated Score row.
+        for (var i = 1; i <= 7; i++)
+        {
+            DbContext.Repositories.Add(NewRepository(i));
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        var result = await CreateHandler(ConfigurationWithBatchSize(2))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(7, result.ScoredCount);
+        Assert.Equal(0, result.SkippedCount);
+        Assert.Equal(7, await DbContext.Scores.CountAsync());
+
+        // Exactly one Score per repository - not six, not eight, and none scored twice.
+        var perRepository = await DbContext.Scores
+            .GroupBy(s => s.RepositoryId)
+            .Select(g => g.Count())
+            .ToListAsync();
+
+        Assert.Equal(7, perRepository.Count);
+        Assert.All(perRepository, count => Assert.Equal(1, count));
+    }
+
+    [Fact]
+    public async Task Handle_BatchingWithAMixOfScoredAndUnscored_CountsBothCorrectly()
+    {
+        // SkippedCount used to be incremented inside a loop over every repository. It is now
+        // derived as total - scored, since the loop only ever sees repositories that need scoring.
+        for (var i = 1; i <= 5; i++)
+        {
+            DbContext.Repositories.Add(NewRepository(i));
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        // Score three of them after their last crawl, so only two still need scoring.
+        var alreadyCurrent = await DbContext.Repositories.OrderBy(r => r.Id).Take(3).ToListAsync();
+        foreach (var repository in alreadyCurrent)
+        {
+            DbContext.Scores.Add(new Score
+            {
+                RepositoryId = repository.Id,
+                HasLicense = true,
+                LicenseType = "MIT",
+                CommitsPerWeek = 1,
+                ContributorCount = 1,
+                ForkCount = 1,
+                StarCount = 1,
+                TotalScore = 50,
+                ComputedAtUtc = _timeProvider.GetUtcNow().AddDays(1),
+            });
+        }
+
+        await DbContext.SaveChangesAsync();
+
+        var result = await CreateHandler(ConfigurationWithBatchSize(1))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(2, result.ScoredCount);
+        Assert.Equal(3, result.SkippedCount);
+    }
+
+    [Fact]
+    public async Task Handle_ScoreHistoryExceedsRetentionCount_DeletesTheOldestRowsOnly()
+    {
+        var repository = NewRepository(gitHubId: 10);
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+
+        // Eight days of history, oldest first. The repository's LastCrawledAtUtc is newer than all
+        // of them, so this run also appends a ninth, current row before retention runs.
+        await SeedScoreHistoryAsync(repository.Id, days: 8);
+
+        var result = await CreateHandler(ConfigurationWithRetention(3))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        var remaining = await DbContext.Scores
+            .Where(s => s.RepositoryId == repository.Id)
+            .Select(s => s.ComputedAtUtc)
+            .ToListAsync();
+
+        // Nine rows in, three kept: the six oldest go, and what survives is the newest three.
+        Assert.Equal(6, result.PrunedScoreCount);
+        Assert.Equal(3, remaining.Count);
+        Assert.All(remaining, computedAt => Assert.True(computedAt >= HistoryDay(6)));
+    }
+
+    [Fact]
+    public async Task Handle_ScoreHistoryWithinRetentionCount_DeletesNothing()
+    {
+        var repository = NewRepository(gitHubId: 11);
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+
+        await SeedScoreHistoryAsync(repository.Id, days: 4);
+
+        var result = await CreateHandler(ConfigurationWithRetention(10))
+            .HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        // Four seeded rows plus the one this run appends, all under the limit of ten.
+        Assert.Equal(0, result.PrunedScoreCount);
+        Assert.Equal(5, await DbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
+    }
+
+    [Fact]
+    public async Task Handle_RetentionConfiguredBelowTwo_StillKeepsTheRowTrendGrowthComparesAgainst()
+    {
+        // TrendGrowth needs the latest two rows. A retention count of 1 (or 0) would silently
+        // flatten every growth pill on the dashboard, so the handler clamps rather than obeying.
+        var repository = NewRepository(gitHubId: 12);
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
+
+        await SeedScoreHistoryAsync(repository.Id, days: 5);
+
+        await CreateHandler(ConfigurationWithRetention(1)).HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        Assert.Equal(2, await DbContext.Scores.CountAsync(s => s.RepositoryId == repository.Id));
+    }
+
+    [Fact]
+    public async Task Handle_MultipleRepositories_PrunesEachIndependently()
+    {
+        var kept = NewRepository(gitHubId: 13);
+        var pruned = NewRepository(gitHubId: 14);
+        DbContext.Repositories.AddRange(kept, pruned);
+        await DbContext.SaveChangesAsync();
+
+        await SeedScoreHistoryAsync(kept.Id, days: 2);
+        await SeedScoreHistoryAsync(pruned.Id, days: 7);
+
+        await CreateHandler(ConfigurationWithRetention(4)).HandleAsync(new ComputeScoresCommand(), CancellationToken.None);
+
+        // Retention partitions by repository. Both gain a row from this run: the first ends at
+        // three, under the limit and untouched; the second is cut from eight back to four.
+        Assert.Equal(3, await DbContext.Scores.CountAsync(s => s.RepositoryId == kept.Id));
+        Assert.Equal(4, await DbContext.Scores.CountAsync(s => s.RepositoryId == pruned.Id));
+    }
+
+    private static DateTimeOffset HistoryDay(int dayIndex) =>
+        new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero).AddDays(dayIndex);
+
+    // Rows dated before the fixture clock so the handler treats these repositories as already
+    // scored and the only thing under test is retention.
+    private async Task SeedScoreHistoryAsync(int repositoryId, int days)
+    {
+        for (var day = 0; day < days; day++)
+        {
+            DbContext.Scores.Add(new Score
+            {
+                RepositoryId = repositoryId,
+                HasLicense = true,
+                LicenseType = "MIT",
+                CommitsPerWeek = 1,
+                ContributorCount = 1,
+                ForkCount = 1,
+                StarCount = 1,
+                TotalScore = 50,
+                ComputedAtUtc = HistoryDay(day),
+            });
+        }
+
+        await DbContext.SaveChangesAsync();
     }
 }

@@ -48,6 +48,10 @@ internal class FakeMessageBus : IMessageBus
 
     public string? TenantId { get; set; }
 
+    // SendDigestJob now reads the result it gets back (to rethrow on a send failure), so unlike the
+    // other stages' identical fakes this one has to return a real record rather than default(T).
+    public SendDigestResult NextResult { get; set; } = new(Sent: true, RepositoryCount: 0, TrendCount: 0);
+
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
         throw new NotSupportedException();
 
@@ -57,7 +61,7 @@ internal class FakeMessageBus : IMessageBus
     public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
     {
         InvokedMessages.Add(message);
-        return Task.FromResult(default(T)!);
+        return Task.FromResult(NextResult is T typed ? typed : default(T)!);
     }
 
     public Task<T> InvokeAsync<T>(object message, DeliveryOptions options, CancellationToken cancellation = default, TimeSpan? timeout = null) =>

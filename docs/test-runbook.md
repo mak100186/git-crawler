@@ -102,9 +102,19 @@ them.
 2. From `src/backend/`, run `dotnet test`. Expect the smoke test in
    `tests/GitCrawler.Api.Tests/SmokeTests.cs` to pass. **Note (post-Phase 1):** this was the only
    test at F-003 scaffolding time; F-004 through F-007 have since added substantial xUnit coverage
-   alongside it (43 tests total as of this Integration pass) — expect the full suite to pass, not
-   just this one file. See `docs/test-cases.md` for the Phase 1 scenario-to-test mapping; Phase 1
-   manual/live flows are not yet in this runbook (tracked separately, pending Finalization).
+   alongside it (186 tests total as of the code-review remediation pass) — expect the full suite to
+   pass, not just this one file. See `docs/test-cases.md` for the Phase 1 scenario-to-test mapping;
+   Phase 1 manual/live flows are not yet in this runbook (tracked separately, pending Finalization).
+
+   **`dotnet test` requires a running Docker daemon.** Every database-backed test runs against a
+   real `postgres:18.4` container started by Testcontainers, not an in-memory provider (review
+   finding H-4). One container is shared by the whole assembly and the migration chain is applied to
+   it once; each test class resets state with `TRUNCATE ... RESTART IDENTITY CASCADE` rather than
+   recreating the schema, so the suite still finishes in seconds. On a cold machine the first run
+   also pulls the image. If Docker is not running, the failure comes from the fixture failing to
+   start the container rather than from any test assertion — check `docker info` before
+   investigating anything else.
+
 3. From `src/frontend/`, run `npm run build`. Expect 0 errors, production bundle emitted.
 4. From `src/frontend/`, run `npm run lint`. Expect a clean pass.
 5. From `src/frontend/`, run `npm run test -- --watch=false`. Expect `app.spec.ts`'s two specs to

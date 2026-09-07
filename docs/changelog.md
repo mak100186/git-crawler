@@ -1,7 +1,501 @@
 # Changelog: GitHub Hidden Gems Discovery Platform
 
-> Revision: 18
-> Last updated: 2026-08-07
+> Revision: 25
+> Last updated: 2026-09-06
+
+## Revision 25 - 2026-09-06 - The write path stops loading whole tables to make small decisions
+
+**H-3 - the three pipeline stages that materialised their entire working set now filter, rank and
+cap in SQL.** F-017 did this for the read path and stopped there. The write path kept deciding in
+LINQ-to-Objects, and the reason it gave was portability across the test suite's SQLite provider -
+which H-4 has now removed, so this was unblocked rather than merely overdue.
+
+**`ComputeScoresCommandHandler`** was the worst of the three: no `WHERE` clause at all. It loaded
+the entire `Repositories` table joined to the entire `Scores` table and then decided in memory which
+repositories needed re-scoring. `Scores` is append-only, so at the 100k-repository scale F-017
+measured against, re-crawled daily for a year, that is roughly 36M rows in a single query.
+
+- The "needs re-scoring" test is now a SQL predicate, and `Include(r => r.Scores)` is gone entirely -
+  it existed only to feed a client-side `Max()`.
+- Repositories are processed in batches of `Scoring:BatchSize` (new setting, default 500) with a
+  `SaveChangesAsync` and a `ChangeTracker.Clear()` per batch. Without the clear, the change tracker
+  would hold every Score added across the run and the memory problem would simply move.
+- The loop pages by **keyset** (`Id > lastId`), not `Skip/Take`. Writing a Score removes that
+  repository from the predicate, so the result set shrinks while the loop runs and a numeric offset
+  would step straight over unscored repositories.
+
+**`GenerateSummariesCommandHandler`** loaded every unsummarized repository with its full score
+history in order to sort by score and take twenty - on a fresh database, or any time summarization
+falls behind, most of the table to select a batch. It now filters, ranks and caps in SQL through
+`RepositoryCardQuery.ApplySort`, which already encodes the "latest by ComputedAtUtc, never
+highest-ever" convention as an ORDER BY correlated subquery. `SkippedCount` is measured with its own
+`CountAsync`, since the batch is now capped before it is loaded.
+
+**`SendDigestCommandHandler`** pulled every scored-and-summarized repository, with its scores,
+summaries and bookmarks, then took the top eight. It now sorts and takes `TopN` before
+`IncludeForCards` runs. `Rank` still executes, on those few rows, because it is what projects into
+the shape the digest renders from.
+
+**A correction to the finding's own recommendation, worth recording.** H-3 suggested the predicate
+`!r.Scores.Any(s => s.ComputedAtUtc >= r.LastCrawledAtUtc)`. That is not equivalent to the code it
+replaces. For a repository that has a Score but a null `LastCrawledAtUtc`, the SQL comparison against
+NULL is never true, so `Any()` is false, so the repository looks like it needs scoring **on every
+run** - unbounded growth in `Scores`, the exact opposite of the intent. The in-memory version it
+replaced skipped that case because its second clause required a non-null `LastCrawledAtUtc`, and the
+shipped predicate keeps that check.
+
+**New coverage** (5 tests): the null-`LastCrawledAtUtc` case; 7 repositories at a batch size of 2, so
+the keyset boundary is crossed three times and the run ends on a partial batch, asserting exactly one
+Score row per repository; mixed scored/unscored counting now that `SkippedCount` is derived by
+subtraction; the summarizer still excluding never-scored repositories at `MinimumScore: 0`, where
+`FirstOrDefault()`'s 0.0 would otherwise qualify them; and SQL ranking taking the highest-scoring
+candidates rather than the first N by Id.
+
+Both risk points were checked by deliberate mutation rather than assumed. The first attempt at the
+`MinimumScore: 0` test did **not** catch its mutation - the fake summarizer ran out of queued
+summaries, so the wrongly-included repository failed instead of succeeding and the assertion still
+read 1. It was strengthened to queue two summaries and assert `FailedCount`/`SkippedCount` as well,
+and then confirmed to fail against the mutation.
+
+**Modules/files affected**: `Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs`,
+`Features/Digest/SendDigest/SendDigestCommand.cs`, `appsettings.json`,
+`tests/.../ComputeScoresCommandHandlerTests.cs`, `tests/.../GenerateSummariesCommandHandlerTests.cs`,
+`docs/architecture.md` (v34), `docs/code-review.md`.
+
+**Breaking changes**: none. `Scoring:BatchSize` is new with a default, and changes no observable
+outcome - only how much of a run is held in memory at once.
+
+**Smoke tests**: `dotnet build` (0 errors), `dotnet test` (191 passed, 5 new),
+`dotnet format --verify-no-changes`, plus the two mutations described above.
+
+## Revision 24 - 2026-09-06 - The tests now run on the database the product ships on
+
+**H-4 - the backend suite moved from in-memory SQLite to a real PostgreSQL container.** The finding
+was not "the tests use the wrong database." It was that `GetHiddenGemsQueryHandler` branched on the
+runtime provider, SQLite took a client-side `IncludeForCards → Rank → Paginate` fallback, and every
+one of the suite's ten handler fixtures used SQLite - so all 26 Hidden Gems tests exercised the
+fallback and **the server-side sort/pagination path that production runs, and that F-017 existed to
+build, was never executed by a test.** The migration chain had the same gap: `EnsureCreated` meant
+the GIN index on `Topics` and the `Score` composite index were never created by a test at all.
+
+SQLite was removed rather than kept alongside PostgreSQL. Keeping two providers is what produced the
+branch, and a branch whose second arm only exists for tests is a permanent invitation for the tested
+path and the shipped path to diverge.
+
+**Infrastructure** - `Testcontainers.PostgreSql` 4.14.0 and `Npgsql.EntityFrameworkCore.PostgreSQL`
+10.0.3 in; `Microsoft.EntityFrameworkCore.Sqlite` and the `SQLitePCLRaw.bundle_e_sqlite3` advisory
+override out.
+
+- `PostgresFixture` starts one `postgres:18.4` container per test assembly and applies
+  `MigrateAsync` - the real migration chain against an empty database, which is a third of the
+  recommendation on its own.
+- `PostgresTestBase` gives each test class a fresh `DbContext` and resets with
+  `TRUNCATE ... RESTART IDENTITY CASCADE`. Reset rather than a database or transaction per test:
+  it keeps the migrated schema, and unlike a rollback it does not interfere with handlers that issue
+  raw SQL - `ComputeScoresCommandHandler`'s retention delete, for one. The suite still finishes in
+  about 7 seconds.
+- The truncation list is **built from the EF model**, not hand-written. The first version was
+  hand-written, omitted `DigestSendLogs`, and the symptom was not a missing table - it was the first
+  digest test's "already sent today" marker leaking into the other fourteen, which failed as
+  fourteen unrelated assertions. A hand-maintained list silently stops resetting every table added
+  after it.
+
+**Production code the constraint had been shaping** - all of it deleted, not merely bypassed:
+
+- `GetHiddenGemsQueryHandler`'s `isSqlite` check and client-side fallback are gone; `ApplySort →
+ThenBy(r.Id) → Skip → Take` is the only path.
+- `GetFacetOptionsQueryHandler`'s in-memory topic flattening is gone; `unnest()` is the only path.
+- Hidden Gems' score-history fetch now orders in SQL instead of after materializing, where the
+  `(RepositoryId, ComputedAtUtc)` covering index can serve it. It sorted client-side only because
+  SQLite rejects `DateTimeOffset` in `ORDER BY`.
+- Roughly a dozen comments across the pipeline justified in-memory loads on "must behave identically
+  on SQLite and Npgsql." That rationale no longer exists, so it is corrected rather than left
+  standing - in three cases the load is now attributed to review finding H-3, which is what actually
+  keeps it.
+
+**New coverage**, matching what the recommendation asked for:
+
+- All four sort fields in both directions (8 cases). Four repositories are seeded with deliberately
+  uncorrelated star / commits-per-week / latest-score / first-discovered values so that all eight
+  expected orderings differ - a handler reading the wrong column cannot pass by coincidence.
+  Verified by mutation: inverting the Stars direction fails both Stars cases and nothing else.
+- Pagination boundaries: paging the full set at `PageSize: 2` must concatenate to exactly the
+  unpaginated order (the drop/duplicate failure mode `LIMIT/OFFSET` produces without a total order,
+  which the `ThenBy(r.Id)` tie-break exists to prevent), and the beyond-last page must be empty with
+  an accurate `TotalCount`.
+- Physical index verification against `pg_indexes`: the GIN method on `Repositories."Topics"` (a
+  btree there would leave the Topic facet full-scanning), the `Scores` composite index, and a
+  general assertion that every index the model declares was actually created by a migration. None of
+  this was checkable before.
+
+**Not done**: `WebApplicationFactory<Program>` HTTP-level integration tests. The recommendation's
+stated minimum was sort, pagination and migration coverage, all at the handler boundary;
+`Program.cs`'s note about a future `WebApplicationFactory` stands unaddressed.
+
+**Modules/files affected**: `tests/.../Infrastructure/PostgresFixture.cs` and `PostgresTestBase.cs`
+(new), `GitCrawler.Api.Tests.csproj`, all eleven database-backed test fixtures,
+`Features/Repositories/GetHiddenGems/GetHiddenGemsQuery.cs`,
+`Features/Repositories/RepositoryCardQuery.cs`,
+`Features/Facets/GetFacetOptions/GetFacetOptionsQuery.cs`, `Data/GitCrawlerDbContext.cs`,
+`Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs`,
+`Features/Trends/AggregateTrends/AggregateTrendsCommand.cs`, `docs/architecture.md` (v33),
+`docs/code-review.md`, `docs/setup.md`, `docs/test-runbook.md`, `CLAUDE.md`.
+
+**Breaking changes**: none at runtime. For contributors, **`dotnet test` now requires a running
+Docker daemon** - recorded in `docs/setup.md`'s prerequisites, `docs/test-runbook.md` and
+`CLAUDE.md`. With Docker down the suite fails while the fixture tries to start the container, so
+the failure surfaces before any test assertion runs.
+
+**Smoke tests**: `dotnet build` (0 errors), `dotnet test` (186 passed, 0 failed, ~7s, 12 new),
+`dotnet format --verify-no-changes`, plus the deliberate mutation described above to confirm the new
+sort coverage is not vacuous.
+
+## Revision 23 - 2026-09-06 - The summarizer stops on a rate limit instead of burning the batch against it
+
+**M-3 - the README fetch now recognises GitHub's rate limits.** It calls the same REST API, on the
+same shared budget, through the same named `HttpClient` as the crawler - but with no rate-limit
+handling at all. A 403 fell through to `EnsureSuccessStatusCode`, surfaced as a generic
+`HttpRequestException`, and was caught by the per-repository handler and logged as "summarization
+failed for this repo". One rate-limited window therefore produced up to `Summarization:BatchSize`
+warnings for a single root cause, burned the rest of the batch against an already-exhausted budget,
+and did it again an hour later.
+
+`TryFetchReadmeAsync` now checks both REST signals before `EnsureSuccessStatusCode` and throws the
+matching `GitHubRateLimitException`. The batch loop catches that **ahead of** its general
+per-repository catch and breaks.
+
+- **Detection is shared, not reimplemented.** `GitHubDiscoveryClient.IsRestPrimaryRateLimited` and
+  `IsRestSecondaryRateLimited` changed from `private` to `internal` and are called from the
+  summarization slice. A second copy of GitHub's header contract in another slice is how the two
+  drift apart.
+- **Backing out, not waiting - and this is why the Polly pipeline is still not shared.** ADR-018's
+  pipeline waits indefinitely because a crawl is the entire point of the crawler's run. Here a
+  README is one optional input to a summary, GitHub's reset can be most of an hour away, and this
+  job runs hourly anyway, so stopping beats holding an LM Studio-bound job open waiting on GitHub.
+  The recommendation offered both options; this is the second one, as directed.
+- **Completed work survives.** `SaveChangesAsync` still runs after the break, so summaries already
+  produced in the run are kept. Repositories never attempted still have no `Summary` row and are
+  picked back up by the "without one" filter next run.
+- `GenerateSummariesResult` gained `StoppedOnRateLimit`, so "summarized 3 of 20 because GitHub cut
+  us off" is distinguishable from "summarized 3 of 20 because 17 repositories failed" - previously
+  identical in the logs.
+- `SkippedCount` is now derived by subtraction (`candidates - summarized - failed`) so the
+  early-exit case counts correctly. Identical to the old value whenever the loop runs to completion.
+
+**Non-rate-limit failures are unchanged**: a 500 from GitHub, or LM Studio erroring on one
+repository, still fails only that repository and the batch continues. That behaviour was correct and
+is pinned by a test so the new early exit cannot swallow it.
+
+**README updated**: the rate-limit section's "Known gap" paragraph no longer lists M-3; the
+summarizer's back-out is described as part of the approach. The remaining gap - no proactive pause
+before a budget runs out - stands.
+
+**Modules/files affected**:
+`Features/Summarization/GenerateSummaries/GenerateSummariesCommand.cs`,
+`Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs` (two visibility changes),
+`tests/.../GenerateSummariesCommandHandlerTests.cs`, `README.md`, `docs/code-review.md`.
+
+**Breaking changes**: none. `StoppedOnRateLimit` is an optional record parameter with a default.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (171 passed, 4 new covering the primary
+signal, the secondary signal, partial progress being kept, and a non-rate-limit failure still
+scoping to one repository), `dotnet format --verify-no-changes`.
+
+## Revision 22 - 2026-09-06 - Filter options now come from the catalog, not from what you have already scrolled past
+
+**L-4 - `GET /api/facets`.** The dashboard's License and Topic dropdowns built their option lists
+client-side, accumulating values off every repository card the session had already fetched. That
+meant you could only filter by a license or topic that happened to be on a page you had already
+looked at - two of the three facets were useless for discovery, which is the product's whole point.
+Language never had the problem, because `/api/categories` already returns the catalog's distinct
+languages.
+
+**Backend** - new vertical slice `Features/Facets/GetFacetOptions/` (query + handler + endpoint,
+ADR-015 layout, mirroring `Features/Categories/GetCategories/`):
+
+- Returns distinct licenses and distinct topics, both sorted ordinally, both `Distinct()`-ed
+  server-side so what crosses the wire is the option list rather than one row per repository.
+- Filtered by `Scores.Any()`, the same eligibility rule `GetHiddenGemsQueryHandler` and
+  `GetCategoriesQueryHandler` use - an option that could never return a result does not belong in
+  the list.
+- Deliberately does **not** return languages. Duplicating them here would leave `/api/categories`
+  either dead or a second source of truth.
+- **Provider split, carried knowingly**: flattening the `Topics` primitive collection needs to unnest
+  one row into many. Npgsql translates that to `unnest()` and does the `Distinct()` in SQL, which is
+  what production runs. SQLite rejects it outright ("Translating this query requires the SQL APPLY
+  operation"), so the test path pulls the arrays and flattens in memory. This is the same
+  provider-capability split `GetHiddenGemsQueryHandler` already carries for its sort path, and it
+  goes away with review finding H-4's move to PostgreSQL Testcontainers.
+
+**Frontend** - `FacetOptionsService.recordRepositories` is deleted along with its call site in
+`HiddenGems`; `ensureFacetOptionsLoaded()` replaces it, called once from `ngOnInit` alongside the
+existing `ensureLanguageOptionsLoaded()`. Both loaders share the same failure behaviour: a failed
+request leaves the dropdown empty rather than blocking the view, and does not latch, so the next
+caller retries. New `FacetApiService` and `FacetOptionsDto` mirror the backend contract.
+
+**Modules/files affected**: `Features/Facets/GetFacetOptions/GetFacetOptionsQuery.cs` (new),
+`Features/Facets/GetFacetOptions/GetFacetOptionsEndpoint.cs` (new), `Program.cs` (registration),
+`core/api/facet-api.service.ts` (new), `core/models/facet.model.ts` (new),
+`core/facets/facet-options.service.ts`, `features/hidden-gems/hidden-gems.ts`,
+`tests/.../GetFacetOptionsQueryHandlerTests.cs` (new), `facet-options.service.spec.ts`,
+`hidden-gems.spec.ts`, `docs/architecture.md` (v32), `docs/code-review.md`.
+
+**Breaking changes**: none. `/api/categories` is untouched and still backs the Language filter.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (167 passed, 5 new covering distinctness,
+topic flattening, the eligibility filter, and null/empty handling), `dotnet format
+--verify-no-changes`, `npm run lint`, `npm test` (47 passed, 3 new covering the catalog-wide load,
+single-fetch behaviour, and retry-after-failure), `npm run format:check`.
+
+## Revision 21 - 2026-09-06 - Score retention, a bounded history fetch, and cached middleware reflection
+
+Three code-review findings closed. No behaviour visible to a dashboard user changes.
+
+**M-8 - `Score` history is now bounded.** It was append-only with nothing pruning it: at a daily
+crawl each repository accrued 365 rows a year of which exactly two were ever read (the latest for
+the breakdown, the second-latest for TrendGrowth).
+`ComputeScoresCommandHandler.PruneScoreHistoryAsync` now deletes everything past the
+`Scoring:ScoreHistoryRetentionCount` most recent rows per repository at the end of each scoring run.
+
+- **New setting**: `Scoring:ScoreHistoryRetentionCount`, default 10 - a deliberate margin over the
+  two rows actually used, so a crawl week is still available when diagnosing a scoring change.
+- **Clamped at 2.** A configured 1 or 0 would silently flatten every growth pill on the dashboard,
+  so it is treated as a misconfiguration to correct rather than an instruction to obey.
+- **Run inline, not as a new recurring job** (the review offered either). This handler is the only
+  thing that adds `Score` rows, so it is the only place history can grow; a separate job would need
+  its own schedule and its own F-016 concurrency guard and would spend most runs finding nothing.
+- **One statement, one round trip.** "Keep the N most recent rows per partition" has no LINQ
+  expression - EF Core does not translate `ROW_NUMBER()` - and the portable alternatives are a query
+  per repository or loading every row into memory, which is the problem being solved. The raw SQL is
+  provider-neutral (double-quoted identifiers, a `ROW_NUMBER() OVER (PARTITION BY ...)` subquery) and
+  runs on both Npgsql/PostgreSQL and the SQLite the test suite uses.
+- `ComputeScoresResult` gained `PrunedScoreCount` so the deletion is visible in the observability
+  log line rather than being silent.
+
+**L-1 - the hidden-gems score fetch is bounded rather than estimated.** Its comment claimed "~10
+rows per repo x <=100 repos = ~1000 rows max" with no mechanism behind the 10. M-8 supplies the
+mechanism, so the fetch is now genuinely capped at the retention count times the page size; the
+comment states the real bound and names the setting that moves it. The query itself is unchanged -
+rewriting it to fetch exactly two rows per repository would need the same window function and buy
+nothing once history is capped.
+
+**L-3 - the observability middleware no longer re-runs reflection per invocation.**
+`ExtractRecordsProcessed` scanned `result.GetType().GetProperties()` and LINQ-filtered it on every
+command and query, including every HTTP request. A chain's result type is fixed, so the scan is now
+resolved once per type into a cached `Func<object, int>`; steady state is a dictionary lookup plus
+one property read. The static stopwatch dictionary is deliberately left as-is, as the review
+recommended - the assumption it depends on is now written down next to it, along with the symptom
+(a growing heap alongside `in -1ms` completion lines) that would show it had stopped holding.
+
+**Governed docs synced in the same pass**: `docs/architecture.md` v31 - §3 Data Store no longer
+describes `Score` as unbounded, and the 10M-row revisit trigger notes that it is now a function of
+repository count times the retention setting.
+
+**Modules/files affected**: `Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Repositories/GetHiddenGems/GetHiddenGemsQuery.cs`,
+`Infrastructure/Observability/ObservabilityMiddleware.cs`, `appsettings.json`,
+`tests/.../ComputeScoresCommandHandlerTests.cs`, `docs/architecture.md`, `docs/code-review.md`.
+
+**Breaking changes**: none. The new setting has a default, and existing rows past the retention
+count are deleted on the next scoring run.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (162 passed, 4 new covering pruning past
+the limit, no-op under the limit, the floor-of-2 clamp, and per-repository partitioning),
+`dotnet format --verify-no-changes`.
+
+## Revision 20 - 2026-09-06 - Scoring reshape (ADR-019) and a README section on rate limits
+
+**Scoring algorithm reweighted and star count reshaped (ADR-019, operator direction):**
+
+- New weights: star count 50%, contributor count 20%, commits per week 15%, license present 10%,
+  fork count 5% (was 10/22.5/27/18/22.5). Still sums to 1.0, still independently identifiable per
+  FR-002.
+- **Star count no longer uses the log curve.** It is bucketed into 12 bands and scored on a
+  symmetric Gaussian centred between buckets 6 and 7, so bucket 1 (0-100 stars) and bucket 12
+  (100,001+) score identically and the middle bands win. A monotonic star signal says the ideal
+  repository is the most-starred one on GitHub, which is the opposite of this platform's purpose;
+  no weight or cap can fix that, because the function was the wrong shape. The old cap of 50 also
+  made every repository above 50 stars indistinguishable on the signal. Full rationale, bucket
+  table, and the rejected alternatives are in ADR-019.
+- The other four signals keep their log-normalization and caps unchanged.
+
+**Review finding L-6 fixed in the same pass**: a contributor count GitHub refuses to enumerate
+("too large to list contributors") now scores full marks for that signal instead of zero.
+`ComputeScoresCommandHandler` distinguishes it from "never fetched" using the existing
+`ContributorCount is null && ContributorCountFetchedAtUtc is not null` state - no schema change.
+At the new 20% weight this was docking the repositories with the healthiest communities.
+
+**Consequence worth knowing**: `Score` rows are append-only, so nothing is rewritten - the next
+crawl writes rows under the new algorithm, and each repository's trend-growth pill will show a
+one-off step change across that boundary before settling.
+
+**Test changes**: the "more stars scores higher" assertion is no longer a valid invariant and was
+replaced with coverage of what actually defines the curve - mirrored buckets scoring identically,
+buckets 6 and 7 sitting at exactly 1.0, the sequence rising to the peak and then falling, and the
+too-many-to-list contributor case matching the at-the-cap case.
+
+**README - two new sections:**
+
+- **How scoring works**: rewritten as the project's positioning rather than a spec dump. Leads with
+  the distinction the whole product rests on - the score is not a verdict on the repository, it is a
+  measure of how likely the reader is to have missed it - and states plainly that a famous
+  repository scoring low is not being criticised. Carries two new hand-authored SVG diagrams on
+  the product palette: `docs/diagrams/img/score-weights.svg`, a stacked bar breaking a score of 100
+  into its five weighted parts, and `docs/diagrams/img/star-score-curve.svg`, the 12 buckets as bars
+  against the continuous Gaussian with the hidden-gem band marked at buckets 3-7. Both compute their
+  numbers from the same formulas the code uses. Also the weight table with a "what it is evidence
+  of" column,
+  and a closing note that ranking accomplished projects is a different question deferred to a future
+  tranche. The 12-row bucket table was dropped from the README as redundant with the diagram; it
+  still lives in ADR-019.
+- **Staying inside GitHub's rate limits**: the three limits GitHub actually enforces (GraphQL 5,000
+  points/hour, REST 5,000 requests/hour as a separate pool, and secondary abuse-detection limits),
+  the wire signal that identifies each, and what the crawler does about them - GraphQL-first to keep
+  the REST budget for the one thing it is needed for, 7-day contributor-count caching, header-only
+  contributor counts via `per_page=1` + `Link`, server-provided waits rather than guessed backoff,
+  a permanent-failure pathway that bypasses retries entirely, and per-page cost logging. Two known
+  gaps are stated rather than glossed: the summarizer's README fetch bypasses the pipeline (M-3),
+  and there is no proactive pause before a budget runs out.
+
+**Modules/files affected**: `Features/Scoring/ComputeScores/ScoringWeights.cs`,
+`Features/Scoring/ComputeScores/ComputeScoresCommand.cs`,
+`Features/Digest/SendDigest/SendDigestCommand.cs` (the "How We Score" copy - the percentages
+themselves were already read from the `ScoringWeights` constants),
+`tests/.../ScoringWeightsTests.cs`, `docs/adr/ADR-019-star-count-bell-curve-scoring.md` (new),
+`README.md`.
+
+**Breaking changes**: none structurally. Scores computed before this revision are not comparable
+with scores computed after it.
+
+**Smoke tests**: `dotnet build` (0 warnings), `dotnet test` (158 passed, 12 new covering the curve
+and the contributor fix), `dotnet format --verify-no-changes`, `npm run format:docs:check`.
+
+## Revision 19 - 2026-09-05 - Code-review remediation pass
+
+Acts on `docs/code-review.md` (full review at commit 54fbfa1). 15 of its 24 findings are fixed
+here; the nine that need design work rather than a bounded edit stay open and are listed at the
+bottom of this entry.
+
+**Security and deployment:**
+
+- **Published ports bound to 127.0.0.1** (`docker-compose.yml`, review H-5). The Hangfire
+  dashboard at `/hangfire` runs with authorization disabled - it can trigger, delete, and re-queue
+  jobs - and was published on every host interface, as were Postgres and (under the `dev` profile)
+  Mailpit. The operator reaches all of them from the host either way.
+- **App container no longer runs as root** (`src/backend/Dockerfile`, review M-7): `USER $APP_UID`.
+  Port 8080 is unprivileged and the process writes nothing to disk.
+- **`Smtp:Password` removed from `appsettings.json`** (review L-10). It shipped empty, but a
+  committed key named `Password` invites a real value being committed into it. Sourced from the
+  environment now, like `GitHub:Token`.
+
+**Daily digest (F-013) can actually send from `make up`:**
+
+- `docker-compose.yml` passes `Smtp__Host/Port/Username/Password/EnableSsl/FromAddress` and
+  `Digest__RecipientEmail` through to the app container; `Program.cs` bridges the same flat
+  `SMTP_*`/`DIGEST_RECIPIENT_EMAIL` names for a bare `dotnet run`; `.env.example` defines them
+  (review H-2). Previously the only place these were configured was
+  `appsettings.Development.json`, pointing at a Mailpit container that `make up` never starts - so
+  the 06:00 UTC job ran daily, skipped, and reported success, in a deployment whose README
+  advertises the digest as shipped. All seven are optional: blank still means "skip with a
+  warning".
+- `SmtpEmailSender` reads `Smtp:Port`/`Smtp:EnableSsl` via `TryParse` instead of `GetValue<T>`,
+  which throws on the empty string those unconditional Compose passthroughs produce.
+
+- **Mailpit runs under `make up`, not just `make dev`**: its `profiles: ["dev"]` line is gone, and
+  `.env.example` now defaults `SMTP_HOST=mailpit` / `SMTP_PORT=1025` / `SMTP_ENABLE_SSL=false`. A
+  fresh `cp .env.example .env` therefore composes and delivers a real digest that lands in Mailpit's
+  UI at `http://localhost:8025/` - inspectable, no credentials, and it cannot mail anyone by
+  accident. `mailpit` is the Compose DNS name; `localhost:1025` (what
+  `appsettings.Development.json` uses, correctly, for `make dev`'s bare backend) resolves to the app
+  container itself and would never reach it.
+
+**Correctness:**
+
+- **Rate-limit retries have a 30-second floor** (`DiscoverRepositoriesCommand`, review M-1). The
+  pathway retries indefinitely by design, but `ResetDelay` returned `TimeSpan.Zero` for a reset
+  timestamp already in the past, and the `DelayGenerator` fallback arm returned `TimeSpan.Zero`
+  outright - unbounded attempts at zero delay is a tight loop against the GitHub API.
+- **404 instead of 500 for bookmarking an unknown repository** (review M-4).
+  `CreateBookmarkCommandHandler` checks the repository exists rather than letting the foreign key
+  reject the insert; it returns `CreateBookmarkResult` (a nullable `BookmarkDto`) which the
+  endpoint maps. `AddProblemDetails` + `UseExceptionHandler` give every route an RFC 7807 error
+  contract - there was none before, so any handler exception was a bare 500.
+- **`GitHubDiscoveryClient` takes `TimeProvider`** instead of calling `DateTimeOffset.UtcNow`
+  directly in `BuildSearchQuery` and `IsRestSecondaryRateLimited` (review L-2), matching every
+  handler around it and making both testable.
+- **README truncation no longer splits a surrogate pair** (`LmStudioRepositorySummarizer`, review
+  L-7).
+- **Removed the no-op `UseHttpsRedirection`** (review L-9): the container exposes no HTTPS port, so
+  it logged a warning and passed everything through.
+
+**Performance and robustness:**
+
+- **One query per crawl page instead of one per repository** (`DiscoverRepositoriesCommand`,
+  review M-2) - 50 round-trips become 1 at the configured page size. The page's newly-added
+  entities go into the same dictionary, so a repository listed twice in one page (GitHub search
+  results shift under an active cursor) can't become a duplicate insert.
+- **`Summarization:BatchSize` corrected from 200 to 20** (review H-1). The handler's default and
+  the comment justifying it as "low minutes even at several seconds/repo" both assume 20; at 200,
+  each run is up to 400 sequential LM Studio calls against an hourly schedule and a 30-minute
+  `DisableConcurrentExecution` timeout. `Summarization:MaxSummaryLength` likewise corrected from
+  180 to the 220 its code comment specifies (review L-5).
+- **Facet filter arrays capped at 50 values** (`RepositoryCardQuery.ClampFilterValues`, review
+  M-5). `language`/`topic`/`license` bind straight off the query string, one `IN (...)` entry per
+  element, with no bound - unlike `page`/`pageSize`, which were already clamped.
+- **Dashboard cancels superseded requests** (`hidden-gems.ts`, review M-6). Fetches now go through
+  a `Subject` + `switchMap` + `takeUntilDestroyed` instead of a bare `.subscribe()` per filter
+  change, so two in-flight requests can no longer settle out of order and leave the grid showing
+  results for a filter the user has already changed.
+
+**Build hygiene:**
+
+- `TreatWarningsAsErrors` added to `src/backend/Directory.Build.props`; removed the dead
+  `"e2e/**/*.ts"` glob from the frontend's `format`/`format:check` scripts (review L-8).
+
+- **A failed digest send no longer reports `Succeeded` to Hangfire.** `SendDigestResult` gained a
+  `SendFailure` field carrying the SMTP exception's message, and `SendDigestJob.RunAsync` rethrows
+  when it is set - so the dashboard shows `Failed` with the real reason (verified live: a stopped
+  Mailpit produced `Retry attempt 1 of 10: The daily digest email failed to send: ...` where the
+  same scenario previously showed `Succeeded`). The handler still catches and logs rather than
+  propagating, so FR-006's "must not crash" contract is intact; what changed is that the outcome
+  reaches the caller. Hangfire's automatic retry now applies, which is safe because `DigestSendLog`
+  is written only after a send actually succeeds. A skip (no recipient, or already sent today)
+  leaves `SendFailure` null and stays `Succeeded`.
+- **Mailpit's captured mail survives a restart**: `MP_DATA_FILE=/data/mailpit.db` plus a
+  `./data/mailpit` bind mount (git-ignored, same shape as `./data/postgres`). It previously kept
+  everything in memory, so `make down`/`make up` silently discarded captured digests - which is
+  exactly what made a successful send look like a failed one during this session.
+
+**Modules/files affected**: `docker-compose.yml`, `.env.example`, `src/backend/Dockerfile`,
+`src/backend/Directory.Build.props`, `src/backend/GitCrawler.Api/Program.cs`,
+`appsettings.json`, `Features/Crawling/DiscoverRepositories/DiscoverRepositoriesCommand.cs`,
+`Features/Crawling/DiscoverRepositories/GitHubDiscoveryClient.cs`,
+`Features/Bookmarks/CreateBookmark/CreateBookmarkCommand.cs`,
+`Features/Bookmarks/CreateBookmark/CreateBookmarkEndpoint.cs`,
+`Features/Repositories/RepositoryCardQuery.cs`,
+`Features/Digest/SendDigest/SmtpEmailSender.cs`,
+`Features/Summarization/GenerateSummaries/LmStudioRepositorySummarizer.cs`,
+`src/frontend/package.json`, `src/frontend/src/app/features/hidden-gems/hidden-gems.ts`,
+`Features/Digest/SendDigest/SendDigestCommand.cs`, `Features/Digest/SendDigest/SendDigestJob.cs`,
+`.gitignore`, `Makefile`, `docs/setup.md`, `docs/code-review.md`.
+
+**Breaking changes**: none for an existing deployment. `.env` files written before this revision
+keep working - the seven new variables are optional and default to empty. The one visible
+behaviour change is that `http://<host-lan-ip>:8080` no longer resolves; use the host itself.
+
+**Still open** (see `docs/code-review.md` for detail): H-3 (three pipeline handlers load whole
+tables), H-4 (no test coverage of the production Npgsql sort/pagination branch - every fixture uses
+SQLite), M-3 (README fetch bypasses the crawler's Polly pipeline), M-8 (score history never
+pruned), L-1, L-3, L-4, L-6, L-11.
+
+**Smoke tests**: `dotnet build` (0 warnings, now error-gated), `dotnet test` (146 passed; new
+coverage for the unknown-repository bookmark path, `SendFailure` on both the skip and failure paths,
+and `SendDigestJob`'s rethrow), `npm run lint`, `npm test` (45 passed),
+`dotnet format --verify-no-changes`, `npm run format:check`, `docker compose config`. End-to-end
+against the live stack: digest delivered into Mailpit, survived `make down && make up`, and a
+stopped Mailpit produced a `Failed` Hangfire job instead of a `Succeeded` one.
 
 ## Revision 18 — 2026-08-07 — MVP closeout pass (documentation only)
 

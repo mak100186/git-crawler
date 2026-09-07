@@ -3,34 +3,15 @@ using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Repositories;
 using GitCrawler.Api.Features.Repositories.GetHiddenGems;
 using GitCrawler.Api.Features.Scoring.ComputeScores;
+using GitCrawler.Api.Tests.Infrastructure;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace GitCrawler.Api.Tests.Features.Repositories.GetHiddenGems;
 
-public class GetHiddenGemsQueryHandlerTests : IDisposable
+public class GetHiddenGemsQueryHandlerTests(PostgresFixture fixture) : PostgresTestBase(fixture)
 {
-    private readonly SqliteConnection _connection;
-    private readonly GitCrawlerDbContext _dbContext;
-
-    public GetHiddenGemsQueryHandlerTests()
-    {
-        _connection = new SqliteConnection("DataSource=:memory:");
-        _connection.Open();
-
-        var options = new DbContextOptionsBuilder<GitCrawlerDbContext>().UseSqlite(_connection).Options;
-        _dbContext = new GitCrawlerDbContext(options);
-        _dbContext.Database.EnsureCreated();
-    }
-
-    public void Dispose()
-    {
-        _dbContext.Dispose();
-        _connection.Dispose();
-    }
-
-    private GetHiddenGemsQueryHandler CreateHandler() => new(_dbContext);
+    private GetHiddenGemsQueryHandler CreateHandler() => new(DbContext);
 
     private async Task<Repository> AddRepositoryAsync(long gitHubId, string name = "repo", string? language = "C#", int stars = 10)
     {
@@ -46,8 +27,8 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
             CreatedAtUtc = DateTimeOffset.UtcNow,
             FirstDiscoveredAtUtc = DateTimeOffset.UtcNow,
         };
-        _dbContext.Repositories.Add(repository);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Repositories.Add(repository);
+        await DbContext.SaveChangesAsync();
         return repository;
     }
 
@@ -74,8 +55,8 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
             TotalScore = totalScore,
             ComputedAtUtc = computedAt ?? DateTimeOffset.UtcNow,
         };
-        _dbContext.Scores.Add(score);
-        await _dbContext.SaveChangesAsync();
+        DbContext.Scores.Add(score);
+        await DbContext.SaveChangesAsync();
         return score;
     }
 
@@ -287,12 +268,12 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
     {
         var old = await AddRepositoryAsync(1, name: "old");
         old.FirstDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-10);
-        _dbContext.SaveChanges();
+        DbContext.SaveChanges();
         await AddScoreAsync(old.Id);
 
         var newer = await AddRepositoryAsync(2, name: "newer");
         newer.FirstDiscoveredAtUtc = DateTimeOffset.UtcNow.AddDays(-1);
-        _dbContext.SaveChanges();
+        DbContext.SaveChanges();
         await AddScoreAsync(newer.Id);
 
         var handler = CreateHandler();
@@ -319,17 +300,115 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
         Assert.Equal([highStars.Id, lowStars.Id], result.Items.Select(i => i.Id));
     }
 
+    // Review finding H-4 asked for every sort field in both directions. Until the suite moved onto a
+    // real PostgreSQL container none of these actually reached ApplySort: the handler detected
+    // SQLite at runtime and took a client-side fallback, so the server-side ORDER BY that production
+    // runs was the one path with no coverage at all.
+    //
+    // The four repositories are seeded so that no two sort keys agree on an ordering - each of the
+    // eight expected sequences below is distinct. A handler that read StarCount where it meant
+    // CommitsPerWeek, or inverted a direction, therefore fails rather than coincidentally passing.
+    private async Task<List<int>> SeedFourRepositoriesWithUncorrelatedSortKeysAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var seeds = new[]
+        {
+            (Stars: 10, Commits: 3.0, Score: 40.0, DiscoveredDaysAgo: 1),
+            (Stars: 40, Commits: 1.0, Score: 30.0, DiscoveredDaysAgo: 3),
+            (Stars: 20, Commits: 4.0, Score: 20.0, DiscoveredDaysAgo: 2),
+            (Stars: 30, Commits: 2.0, Score: 10.0, DiscoveredDaysAgo: 4),
+        };
+
+        var ids = new List<int>();
+        for (var i = 0; i < seeds.Length; i++)
+        {
+            var seed = seeds[i];
+            var repository = await AddRepositoryAsync(i + 1, name: $"repo-{i}", stars: seed.Stars);
+            repository.FirstDiscoveredAtUtc = now.AddDays(-seed.DiscoveredDaysAgo);
+            await DbContext.SaveChangesAsync();
+            await AddScoreAsync(repository.Id, commitsPerWeek: seed.Commits, totalScore: seed.Score, starCount: seed.Stars);
+            ids.Add(repository.Id);
+        }
+
+        return ids;
+    }
+
+    [Theory]
+    // Expected order is given as indexes into the seeded list, since the ids are generated.
+    [InlineData(RepositorySortField.Score, SortDirection.Desc, "0,1,2,3")]
+    [InlineData(RepositorySortField.Score, SortDirection.Asc, "3,2,1,0")]
+    [InlineData(RepositorySortField.Stars, SortDirection.Desc, "1,3,2,0")]
+    [InlineData(RepositorySortField.Stars, SortDirection.Asc, "0,2,3,1")]
+    [InlineData(RepositorySortField.Commits, SortDirection.Desc, "2,0,3,1")]
+    [InlineData(RepositorySortField.Commits, SortDirection.Asc, "1,3,0,2")]
+    [InlineData(RepositorySortField.Newest, SortDirection.Desc, "0,2,1,3")]
+    [InlineData(RepositorySortField.Newest, SortDirection.Asc, "3,1,2,0")]
+    public async Task Handle_EverySortFieldInBothDirections_OrdersServerSide(
+        RepositorySortField sort, SortDirection direction, string expectedOrder)
+    {
+        var ids = await SeedFourRepositoriesWithUncorrelatedSortKeysAsync();
+        var expected = expectedOrder.Split(',').Select(i => ids[int.Parse(i)]).ToList();
+
+        var result = await CreateHandler().HandleAsync(
+            new GetHiddenGemsQuery(new RepositoryFilterCriteria(Sort: sort, Direction: direction)),
+            CancellationToken.None);
+
+        Assert.Equal(expected, result.Items.Select(i => i.Id));
+    }
+
+    [Theory]
+    [InlineData(RepositorySortField.Score, SortDirection.Desc)]
+    [InlineData(RepositorySortField.Stars, SortDirection.Asc)]
+    [InlineData(RepositorySortField.Commits, SortDirection.Desc)]
+    [InlineData(RepositorySortField.Newest, SortDirection.Asc)]
+    public async Task Handle_PagingThroughEveryPage_ReturnsEachRepositoryExactlyOnce(
+        RepositorySortField sort, SortDirection direction)
+    {
+        // LIMIT/OFFSET without a total order silently drops and duplicates rows across pages. That
+        // is what the ThenBy(r.Id) tie-break exists to prevent (F-010), and it is only meaningful
+        // now that pagination happens in SQL rather than over a fully materialized list.
+        var ids = await SeedFourRepositoriesWithUncorrelatedSortKeysAsync();
+
+        var unfiltered = await CreateHandler().HandleAsync(
+            new GetHiddenGemsQuery(new RepositoryFilterCriteria(Sort: sort, Direction: direction)),
+            CancellationToken.None);
+
+        var paged = new List<int>();
+        for (var page = 1; page <= 2; page++)
+        {
+            var result = await CreateHandler().HandleAsync(
+                new GetHiddenGemsQuery(new RepositoryFilterCriteria(
+                    Sort: sort, Direction: direction, Page: page, PageSize: 2)),
+                CancellationToken.None);
+
+            Assert.Equal(2, result.Items.Count);
+            Assert.Equal(ids.Count, result.TotalCount);
+            paged.AddRange(result.Items.Select(i => i.Id));
+        }
+
+        // Same repositories, same order, just split across pages.
+        Assert.Equal(unfiltered.Items.Select(i => i.Id), paged);
+
+        var beyondLast = await CreateHandler().HandleAsync(
+            new GetHiddenGemsQuery(new RepositoryFilterCriteria(
+                Sort: sort, Direction: direction, Page: 3, PageSize: 2)),
+            CancellationToken.None);
+
+        Assert.Empty(beyondLast.Items);
+        Assert.Equal(ids.Count, beyondLast.TotalCount);
+    }
+
     [Fact]
     public async Task Handle_TopicFilter_MatchesReposWithOverlappingTopics()
     {
         var matched = await AddRepositoryAsync(1, name: "matched");
         matched.Topics = ["web", "api", "rest"];
-        _dbContext.SaveChanges();
+        DbContext.SaveChanges();
         await AddScoreAsync(matched.Id);
 
         var unmatched = await AddRepositoryAsync(2, name: "unmatched");
         unmatched.Topics = ["ml", "ai"];
-        _dbContext.SaveChanges();
+        DbContext.SaveChanges();
         await AddScoreAsync(unmatched.Id);
 
         var handler = CreateHandler();
@@ -345,12 +424,12 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
     {
         var mit = await AddRepositoryAsync(1, name: "mit-repo");
         mit.LicenseIdentifier = "MIT";
-        _dbContext.SaveChanges();
+        DbContext.SaveChanges();
         await AddScoreAsync(mit.Id);
 
         var apache = await AddRepositoryAsync(2, name: "apache-repo");
         apache.LicenseIdentifier = "Apache-2.0";
-        _dbContext.SaveChanges();
+        DbContext.SaveChanges();
         await AddScoreAsync(apache.Id);
 
         var handler = CreateHandler();
@@ -366,8 +445,8 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
     {
         var bookmarked = await AddRepositoryAsync(1, name: "bookmarked");
         await AddScoreAsync(bookmarked.Id);
-        _dbContext.Bookmarks.Add(new Bookmark { RepositoryId = bookmarked.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
-        await _dbContext.SaveChangesAsync();
+        DbContext.Bookmarks.Add(new Bookmark { RepositoryId = bookmarked.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
+        await DbContext.SaveChangesAsync();
 
         var unbookmarked = await AddRepositoryAsync(2, name: "unbookmarked");
         await AddScoreAsync(unbookmarked.Id);
@@ -520,8 +599,8 @@ public class GetHiddenGemsQueryHandlerTests : IDisposable
     {
         var bookmarked = await AddRepositoryAsync(1, name: "bookmarked");
         await AddScoreAsync(bookmarked.Id);
-        _dbContext.Bookmarks.Add(new Bookmark { RepositoryId = bookmarked.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
-        await _dbContext.SaveChangesAsync();
+        DbContext.Bookmarks.Add(new Bookmark { RepositoryId = bookmarked.Id, CreatedAtUtc = DateTimeOffset.UtcNow });
+        await DbContext.SaveChangesAsync();
 
         var unbookmarked = await AddRepositoryAsync(2, name: "unbookmarked");
         await AddScoreAsync(unbookmarked.Id);

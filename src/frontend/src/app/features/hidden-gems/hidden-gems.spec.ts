@@ -55,7 +55,7 @@ describe('HiddenGems', () => {
           provide: FacetOptionsService,
           useValue: {
             ensureLanguageOptionsLoaded: vi.fn(),
-            recordRepositories: vi.fn(),
+            ensureFacetOptionsLoaded: vi.fn(),
             languageOptions$: of([]),
             licenseOptions$: of([]),
             topicOptions$: of([]),

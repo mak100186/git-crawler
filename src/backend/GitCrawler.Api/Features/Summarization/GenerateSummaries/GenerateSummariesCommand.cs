@@ -5,6 +5,7 @@ using System.Text;
 using GitCrawler.Api.Data;
 using GitCrawler.Api.Data.Entities;
 using GitCrawler.Api.Features.Crawling.DiscoverRepositories;
+using GitCrawler.Api.Features.Repositories;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -17,7 +18,10 @@ namespace GitCrawler.Api.Features.Summarization.GenerateSummaries;
 // endpoint.
 public record GenerateSummariesCommand;
 
-public record GenerateSummariesResult(int SummarizedCount, int SkippedCount, int FailedCount);
+// StoppedOnRateLimit distinguishes "this run summarized 3 of 20 because GitHub cut us off" from
+// "this run summarized 3 of 20 because 17 individual repositories failed" (review finding M-3). Both
+// used to look identical in the logs, and the first is not a summarization problem at all.
+public record GenerateSummariesResult(int SummarizedCount, int SkippedCount, int FailedCount, bool StoppedOnRateLimit = false);
 
 // Wolverine discovers this handler by convention (a public Handle/HandleAsync method on a class
 // named *Handler in the same assembly) - no manual registration required.
@@ -58,34 +62,44 @@ public class GenerateSummariesCommandHandler(
         // deliberate divergence from the Scoring Engine's re-scoring-on-recrawl behavior (Task
         // Packet's explicit callout).
         //
-        // Loaded into memory before filtering/ranking by score, same rationale as
-        // ComputeScoresCommandHandler's own "repositoriesWithScores" load: resolving each repo's
-        // *latest* Score.TotalScore needs to behave identically on the xUnit suite's SQLite
-        // provider and the real Npgsql/Postgres provider, and this pipeline has no pagination
-        // anywhere else at this single-operator-v1 scale - see that class's comment for the full
-        // portability rationale, which applies unchanged here.
-        var candidates = await dbContext.Repositories
-            .Include(r => r.Scores)
-            .Where(r => !r.Summaries.Any())
-            .ToListAsync(cancellationToken);
+        var eligible = dbContext.Repositories.Where(r => !r.Summaries.Any());
 
+        // SkippedCount is measured against every repository still lacking a summary, not against
+        // the batch (see the return at the end of this method), so the total is asked for
+        // separately now that the batch is capped in SQL rather than in memory.
+        var candidateCount = await eligible.CountAsync(cancellationToken);
+
+        // Filtered, ranked and capped in SQL (review finding H-3). This used to load every
+        // unsummarized repository with its full score history purely to sort them and take
+        // BatchSize - on a fresh database, or any time summarization falls behind, that is most of
+        // the table materialized to select twenty rows.
+        //
         // The "latest" Score is the one with the max ComputedAtUtc (chronologically most recent),
         // not the one with the highest TotalScore - the same distinction ComputeScoresCommandHandler
-        // draws for its own re-scoring check (repository.Scores.Max(s => s.ComputedAtUtc)). A repo
-        // that scored well once but has since gone stale (fewer commits/contributors on a re-crawl)
-        // must be judged on its current standing, not its historical peak - otherwise a repo that
-        // dips below MinimumScore on a later re-score could still get summarized (and, since
-        // Summary is create-once, permanently so) off an old high score that no longer reflects it.
-        var toSummarize = candidates
-            .Select(r => (Repository: r, LatestScore: r.Scores.Count == 0 ? (double?)null : r.Scores.OrderByDescending(s => s.ComputedAtUtc).First().TotalScore))
-            .Where(x => x.LatestScore is not null && x.LatestScore >= _minimumScore)
-            .OrderByDescending(x => x.LatestScore)
+        // draws for its own re-scoring check. A repo that scored well once but has since gone stale
+        // (fewer commits/contributors on a re-crawl) must be judged on its current standing, not its
+        // historical peak - otherwise a repo that dips below MinimumScore on a later re-score could
+        // still get summarized (and, since Summary is create-once, permanently so) off an old high
+        // score that no longer reflects it. RepositoryCardQuery.ApplySort already encodes exactly
+        // that convention as an ORDER BY correlated subquery, so it is reused here rather than
+        // restated - the WHERE below mirrors its sort key deliberately.
+        //
+        // The explicit Scores.Any() guard is not redundant with the score comparison: without it a
+        // repository with no Score rows would take FirstOrDefault()'s 0.0 and pass whenever
+        // MinimumScore is configured to 0, which the old "LatestScore is not null" check excluded.
+        var toSummarize = await RepositoryCardQuery
+            .ApplySort(
+                eligible.Where(r => r.Scores.Any()
+                    && r.Scores.OrderByDescending(s => s.ComputedAtUtc).Select(s => s.TotalScore).FirstOrDefault() >= _minimumScore),
+                RepositorySortField.Score,
+                SortDirection.Desc)
+            .ThenBy(r => r.Id)
             .Take(_batchSize)
-            .Select(x => x.Repository)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         var summarizedCount = 0;
         var failedCount = 0;
+        var stoppedOnRateLimit = false;
 
         foreach (var repository in toSummarize)
         {
@@ -112,6 +126,30 @@ public class GenerateSummariesCommandHandler(
 
                 summarizedCount++;
             }
+            catch (GitHubRateLimitException ex)
+            {
+                // Back the whole batch out rather than failing each repository in turn (review
+                // finding M-3). A rate limit is one root cause affecting every remaining repository
+                // in this run, not N independent failures: the old behaviour logged up to BatchSize
+                // warnings for it, burned the rest of the batch against a budget that was already
+                // exhausted, and then did the same thing again an hour later.
+                //
+                // Backing out rather than waiting is deliberate, and is why this slice does not
+                // share the Crawler's Polly pipeline (ADR-018). That pipeline waits indefinitely
+                // because a crawl is the whole point of its run; here the README is one optional
+                // input to a summary, GitHub's reset can be the better part of an hour away, and
+                // this job runs hourly anyway - so stopping is strictly better than holding an
+                // LM Studio-bound job open waiting on GitHub. Everything already summarized is
+                // saved below; everything else still has no Summary row and is picked back up by
+                // the "without one" filter on the next run.
+                logger.LogWarning(
+                    ex,
+                    "GitHub rate limit hit while fetching READMEs; stopping this run after {SummarizedCount} of {BatchCount} repositories. The remainder are retried on the next scheduled run",
+                    summarizedCount,
+                    toSummarize.Count);
+                stoppedOnRateLimit = true;
+                break;
+            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Same philosophy as F-005's GitHubContributorListUnavailableException handling
@@ -131,10 +169,17 @@ public class GenerateSummariesCommandHandler(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // SkippedCount covers everything that didn't even get attempted this run: repos with no
-        // score yet, repos below MinimumScore, and repos that qualified but fell past BatchSize -
-        // all three are "try again next run" cases, not failures, so they're not folded into
-        // FailedCount (which is reserved for attempts that actually threw).
-        return new GenerateSummariesResult(summarizedCount, candidates.Count - toSummarize.Count, failedCount);
+        // score yet, repos below MinimumScore, repos that qualified but fell past BatchSize, and -
+        // since M-3 - repos left unattempted when a rate limit cut the batch short. All are "try
+        // again next run" cases, not failures, so they're not folded into FailedCount (which is
+        // reserved for attempts that actually threw). Derived by subtraction rather than from
+        // toSummarize.Count so the early-exit case is counted correctly; when the loop runs to
+        // completion the two are identical, since every iteration increments exactly one counter.
+        return new GenerateSummariesResult(
+            summarizedCount,
+            candidateCount - summarizedCount - failedCount,
+            failedCount,
+            stoppedOnRateLimit);
     }
 
     // GET /repos/{owner}/{repo}/readme (GitHub REST) - the cheapest PRD-compliant way to read a
@@ -156,6 +201,22 @@ public class GenerateSummariesCommandHandler(
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
+        }
+
+        // The crawler's own REST calls run through ADR-018's Polly pipeline; this one does not, so
+        // without these two checks a 403 would fall through to EnsureSuccessStatusCode, surface as
+        // a generic HttpRequestException, and be logged as "summarization failed for this repo" -
+        // once per repository in the batch, for a cause that has nothing to do with any of them
+        // (review finding M-3). Detection is shared with GitHubDiscoveryClient rather than
+        // reimplemented, so the two cannot drift apart on GitHub's header contract.
+        if (GitHubDiscoveryClient.IsRestPrimaryRateLimited(response, out var resetAtUtc))
+        {
+            throw new GitHubRestRateLimitExceededException(resetAtUtc);
+        }
+
+        if (GitHubDiscoveryClient.IsRestSecondaryRateLimited(response, timeProvider, out var retryAfter))
+        {
+            throw new GitHubSecondaryRateLimitException(retryAfter);
         }
 
         response.EnsureSuccessStatusCode();

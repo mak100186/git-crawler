@@ -81,6 +81,12 @@ public static class RepositoryCardQuery
     // generous for manual browsing while still bounding a single response's size.
     public const int MaxPageSize = 100;
 
+    // The language/topic/license query parameters bind as arrays straight off the query string and
+    // each element becomes one entry in a SQL IN (...) list, so an unbounded array is an unbounded
+    // clause. page/pageSize were already clamped; these were not. 50 is well past any real facet
+    // selection while still bounding the generated SQL.
+    public const int MaxFilterValues = 50;
+
     // F-017: eagerly loads navigation collections for client-side Rank/Paginate. Superseded by
     // server-side sort/pagination in GetHiddenGemsQueryHandler (the only remaining caller of the
     // Rank/Paginate path) which fetches only page-scoped details instead. Kept rather than removed
@@ -98,12 +104,14 @@ public static class RepositoryCardQuery
     // A repo with no Score rows yields NULL/default, which sorts to the end (0.0 for
     // Score/Commits), matching Rank's own fallback.
     //
-    // Portability caveat: the xUnit suite's SQLite provider rejects DateTimeOffset in ORDER BY
-    // (NotSupportedException) and cannot translate any DateTimeOffset member (.DateTime, .Ticks)
-    // either, so this method is unreachable on SQLite for the Newest sort. GetHiddenGemsQueryHandler
-    // detects SQLite at runtime and falls back to the client-side Rank/Paginate pipeline instead —
-    // same response contract, same semantics. The caller must add a Repository.Id tie-break
-    // (ThenBy r.Id) after this for deterministic pagination (F-010's explicit callout).
+    // The caller must add a Repository.Id tie-break (ThenBy r.Id) after this for deterministic
+    // pagination (F-010's explicit callout).
+    //
+    // This used to carry a portability caveat: the suite's old SQLite provider rejected
+    // DateTimeOffset in ORDER BY, so GetHiddenGemsQueryHandler detected it at runtime and took a
+    // client-side fallback instead — meaning the sort path production actually runs was the one
+    // nothing tested. Review finding H-4 moved the suite onto a real PostgreSQL container, and this
+    // is now the only path.
     public static IOrderedQueryable<Repository> ApplySort(
         IQueryable<Repository> query, RepositorySortField sort, SortDirection direction)
     {
@@ -139,6 +147,7 @@ public static class RepositoryCardQuery
     {
         if (filter.Language is { Count: > 0 } languages)
         {
+            languages = ClampFilterValues(languages);
             query = query.Where(r => r.PrimaryLanguage != null && languages.Contains(r.PrimaryLanguage));
         }
 
@@ -154,11 +163,13 @@ public static class RepositoryCardQuery
 
         if (filter.Topic is { Count: > 0 } topics)
         {
+            topics = ClampFilterValues(topics);
             query = query.Where(r => r.Topics.Any(t => topics.Contains(t)));
         }
 
         if (filter.License is { Count: > 0 } licenses)
         {
+            licenses = ClampFilterValues(licenses);
             query = query.Where(r => r.LicenseIdentifier != null && licenses.Contains(r.LicenseIdentifier));
         }
 
@@ -171,19 +182,17 @@ public static class RepositoryCardQuery
     }
 
     // F-017: superseded by ApplySort (server-side ORDER BY) for GetHiddenGems' main path, which
-    // avoids materializing the entire match set before sorting. Kept rather than removed: it's the
-    // only fully-portable (SQLite + Npgsql) reference implementation of the "latest by
-    // ComputedAtUtc, never highest-ever" ranking convention in client-side LINQ-to-Objects, and a
-    // future caller may need it for small, already-materialized candidate sets where the
-    // server-side path isn't applicable.
+    // avoids materializing the entire match set before sorting. Kept rather than removed: it is the
+    // reference implementation of the "latest by ComputedAtUtc, never highest-ever" ranking
+    // convention in client-side LINQ-to-Objects, and a future caller may need it for small,
+    // already-materialized candidate sets where the server-side path isn't applicable.
     //
     // Resolves each candidate's latest Score/Summary and sorts - mirroring the exact
     // OrderByDescending(ComputedAtUtc).First()-style convention already established by
     // GenerateSummariesCommandHandler/AggregateTrendsCommandHandler (not Max() - see
     // docs/handoff.md's "Important context" for why Max() is wrong here). Done client-side, after
-    // the candidates are already materialized by ApplyFilters' caller, for the same portability
-    // reason those handlers give: this must behave identically on the xUnit suite's SQLite provider
-    // and the real Npgsql/Postgres provider. A repo with no Score yet sorts as if Score/Commits were
+    // the candidates are already materialized by ApplyFilters' caller. A repo with no Score yet
+    // sorts as if Score/Commits were
     // 0 rather than being dropped from the list - Hidden Gems layers its own Scores.Any() filter on
     // top before ranking (its own slice-specific requirement), so this fallback only ever matters for
     // other, unscored candidates should a future caller need them.
@@ -222,6 +231,12 @@ public static class RepositoryCardQuery
     public static int ClampPage(int page) => Math.Max(page, 1);
 
     public static int ClampPageSize(int pageSize) => Math.Clamp(pageSize, 1, MaxPageSize);
+
+    // Truncates rather than rejects: an over-long facet list is far more likely to be a malformed
+    // or hostile URL than a user who genuinely selected 51 languages, and silently narrowing beats
+    // failing a dashboard request outright.
+    public static IReadOnlyList<string> ClampFilterValues(IReadOnlyList<string> values) =>
+        values.Count <= MaxFilterValues ? values : [.. values.Take(MaxFilterValues)];
 
     private static IOrderedEnumerable<T> OrderBy<T, TKey>(IEnumerable<T> source, Func<T, TKey> keySelector, SortDirection direction) =>
         direction == SortDirection.Asc ? source.OrderBy(keySelector) : source.OrderByDescending(keySelector);

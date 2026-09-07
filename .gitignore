@@ -82,6 +82,11 @@ src/backend/**/wwwroot/*
 data/postgres/*
 !data/postgres/.gitkeep
 
+# Mailpit's captured-mail store (docker-compose.yml bind mount) - same deal: runtime data that
+# survives `make down` so a captured digest is still there after a restart, never committed.
+data/mailpit/*
+!data/mailpit/.gitkeep
+
 # Vitest's rerun-failed-tests cache - regenerated on every test run, not source.
 test-results/
 

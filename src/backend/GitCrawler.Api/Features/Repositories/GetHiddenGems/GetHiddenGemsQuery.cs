@@ -75,12 +75,6 @@ public record GetHiddenGemsQuery(RepositoryFilterCriteria Filter);
 // never highest-ever" convention from F-007). Per-request work is bounded by page size (≤
 // MaxPageSize), not total match count.
 //
-// Provider-aware: the xUnit suite's SQLite provider rejects DateTimeOffset in ORDER BY (the
-// Newest sort's FirstDiscoveredAtUtc key) and cannot translate any DateTimeOffset member. When
-// SQLite is detected at runtime, the handler falls back to the client-side Rank/Paginate
-// pipeline (IncludeForCards → materialize filtered set → Rank → Paginate) — same response
-// contract and all semantics preserved, just client-side sort on the filtered candidates. The
-// Score history detail query also sorts client-side after fetch for the same portability reason.
 // Detail data (latest Score for the breakdown, second-latest for TrendGrowth, Summary, Bookmark
 // flag) is fetched in narrow queries scoped to the page's repository IDs, not the full match set.
 public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
@@ -101,37 +95,21 @@ public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
         // dashboard's paginator shows the correct total. CountAsync translates to SELECT COUNT(*).
         var totalCount = await filtered.CountAsync(cancellationToken);
 
-        // Provider-aware sort/pagination: the production Npgsql/PostgreSQL provider translates
-        // ApplySort (including its DateTimeOffset FirstDiscoveredAtUtc key for the "Newest" sort)
-        // to SQL ORDER BY + LIMIT/OFFSET without issue. The EF Core SQLite provider (used by the
-        // xUnit test suite) rejects DateTimeOffset in ORDER BY with NotSupportedException and
-        // cannot translate any DateTimeOffset member (.DateTime, .Ticks) either, so the
-        // server-side path is unreachable on SQLite. Fall back to the client-side Rank/Paginate
-        // pipeline (IncludeForCards → materialize → Rank → Paginate), which already works
-        // correctly on both providers via LINQ-to-Objects.
-        var isSqlite = dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
-
-        List<int> pageRepositoryIds;
-        if (isSqlite)
-        {
-            var candidates = await RepositoryCardQuery.IncludeForCards(filtered)
-                .ToListAsync(cancellationToken);
-            var ranked = RepositoryCardQuery.Rank(candidates, filter.Sort, filter.Direction);
-            var paginated = RepositoryCardQuery.Paginate(ranked, page, pageSize, out _);
-            pageRepositoryIds = paginated.Select(r => r.Repository.Id).ToList();
-        }
-        else
-        {
-            // Sort + paginate server-side. ApplySort translates to ORDER BY with a correlated
-            // subquery for Score/Commits sort keys; ThenBy(r.Id) is the deterministic tie-break
-            // (F-010). Skip/Take translate to LIMIT/OFFSET, bounding per-request work to pageSize.
-            pageRepositoryIds = await RepositoryCardQuery.ApplySort(filtered, filter.Sort, filter.Direction)
-                .ThenBy(r => r.Id)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(r => r.Id)
-                .ToListAsync(cancellationToken);
-        }
+        // Sort + paginate server-side. ApplySort translates to ORDER BY with a correlated subquery
+        // for Score/Commits sort keys; ThenBy(r.Id) is the deterministic tie-break (F-010).
+        // Skip/Take translate to LIMIT/OFFSET, bounding per-request work to pageSize.
+        //
+        // This used to be one arm of a runtime provider check, with a client-side
+        // IncludeForCards → Rank → Paginate fallback for the xUnit suite's SQLite provider (which
+        // cannot translate DateTimeOffset in ORDER BY). Since the suite moved to a real PostgreSQL
+        // container the fallback has no caller, and - the point of review finding H-4 - the path
+        // below is now the one the tests actually exercise, rather than the one nothing did.
+        var pageRepositoryIds = await RepositoryCardQuery.ApplySort(filtered, filter.Sort, filter.Direction)
+            .ThenBy(r => r.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
 
         // Beyond-last-page: the match set has results (totalCount > 0) but Skip past the end
         // yields no IDs. Return an empty slice with the accurate totalCount - not an error (F-010).
@@ -150,15 +128,19 @@ public class GetHiddenGemsQueryHandler(GitCrawlerDbContext dbContext)
             .ToListAsync(cancellationToken);
 
         // Score history for the page's repos - needed for the score breakdown (latest row) and
-        // TrendGrowth (latest two rows). ~10 rows per repo × ≤100 repos = ~1000 rows max.
-        // Sort is done client-side after fetch because the SQLite provider (xUnit suite) rejects
-        // DateTimeOffset in ORDER BY; the production Npgsql provider handles it server-side, but
-        // the result is identical either way (LINQ-to-Objects on a bounded page-scoped set).
-        var pageScores = (await dbContext.Scores
+        // TrendGrowth (latest two rows). Bounded, not estimated (review finding L-1): retention in
+        // ComputeScoresCommandHandler.PruneScoreHistoryAsync caps history at
+        // Scoring:ScoreHistoryRetentionCount rows per repository (default 10), so the worst case
+        // here is that value × MaxPageSize rather than one row per crawl since the repo was first
+        // seen. Raising that setting raises this fetch proportionally.
+        // Ordered server-side. This sorted client-side after fetch while the suite ran on SQLite,
+        // whose provider rejects DateTimeOffset in ORDER BY; with that gone (review finding H-4) the
+        // ORDER BY belongs in the query, where the covering index on (RepositoryId, ComputedAtUtc)
+        // can serve it.
+        var pageScores = await dbContext.Scores
             .Where(s => pageRepositoryIds.Contains(s.RepositoryId))
-            .ToListAsync(cancellationToken))
             .OrderByDescending(s => s.ComputedAtUtc)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         // Summary (if any) for each page repo - at most one per repo (unique index, F-016).
         var pageSummaries = await dbContext.Summaries

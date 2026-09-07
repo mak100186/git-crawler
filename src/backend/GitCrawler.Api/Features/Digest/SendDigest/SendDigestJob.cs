@@ -34,5 +34,19 @@ public class SendDigestJob(IMessageBus messageBus)
     [DisableConcurrentExecution(timeoutInSeconds: 60)]
     // Typed InvokeAsync<SendDigestResult>, not the bare object overload - see AggregateTrendsJob's
     // own RunAsync comment for why the bare overload logs a routing warning.
-    public Task RunAsync() => messageBus.InvokeAsync<SendDigestResult>(new SendDigestCommand());
+    public async Task RunAsync()
+    {
+        var result = await messageBus.InvokeAsync<SendDigestResult>(new SendDigestCommand());
+
+        // The handler deliberately swallows SMTP exceptions (FR-006, see its own catch block), which
+        // meant a digest that never left the process still showed as Succeeded in the Hangfire
+        // dashboard - an operator watching it saw a healthy daily job while the log said otherwise.
+        // Rethrowing here marks the job Failed with the real SMTP message and lets Hangfire's
+        // automatic retry have a go, which is safe: DigestSendLog is only written after a send
+        // actually succeeds, so a retry can't produce a duplicate email.
+        if (result.SendFailure is not null)
+        {
+            throw new InvalidOperationException($"The daily digest email failed to send: {result.SendFailure}");
+        }
+    }
 }

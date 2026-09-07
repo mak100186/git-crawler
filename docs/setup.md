@@ -10,7 +10,7 @@ LM Studio.
 
 | Requirement                                                | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker Desktop                                             | `make up` will try to start it for you if it's installed but not running. Install: https://docs.docker.com/get-docker/                                                                                                                                                                                                                                                                                                                                                                      |
+| Docker Desktop                                             | `make up` will try to start it for you if it's installed but not running. Also required for `dotnet test`: the backend suite starts a real PostgreSQL container via Testcontainers (see `docs/test-runbook.md`). Install: https://docs.docker.com/get-docker/                                                                                                                                                                                                                               |
 | LM Studio                                                  | Must already be installed on this machine (ADR-016 — not containerized). Install: https://lmstudio.ai/download                                                                                                                                                                                                                                                                                                                                                                              |
 | LM Studio's `lms` CLI                                      | Bundled with LM Studio but may need enabling once — open LM Studio → Settings → Developer, and enable the CLI. Confirm it's on your `PATH` with `lms --version`.                                                                                                                                                                                                                                                                                                                            |
 | `make`                                                     | Included on macOS/Linux. On Windows, install it separately (e.g. `choco install make`) — the `Makefile` itself forces its recipe shell to Git for Windows' bundled `bash.exe`, so it runs the same from PowerShell, `cmd.exe`, or Git Bash, as long as Git for Windows is installed at its default location.                                                                                                                                                                                |
@@ -153,9 +153,28 @@ concurrently (duplicate crawls, duplicate Hangfire jobs).
 hidden gems, trend summaries) — Mailpit catches everything sent to it and never delivers anywhere
 external, so it's safe to trigger the digest repeatedly while iterating. Mailpit is the actively-
 maintained successor to MailHog (which has seen no meaningful releases since 2022); same idea, still
-developed. It only runs under `make dev`'s `dev` Compose profile — `make up`'s production path never
-starts it, and a real deployment needs its own SMTP provider configured in `appsettings.json`'s
-`Smtp` section, which ships blank on purpose.
+developed. Both `make up` and `make dev` start it.
+
+**The digest under `make up`**: `.env.example` ships `SMTP_HOST=mailpit`, `SMTP_PORT=1025`,
+`SMTP_ENABLE_SSL=false`, so the containerized app delivers the digest into that same Mailpit — open
+`http://localhost:8025/` to read it. `mailpit` is the Compose service's DNS name and is the address
+that matters here: inside the app container `localhost` is the app itself, not Mailpit, which is why
+`appsettings.Development.json`'s `localhost:1025` is correct for `make dev`'s bare backend and wrong
+for the container.
+
+To send to a real mailbox, point `SMTP_HOST`/`SMTP_PORT`/`SMTP_ENABLE_SSL` at your provider, set
+`SMTP_USERNAME`/`SMTP_PASSWORD` (an app password, not the account password), and set
+`SMTP_FROM_ADDRESS`/`DIGEST_RECIPIENT_EMAIL` to real addresses. `docker-compose.yml` passes all seven
+through to the app container as `Smtp__*`/`Digest__RecipientEmail`, and `Program.cs` bridges the same
+flat names for a bare `dotnet run`. Blank `SMTP_HOST`, `SMTP_FROM_ADDRESS`, or
+`DIGEST_RECIPIENT_EMAIL` means the 06:00 UTC job runs, logs a warning, and skips. `appsettings.json`
+ships the `Smtp` section blank on purpose and holds no `Password` key at all; the password only ever
+comes from the environment, the same as `GitHub:Token`.
+
+When nothing arrives: editing `.env` does not affect a container that is already running — env vars
+are fixed at create time, so `make down && make up`. A send failure shows as a **Failed** job in the
+Hangfire dashboard carrying the SMTP error, and Hangfire retries it; `make logs` has the full
+exception. Mailpit keeps captured mail in `./data/mailpit` (git-ignored), so it survives a restart.
 
 ## 4. Verify
 

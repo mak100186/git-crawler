@@ -1,5 +1,7 @@
 import { AsyncPipe } from '@angular/common';
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { EMPTY, Subject, catchError, switchMap, tap } from 'rxjs';
 
 import {
   DEFAULT_PAGE_SIZE,
@@ -39,6 +41,11 @@ export class HiddenGems implements OnInit {
   protected readonly page = signal(1);
   protected readonly pageSize = signal(DEFAULT_PAGE_SIZE);
 
+  // Every fetch goes through this subject so switchMap can cancel the previous request. Without
+  // it, two in-flight requests can settle out of order and leave the grid showing results for a
+  // filter the user has already changed, with no indication anything is stale.
+  private readonly fetchRequests = new Subject<RepositoryFilterCriteria>();
+
   private filter: RepositoryFilterCriteria = {
     bookmarkedOnly: false,
     sort: 'Score',
@@ -47,8 +54,38 @@ export class HiddenGems implements OnInit {
     pageSize: DEFAULT_PAGE_SIZE,
   };
 
+  constructor() {
+    this.fetchRequests
+      .pipe(
+        tap(() => {
+          this.loading.set(true);
+          this.error.set(false);
+        }),
+        switchMap((filter) =>
+          this.repositoryApi.getHiddenGems(filter).pipe(
+            catchError(() => {
+              this.loading.set(false);
+              this.error.set(true);
+              // EMPTY, not a rethrow: an error on one request must not tear down the pipeline and
+              // leave every later filter change dead.
+              return EMPTY;
+            }),
+          ),
+        ),
+        takeUntilDestroyed(),
+      )
+      .subscribe((result) => {
+        this.items.set(result.items);
+        this.totalCount.set(result.totalCount);
+        this.page.set(result.page);
+        this.pageSize.set(result.pageSize);
+        this.loading.set(false);
+      });
+  }
+
   ngOnInit(): void {
     this.facetOptions.ensureLanguageOptionsLoaded();
+    this.facetOptions.ensureFacetOptionsLoaded();
     this.fetch();
   }
 
@@ -71,22 +108,6 @@ export class HiddenGems implements OnInit {
   }
 
   private fetch(): void {
-    this.loading.set(true);
-    this.error.set(false);
-
-    this.repositoryApi.getHiddenGems(this.filter).subscribe({
-      next: (result) => {
-        this.items.set(result.items);
-        this.totalCount.set(result.totalCount);
-        this.page.set(result.page);
-        this.pageSize.set(result.pageSize);
-        this.loading.set(false);
-        this.facetOptions.recordRepositories(result.items);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.error.set(true);
-      },
-    });
+    this.fetchRequests.next(this.filter);
   }
 }

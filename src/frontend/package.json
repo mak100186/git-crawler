@@ -8,8 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",
-    "format": "prettier --write \"src/**/*.{ts,html,scss,css,json,md}\" \"e2e/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.{ts,html,scss,css,json,md}\" \"e2e/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.{ts,html,scss,css,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,scss,css,json,md}\"",
     "format:docs": "prettier --ignore-path ../../.prettierignore --write \"../../*.md\" \"../../docs/**/*.md\"",
     "format:docs:check": "prettier --ignore-path ../../.prettierignore --check \"../../*.md\" \"../../docs/**/*.md\""
   },

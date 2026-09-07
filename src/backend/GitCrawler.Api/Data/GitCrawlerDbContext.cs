@@ -64,8 +64,9 @@ public class GitCrawlerDbContext(DbContextOptions<GitCrawlerDbContext> options) 
 
             // Topics: the Topic facet filter uses array-overlap (r.Topics.Any(t => topics.Contains
             // (t))), which Npgsql translates to the `&&` operator. A GIN index is the correct
-            // index type for array-overlap queries on PostgreSQL; HasMethod("gin") is silently
-            // ignored by the SQLite provider (used by the xUnit test suite's EnsureCreated path).
+            // index type for array-overlap queries on PostgreSQL. The test suite runs the real
+            // migration chain against PostgreSQL (review finding H-4), so this index is exercised
+            // rather than silently ignored as it was under the suite's previous SQLite provider.
             entity.HasIndex(r => r.Topics).HasMethod("gin");
         });
 

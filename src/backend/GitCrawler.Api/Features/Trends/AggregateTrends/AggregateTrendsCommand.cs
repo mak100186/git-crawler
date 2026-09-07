@@ -37,10 +37,9 @@ public class AggregateTrendsCommandHandler(GitCrawlerDbContext dbContext, IConfi
 
         // "Scored + summarized" = has cleared the full pipeline (crawled -> scored -> summarized),
         // not just scored - both Scores.Any() and Summaries.Any() must hold. Any() on each
-        // navigation collection translates to a SQL EXISTS, so this filter runs relationally on
-        // both the xUnit suite's SQLite provider and the real Npgsql/Postgres provider; only the
-        // Scores themselves need to be pulled into memory afterward (see the latest-by-time
-        // resolution below).
+        // navigation collection translates to a SQL EXISTS, so this filter runs relationally; only
+        // the Scores themselves are pulled into memory afterward (see the latest-by-time resolution
+        // below), which review finding H-3 covers.
         //
         // Category = Repository.PrimaryLanguage (Task Packet's explicit judgment call): the schema
         // has no separate "framework"/"ecosystem" field beyond PrimaryLanguage, so this is the

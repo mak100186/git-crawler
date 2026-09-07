@@ -17,7 +17,12 @@ namespace GitCrawler.Api.Features.Digest.SendDigest;
 // other pipeline-stage command in this codebase, this is a plain command with no HTTP endpoint.
 public record SendDigestCommand(bool IsHtml = true);
 
-public record SendDigestResult(bool Sent, int RepositoryCount, int TrendCount);
+// SendFailure is non-null only when the SMTP send itself threw - it carries that exception's
+// message so SendDigestJob can fail the Hangfire job with the real reason instead of a generic one.
+// A skip (no recipient configured, or already sent today) leaves it null: those are correct
+// outcomes, not failures. Without it every outcome looked identical to Hangfire, which reported
+// Succeeded for a digest that never left the process.
+public record SendDigestResult(bool Sent, int RepositoryCount, int TrendCount, string? SendFailure = null);
 
 // Wolverine discovers this handler by convention (a public Handle/HandleAsync method on a class
 // named *Handler in the same assembly) - no manual registration required.
@@ -79,9 +84,20 @@ public class SendDigestCommandHandler(
         // off-limits to sharing), and ranking by RepositorySortField.Score already resolves each
         // repo's *latest* Score by ComputedAtUtc, not its historical peak - this Task Packet's own
         // constraint, already enforced by that shared helper.
-        var candidates = await RepositoryCardQuery.IncludeForCards(eligibleRepositories).ToListAsync(cancellationToken);
+        //
+        // Ranked and capped in SQL before anything is materialized (review finding H-3): this used
+        // to pull every scored+summarized repository, with its scores, summaries and bookmarks, and
+        // then Take(_topN) from the result - the whole catalog to build a list of eight. ApplySort
+        // pushes that ORDER BY down, so only the top rows are fetched with their related data.
+        // Rank still runs, on those few rows, because it is what projects a Repository into the
+        // RankedRepository shape the digest renders from - and because ordering is not guaranteed
+        // to survive materialization through Include.
+        var candidates = await RepositoryCardQuery.IncludeForCards(
+                RepositoryCardQuery.ApplySort(eligibleRepositories, RepositorySortField.Score, SortDirection.Desc)
+                    .ThenBy(r => r.Id)
+                    .Take(_topN))
+            .ToListAsync(cancellationToken);
         var topGems = RepositoryCardQuery.Rank(candidates, RepositorySortField.Score, SortDirection.Desc)
-            .Take(_topN)
             .ToList();
 
         // "Current period" = whatever TrendAggregate rows AggregateTrendsCommandHandler most recently
@@ -128,13 +144,14 @@ public class SendDigestCommandHandler(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // FR-006: a send failure must be logged, not silently dropped, and must not crash the
-            // Hangfire job/host - same bounded "log and move on" philosophy
-            // GenerateSummariesCommandHandler applies to its own per-repo LM Studio failures. No
-            // retry here either (Task Packet's explicit "no retry requirement") - the next scheduled
-            // run tries again on its own cron.
+            // FR-006: a send failure must be logged, not silently dropped, and must not propagate out
+            // of the handler - same bounded "log and move on" philosophy
+            // GenerateSummariesCommandHandler applies to its own per-repo LM Studio failures. The
+            // failure is reported upward in SendFailure rather than thrown, so SendDigestJob can mark
+            // the Hangfire job Failed (which is not the same as crashing the host - the fear behind
+            // the original wording of this comment) while the handler itself still degrades cleanly.
             logger.LogError(ex, "Failed to send the daily digest email to {Recipient}", _recipientEmail);
-            return new SendDigestResult(Sent: false, RepositoryCount: topGems.Count, TrendCount: trends.Count);
+            return new SendDigestResult(Sent: false, RepositoryCount: topGems.Count, TrendCount: trends.Count, SendFailure: ex.Message);
         }
 
         // Marker written only after SendAsync above has already succeeded (Task Packet's explicit
@@ -298,7 +315,7 @@ public class SendDigestCommandHandler(
         };
 
         var content = new StringBuilder();
-        content.AppendLine($"<div style=\"font-size:12.5px;line-height:1.5;color:{BodyText};margin-bottom:14px;\">Every hidden gem's score blends five signals, weighted by how strongly each predicts a well-maintained, actively developed project:</div>");
+        content.AppendLine($"<div style=\"font-size:12.5px;line-height:1.5;color:{BodyText};margin-bottom:14px;\">Every hidden gem's score blends five signals. Four reward a well-maintained, actively developed project. Stars are scored on a curve that peaks in the middle - a repo nobody has starred is unproven, and one with 100k stars is not hidden:</div>");
 
         foreach (var (label, weight) in signals)
         {
