@@ -3,7 +3,7 @@
 > Status: a queue, not a backlog. Nothing here has been triaged — no PRD, Architecture, PMBook row
 > or ADR exists for any entry until `idea-triage` has been run on it and the user has approved each
 > gate. Entries are written by `idea-discovery` (`/idea-discovery`) and only on explicit instruction.
-> Last updated: 2026-09-05
+> Last updated: 2026-09-08
 
 Each entry is a short referential pointer: the idea, its concrete hook in this codebase (an ADR, a
 class, a measured number), and a link to its research note in [docs/stash/](stash/). The detail lives
@@ -18,7 +18,17 @@ what was **declined** versus merely **deferred** — the two are not the same.
 
 ## Open
 
-(none yet — the first entry lands the first time `/idea-discovery` is run and the user says to record it)
+- **Personalized discovery via user-defined interest profiles** (PRD Goal 4) — let a user weight the
+  scoring signals to their own interests instead of everyone seeing the same globally-ranked list.
+  Hook: the scoring engine already exposes license, commits-per-week, contributors and forks as
+  independently-weighted inputs (a v1 PRD product commitment), so per-user weighting is a weighting
+  layer over an existing seam, not a rewrite of `ComputeScoresCommandHandler`. Committed to Tranche
+  v2 by decision on 2026-09-08 (PM-002 / PRD Q3), so this is a scoping commitment awaiting triage
+  rather than an open question of whether to do it. **No stash note** — this entry came from a PMBook
+  decision, not from `/idea-discovery`, so nothing has verified the scoring-seam claim against the
+  code yet. Run `/idea-discovery` on it before `/idea-triage` if that verification matters.
+  Related but still out of scope: recommendation ("because you liked X") and GitHub OAuth
+  personalization, both of which the PRD defers on their own grounds.
 
 ## Adopted
 
